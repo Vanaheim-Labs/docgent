@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import { stores, repoSlug, type DocSummary, type TimelineEntry } from "@/lib/store";
 import { Sidebar } from "@/components/Sidebar";
 import { UserChip } from "@/components/UserChip";
+import { VersionPanel } from "@/components/VersionPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -130,53 +131,24 @@ export default async function DocumentPage({ params, searchParams }: Props) {
                 </div>
               </div>
 
-              <div className="panel">
-                <div className="panel-head">
-                  <span>Version history</span>
-                  <span style={{ textTransform: "none", letterSpacing: 0 }}>
-                    {timeline.length}
-                  </span>
-                </div>
-                {timelineError && (
+              {timelineError ? (
+                <div className="panel">
+                  <div className="panel-head">Version history</div>
                   <div className="panel-body">
                     <div className="error-box">
                       <code>{timelineError}</code>
                     </div>
                   </div>
-                )}
-                {!timelineError && timeline.length === 0 && (
-                  <div className="panel-body" style={{ color: "var(--ink-faint)", fontSize: 13 }}>
-                    No commits found for this path.
-                  </div>
-                )}
-                <div>
-                  {timeline.map((t) => (
-                    <a
-                      key={t.sha}
-                      className="version"
-                      href={t.isCurrent ? `/${brand}/${slug}` : `/${brand}/${slug}?v=${t.sha}`}
-                      data-current={commitSha ? t.sha === commitSha : t.isCurrent}
-                    >
-                      <div className="version-head">
-                        <span className="version-num">v{t.version}</span>
-                        <span className="version-sha">{t.shortSha}</span>
-                        {t.isCurrent && (
-                          <span className="badge" style={{ marginLeft: "auto" }}>
-                            current
-                          </span>
-                        )}
-                      </div>
-                      <div className="version-subject">{t.subject}</div>
-                      <div className="version-meta">
-                        {t.author.name || t.author.login || "unknown"}
-                        {t.author.date && ` · ${new Date(t.author.date).toLocaleDateString("en-AU", {
-                          day: "numeric", month: "short", year: "numeric",
-                        })}`}
-                      </div>
-                    </a>
-                  ))}
                 </div>
-              </div>
+              ) : (
+                <VersionPanel
+                  brand={brand}
+                  slug={slug}
+                  timeline={timeline}
+                  currentStatus={fm.status || "draft"}
+                  viewingSha={commitSha}
+                />
+              )}
             </div>
           </div>
         </div>
