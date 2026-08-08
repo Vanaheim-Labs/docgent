@@ -88,6 +88,9 @@ which now represents 61% of contracted revenue.
 Improved from 18.1%. The reduction follows the onboarding changes shipped in Q1.
 :::
 
+::: {.figure src="assets/revenue-by-segment.svg" caption="Contracted revenue by segment, FY26 year to date. Enterprise now represents 61% of the book." source="Internal management accounts, August 2026" width=column}
+:::
+
 ::: {.datatable caption="Segment performance, FY26 year to date"}
 | Segment | Revenue | Growth | Margin |
 |---|---|---|---|
@@ -170,6 +173,29 @@ available but should be used sparingly.
 If you find yourself reaching for an explicit page break to fix a layout problem, the
 underlying issue is usually a missing break-inside rule on a component. Fix the
 stylesheet, not the document.
+:::
+
+::: pagebreak
+:::
+
+# Appendix B: Wide content
+
+Tables that exceed the portrait measure belong on a landscape page. The landscape block
+switches to a named page, so the running headers and footers follow automatically.
+
+::: landscape
+
+::: {.datatable dense=true caption="Engagement register — landscape orientation"}
+| Ref | Engagement | Client | Partner | Start | End | Fees | Status |
+|---|---|---|---|---|---|---|---|
+| E-101 | Operating model review | Northwind Group | A. Julian | 2026-02-03 | 2026-04-30 | $180,000 | Complete |
+| E-102 | Market entry assessment | Halvard Industries | A. Julian | 2026-03-11 | 2026-06-18 | $240,000 | Complete |
+| E-103 | Pricing architecture | Ostara Retail | M. Sandoval | 2026-05-02 | 2026-08-29 | $310,000 | In progress |
+| E-104 | Post-merger integration | Brightwater Holdings | M. Sandoval | 2026-06-15 | 2026-12-20 | $520,000 | In progress |
+| E-105 | Technology due diligence | Fenwick Capital | R. Oyelaran | 2026-07-01 | 2026-09-12 | $145,000 | In progress |
+| E-106 | Cost transformation | Aldergate Manufacturing | R. Oyelaran | 2026-08-04 | 2027-02-27 | $680,000 | Scoping |
+:::
+
 :::
 
 ::: {.signature name="Andrew Julian" role="Vanaheim Partners" date="8 August 2026"}

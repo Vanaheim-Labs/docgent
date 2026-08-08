@@ -421,14 +421,26 @@ table:not(.datatable table) td {
 .recommendation > :last-child { margin-bottom: 0; }
 
 /* ---------- definition ---------- */
-.definition { break-inside: avoid; margin: 0.7rem 0; }
+.definition {
+  break-inside: avoid;
+  margin: 0 0 0.85rem;
+  padding-left: 0.9rem;
+  border-left: 1.5pt solid var(--rule);
+}
 .definition-term {
   font-family: var(--font-sans);
   font-weight: 600;
   font-size: 0.9rem;
   color: var(--ink);
+  margin-bottom: 0.2rem;
 }
-.definition > p { margin-left: 0; font-size: 0.94rem; color: var(--ink-soft); }
+.definition > p {
+  margin: 0 0 0.25rem;
+  font-size: 0.94rem;
+  color: var(--ink-soft);
+  text-align: left;
+}
+.definition > :last-child { margin-bottom: 0; }
 
 /* ---------- columns ---------- */
 .columns { column-gap: 8mm; margin: 1rem 0; }
@@ -452,6 +464,15 @@ table:not(.datatable table) td {
   font-family: var(--font-sans);
   font-size: 0.85rem;
 }
+/* Body copy inside the signature block sits above the rule conceptually;
+   keep it from reading as a second horizontal division. */
+.signature > p {
+  font-family: var(--font-body);
+  color: var(--ink-soft);
+  text-align: left;
+  margin: 0 0 0.8rem;
+}
+.signature-name { margin-top: 0.2rem; }
 .signature-name { font-weight: 600; }
 .signature-role, .signature-date { color: var(--ink-faint); font-size: 0.78rem; }
 
@@ -480,3 +501,13 @@ table:not(.datatable table) td {
   margin-top: 1.5rem;
   padding-top: 0.5rem;
 }
+/* pandoc emits its own <hr> above the footnote list; we supply the rule. */
+.footnotes > hr { display: none; }
+.footnotes ol { padding-left: 1rem; }
+.footnotes li { margin-bottom: 0.3rem; }
+.footnotes p { text-align: left; margin-bottom: 0.2rem; }
+.footnote-ref { border: none; }
+.footnote-ref sup { font-size: 0.7em; color: var(--accent); }
+/* The back-reference glyph (↩) is frequently missing from embedded print
+   fonts and renders as tofu. Suppress it — a backlink is meaningless in PDF. */
+.footnote-back { display: none; }

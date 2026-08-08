@@ -9,16 +9,30 @@ const argv = process.argv.slice(2);
 const cmd = argv[0];
 
 function flag(name, def) {
+  const eq = argv.find((a) => a.startsWith(`--${name}=`));
+  if (eq) return eq.slice(name.length + 3);
   const i = argv.indexOf(`--${name}`);
   return i === -1 ? def : argv[i + 1];
 }
 function bool(name) { return argv.includes(`--${name}`); }
 
+// Flags that are pure switches — they take no value, so the next argv entry
+// is a positional rather than the flag's argument.
+const BOOLEAN_FLAGS = new Set(["remote", "strict"]);
+
 function positional() {
   const out = [];
-  for (let i = 1; i < argv.length; i++) {
-    if (argv[i].startsWith("--")) { i++; continue; }
-    out.push(argv[i]);
+  let i = 1;
+  while (i < argv.length) {
+    const arg = argv[i];
+    if (arg.startsWith("--")) {
+      const name = arg.slice(2).split("=")[0];
+      // '--flag=value' carries its own value; switches consume nothing.
+      i += arg.includes("=") || BOOLEAN_FLAGS.has(name) ? 1 : 2;
+      continue;
+    }
+    out.push(arg);
+    i += 1;
   }
   return out;
 }
@@ -28,8 +42,14 @@ const HELP = `docforge — multi-brand document production
   docforge new --brand <id> --type <doctype> --title "..." [--slug <slug>]
   docforge validate <file.md> [...]
   docforge render <file.md> [--renderer weasyprint|chrome] [--out <dir>]
+  docforge render <file.md> --remote [--url <worker>] [--key <secret>]
+  docforge health [--url <worker>] [--key <secret>]
   docforge brands
   docforge docs
+
+Remote rendering uses the render worker (see apps/render-worker), so output
+matches production regardless of what is installed locally.
+Env: DOCFORGE_RENDER_URL, DOCFORGE_API_KEY
 `;
 
 function slugify(s) {
@@ -119,6 +139,7 @@ Body copy goes here.
   case "render": {
     const targets = positional();
     if (!targets.length) { console.error("render needs a file"); process.exit(2); }
+    const remote = bool("remote");
     for (const t of targets) {
       const abs = path.resolve(t);
       const v = validateDoc(abs);
@@ -127,6 +148,24 @@ Body copy goes here.
         v.errors.forEach((e) => console.error("   " + e));
         process.exit(1);
       }
+
+      if (remote) {
+        // Render through the worker so output matches production exactly.
+        const { RenderClient } = await import("../../core/src/client.mjs");
+        const client = new RenderClient({
+          url: flag("url"),
+          key: flag("key"),
+        });
+        const stem = path.basename(abs, ".md");
+        const outDir = flag("out") || path.join(path.dirname(abs), "build");
+        fs.mkdirSync(outDir, { recursive: true });
+        const outPdf = path.join(outDir, `${stem}.pdf`);
+        const r = await client.renderDocument(abs, { filename: `${stem}.pdf` });
+        fs.writeFileSync(outPdf, r.pdf);
+        console.log(outPdf);
+        continue;
+      }
+
       const res = renderDocument(abs, {
         renderer: flag("renderer", "weasyprint"),
         outDir: flag("out"),
@@ -134,6 +173,14 @@ Body copy goes here.
       console.log(res.pdf);
     }
     break;
+  }
+
+  case "health": {
+    const { RenderClient } = await import("../../core/src/client.mjs");
+    const client = new RenderClient({ url: flag("url"), key: flag("key") });
+    const h = await client.health();
+    console.log(JSON.stringify(h.body, null, 2));
+    process.exit(h.status === 200 ? 0 : 1);
   }
 
   default:

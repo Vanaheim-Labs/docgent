@@ -1,0 +1,5 @@
+pipeline/
+*.md
+.env
+__pycache__/
+*.pyc
