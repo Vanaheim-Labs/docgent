@@ -86,9 +86,16 @@ export default async function DocumentPage({ params, searchParams }: Props) {
             <div className="panel">
               <div className="panel-head">
                 <span>Rendered PDF</span>
-                <a className="btn btn-secondary" href={pdfUrl} target="_blank" rel="noreferrer">
-                  Open
-                </a>
+                <span style={{ display: "flex", gap: 8 }}>
+                  {!commitSha && (
+                    <a className="btn btn-secondary" href={`/${brand}/${slug}/edit`}>
+                      Edit
+                    </a>
+                  )}
+                  <a className="btn btn-secondary" href={pdfUrl} target="_blank" rel="noreferrer">
+                    Open
+                  </a>
+                </span>
               </div>
               <iframe className="pdf-frame" src={pdfUrl} title="Document preview" />
             </div>
