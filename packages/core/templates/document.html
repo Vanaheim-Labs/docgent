@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="$if(lang)$$lang$$else$en-AU$endif$">
+<head>
+<meta charset="utf-8">
+<title>$title$</title>
+<style>
+:root { string-set: doctitle "$title$"; }
+body { string-set: doctitle "$title$"; }
+</style>
+$for(css)$
+<link rel="stylesheet" href="$css$">
+$endfor$
+</head>
+<body>
+
+$if(nocover)$
+$else$
+<section class="cover">
+  $if(brandlogo)$<img class="cover-logo" src="$brandlogo$" alt="">$endif$
+  <div class="cover-doctype">$doctype$</div>
+  <h1 class="cover-title">$title$</h1>
+  $if(subtitle)$<p class="cover-subtitle">$subtitle$</p>$endif$
+  <div class="cover-rule"></div>
+  <dl class="cover-meta">
+    $if(client)$<div><dt>Prepared for</dt><dd>$client$</dd></div>$endif$
+    $if(author)$<div><dt>Prepared by</dt><dd>$author$</dd></div>$endif$
+    <div><dt>Version</dt><dd>$version$</dd></div>
+    <div><dt>Date</dt><dd>$date$</dd></div>
+    $if(reference)$<div><dt>Reference</dt><dd>$reference$</dd></div>$endif$
+  </dl>
+  $if(classification)$<div class="cover-classification">$classification$$if(status)$ &middot; $status$$endif$</div>$endif$
+</section>
+$endif$
+
+$if(toc)$
+<nav class="toc" role="doc-toc">
+<h2>Contents</h2>
+$table-of-contents$
+</nav>
+$endif$
+
+<main>
+$body$
+</main>
+
+</body>
+</html>

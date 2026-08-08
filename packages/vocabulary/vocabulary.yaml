@@ -1,0 +1,136 @@
+# DocForge Semantic Vocabulary Registry
+# The closed contract between authors (content) and designers (CSS).
+# If an author needs something not in here, ADD A TERM. Never allow raw HTML.
+version: 1
+
+blocks:
+  - id: callout
+    syntax: "::: callout {kind=note|info|warning|risk|success}"
+    description: Boxed aside for emphasis, warnings, or notes.
+    attrs:
+      kind: { type: enum, values: [note, info, warning, risk, success], default: note }
+      title: { type: string, required: false }
+    breakInside: avoid
+
+  - id: pullquote
+    syntax: "::: pullquote"
+    description: Large emphasised quotation lifted from body copy.
+    attrs:
+      attribution: { type: string, required: false }
+      size: { type: enum, values: [normal, large], default: normal }
+    breakInside: avoid
+
+  - id: keyfigure
+    syntax: "::: keyfigure"
+    description: Single dominant statistic with label and optional context.
+    attrs:
+      value: { type: string, required: true }
+      label: { type: string, required: true }
+      trend: { type: enum, values: [up, down, flat, none], default: none }
+    breakInside: avoid
+
+  - id: figure
+    syntax: "::: figure"
+    description: Image with caption and optional source line.
+    attrs:
+      src: { type: string, required: true }
+      caption: { type: string, required: false }
+      source: { type: string, required: false }
+      width: { type: enum, values: [column, full, bleed], default: column }
+    breakInside: avoid
+
+  - id: datatable
+    syntax: "::: datatable"
+    description: Wrapper around a pipe table adding column control and zebra rules.
+    attrs:
+      widths: { type: string, required: false, note: "comma-separated fr/%, e.g. '2fr,1fr,1fr'" }
+      align: { type: string, required: false, note: "comma-separated l|c|r" }
+      dense: { type: boolean, default: false }
+      caption: { type: string, required: false }
+    breakInside: avoid-if-short
+
+  - id: summary
+    syntax: "::: summary"
+    description: Executive summary block, styled distinctly, usually page one.
+    breakInside: auto
+
+  - id: recommendation
+    syntax: "::: recommendation"
+    description: Numbered recommendation with owner and priority.
+    attrs:
+      ref: { type: string, required: false }
+      owner: { type: string, required: false }
+      priority: { type: enum, values: [low, medium, high, critical], default: medium }
+    breakInside: avoid
+
+  - id: definition
+    syntax: "::: definition"
+    description: Term/definition pair for glossaries.
+    attrs:
+      term: { type: string, required: true }
+    breakInside: avoid
+
+  - id: columns
+    syntax: "::: columns {count=2}"
+    description: Multi-column flow region.
+    attrs:
+      count: { type: integer, default: 2 }
+    breakInside: auto
+
+  - id: pagebreak
+    syntax: "::: pagebreak"
+    description: Explicit page break. Use sparingly — prefer CSS control.
+    attrs:
+      to: { type: enum, values: [any, left, right], default: any }
+
+  - id: landscape
+    syntax: "::: landscape"
+    description: Content rendered on landscape-oriented named page.
+    breakInside: page
+
+  - id: appendix
+    syntax: "::: appendix"
+    description: Appendix region — resets numbering, alternate running header.
+
+  - id: signature
+    syntax: "::: signature"
+    description: Sign-off block with name, role, date.
+    attrs:
+      name: { type: string, required: true }
+      role: { type: string, required: false }
+      date: { type: string, required: false }
+    breakInside: avoid
+
+  - id: toc
+    syntax: "::: toc"
+    description: Table of contents placeholder — populated at render time.
+
+inlines:
+  - id: term
+    syntax: "[text]{.term}"
+    description: Defined term, links to glossary.
+  - id: redact
+    syntax: "[text]{.redact}"
+    description: Redacted content — blacked out in restricted renders.
+  - id: footnoteref
+    syntax: "^[footnote text]"
+    description: Inline footnote (pandoc native).
+
+frontmatter:
+  required: [title, brand, doctype, version, date]
+  optional:
+    - subtitle
+    - client
+    - author
+    - authors
+    - classification
+    - status
+    - reference
+    - confidentiality
+    - abstract
+    - cover_image
+    - toc
+    - footer_note
+  enums:
+    classification: [public, internal, confidential, restricted]
+    status: [draft, review, approved, released, superseded]

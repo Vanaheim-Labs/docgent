@@ -1,0 +1,19 @@
+/* Vanaheim Partners — token overlay.
+   Generated portion is injected by the renderer from brand.yaml.
+   Handwritten brand-specific refinements go below. */
+
+.cover::before { background: linear-gradient(90deg, var(--accent) 0%, #2d6b96 100%); }
+
+.cover-doctype::before {
+  content: "";
+  display: inline-block;
+  width: 8mm;
+  height: 1.5pt;
+  background: var(--accent);
+  vertical-align: middle;
+  margin-right: 3mm;
+}
+
+h1.numbered::before { font-weight: 300; }
+
+.keyfigure { border-top-width: 3pt; }

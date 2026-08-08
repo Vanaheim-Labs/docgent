@@ -1,0 +1,184 @@
+#!/usr/bin/env node
+/**
+ * DocForge core renderer.
+ *   markdown (+frontmatter) -> pandoc -> semantic HTML -> WeasyPrint -> PDF
+ *
+ * Renderer is pluggable: implement the Renderer interface and register it.
+ */
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+export const ROOT = path.resolve(__dirname, "..", "..", "..");
+
+const CORE = path.join(ROOT, "packages", "core");
+const TEMPLATE = path.join(CORE, "templates", "document.html");
+const FILTER = path.join(CORE, "filters", "vocabulary.lua");
+const BASE_CSS = path.join(CORE, "css", "base.css");
+
+/* ---------------- YAML (small, dependency-free subset) ---------------- */
+function parseSimpleYaml(text) {
+  const root = {};
+  const stack = [{ indent: -1, node: root }];
+  for (const rawLine of text.split("\n")) {
+    if (!rawLine.trim() || /^\s*#/.test(rawLine)) continue;
+    const indent = rawLine.match(/^\s*/)[0].length;
+    const line = rawLine.trim();
+    while (stack.length > 1 && indent <= stack[stack.length - 1].indent) stack.pop();
+    const parent = stack[stack.length - 1].node;
+    const m = line.match(/^([A-Za-z0-9_.-]+):\s*(.*)$/);
+    if (!m) continue;
+    const [, key, rest] = m;
+    if (rest === "") {
+      const node = {};
+      parent[key] = node;
+      stack.push({ indent, node });
+    } else {
+      parent[key] = coerce(rest);
+    }
+  }
+  return root;
+}
+function coerce(v) {
+  v = v.trim().replace(/^["']|["']$/g, "");
+  if (/^(true|false)$/i.test(v)) return v.toLowerCase() === "true";
+  if (/^-?\d+(\.\d+)?$/.test(v)) return Number(v);
+  return v;
+}
+
+export function readFrontmatter(mdPath) {
+  const src = fs.readFileSync(mdPath, "utf8");
+  const m = src.match(/^---\n([\s\S]*?)\n---\n/);
+  return m ? parseSimpleYaml(m[1]) : {};
+}
+
+export function loadBrand(brandId) {
+  const dir = path.join(ROOT, "brands", brandId);
+  const yml = path.join(dir, "brand.yaml");
+  if (!fs.existsSync(yml)) throw new Error(`Unknown brand '${brandId}' (no ${yml})`);
+  return { id: brandId, dir, ...parseSimpleYaml(fs.readFileSync(yml, "utf8")) };
+}
+
+/* ---------------- brand tokens -> CSS custom properties ---------------- */
+export function brandTokensCss(brand) {
+  const t = brand.typography || {};
+  const p = brand.palette || {};
+  const pg = brand.page || {};
+  const fam = (k) => t[k] || "";
+  const bodyFam = t.body_family === "sans" ? fam("sans") : fam("serif");
+  const headFam = t.heading_family === "serif" ? fam("serif") : fam("sans");
+
+  return `:root {
+  --font-serif: ${fam("serif")};
+  --font-sans: ${fam("sans")};
+  --font-mono: ${fam("mono")};
+  --font-body: ${bodyFam};
+  --font-heading: ${headFam};
+  --base-size: ${t.base_size || "10.5pt"};
+  --line-height: ${t.line_height || 1.55};
+
+  --ink: ${p.ink || "#12161c"};
+  --ink-soft: ${p.ink_soft || "#454e5a"};
+  --ink-faint: ${p.ink_faint || "#8a94a1"};
+  --rule: ${p.rule || "#dfe4ea"};
+  --paper: ${p.paper || "#ffffff"};
+  --paper-alt: ${p.paper_alt || "#f6f8fa"};
+  --accent: ${p.accent || "#1f4b6e"};
+  --accent-soft: ${p.accent_soft || "#e8f0f6"};
+  --warning: ${p.warning || "#a35b12"};
+  --warning-soft: ${p.warning_soft || "#fdf3e6"};
+  --risk: ${p.risk || "#9b2c2c"};
+  --risk-soft: ${p.risk_soft || "#fdecec"};
+  --success: ${p.success || "#1f6b45"};
+  --success-soft: ${p.success_soft || "#e9f5ef"};
+
+  --page-size: ${pg.size || "A4"};
+  --margin-top: ${pg.margin_top || "22mm"};
+  --margin-bottom: ${pg.margin_bottom || "20mm"};
+  --margin-inner: ${pg.margin_inner || "24mm"};
+  --margin-outer: ${pg.margin_outer || "20mm"};
+}`;
+}
+
+function footerCss(brand, fm) {
+  const name = (brand.name || "").replace(/"/g, '\\"');
+  const cls = (fm.classification || "").toUpperCase().replace(/"/g, '\\"');
+  return `@page { --footer-left: "${name}"; --footer-center: "${cls}"; }`;
+}
+
+/* ---------------- pipeline ---------------- */
+export function mdToHtml(mdPath, { brand, frontmatter, outHtml, cssHrefs }) {
+  const args = [
+    mdPath,
+    "--from", "markdown+yaml_metadata_block+fenced_divs+bracketed_spans+pipe_tables+footnotes+inline_notes+header_attributes+table_attributes+link_attributes+smart",
+    "--to", "html5",
+    "--standalone",
+    "--template", TEMPLATE,
+    "--lua-filter", FILTER,
+    "--section-divs",
+    "--metadata", `brandname=${brand.name || brand.id}`,
+    "-o", outHtml,
+  ];
+  if (frontmatter.toc) args.push("--toc", "--toc-depth=2");
+  for (const href of cssHrefs) args.push("--css", href);
+  execFileSync("pandoc", args, { stdio: ["ignore", "pipe", "pipe"] });
+  return outHtml;
+}
+
+export class WeasyPrintRenderer {
+  static id = "weasyprint";
+  render(htmlPath, pdfPath, { baseUrl }) {
+    execFileSync("weasyprint", ["-u", baseUrl, htmlPath, pdfPath], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return pdfPath;
+  }
+}
+
+export class ChromeRenderer {
+  static id = "chrome";
+  render(htmlPath, pdfPath) {
+    const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+    execFileSync(chrome, [
+      "--headless", "--disable-gpu", "--no-pdf-header-footer",
+      `--print-to-pdf=${pdfPath}`, `file://${htmlPath}`,
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+    return pdfPath;
+  }
+}
+
+const RENDERERS = { weasyprint: WeasyPrintRenderer, chrome: ChromeRenderer };
+
+export function renderDocument(mdPath, opts = {}) {
+  mdPath = path.resolve(mdPath);
+  const fm = readFrontmatter(mdPath);
+  const brandId = opts.brand || fm.brand;
+  if (!brandId) throw new Error("No brand specified (frontmatter 'brand' or --brand).");
+  const brand = loadBrand(brandId);
+
+  const docDir = path.dirname(mdPath);
+  const buildDir = opts.outDir || path.join(docDir, "build");
+  fs.mkdirSync(buildDir, { recursive: true });
+
+  const stem = opts.name || path.basename(mdPath, ".md");
+  const tokensCss = path.join(buildDir, "_tokens.css");
+  fs.writeFileSync(tokensCss, brandTokensCss(brand) + "\n" + footerCss(brand, fm));
+
+  const brandCss = path.join(brand.dir, "css", "brand.css");
+  const cssHrefs = [tokensCss, BASE_CSS];
+  if (fs.existsSync(brandCss)) cssHrefs.push(brandCss);
+
+  const outHtml = path.join(buildDir, `${stem}.html`);
+  mdToHtml(mdPath, { brand, frontmatter: fm, outHtml, cssHrefs });
+
+  const RendererClass = RENDERERS[opts.renderer || "weasyprint"];
+  if (!RendererClass) throw new Error(`Unknown renderer '${opts.renderer}'`);
+  const renderer = new RendererClass();
+  const outPdf = path.join(buildDir, `${stem}.pdf`);
+  renderer.render(outHtml, outPdf, { baseUrl: docDir + path.sep });
+
+  return { html: outHtml, pdf: outPdf, brand: brand.id, frontmatter: fm };
+}
