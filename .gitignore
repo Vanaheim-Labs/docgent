@@ -21,3 +21,9 @@ apps/render-worker/pipeline/
 
 # os
 .DS_Store
+
+# studio
+apps/studio/.env.local
+apps/studio/.next/
+apps/studio/node_modules/
+apps/studio/.vercel
