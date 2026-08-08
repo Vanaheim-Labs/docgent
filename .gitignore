@@ -28,3 +28,6 @@ apps/studio/.next/
 apps/studio/node_modules/
 apps/studio/.vercel
 .vercel
+
+# batch dry-run scratch space
+.dryrun/

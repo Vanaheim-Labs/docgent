@@ -47,6 +47,11 @@ const HELP = `docforge — multi-brand document production
   docforge brands
   docforge docs
 
+Bulk production (Phase 7 — for agents):
+  docforge doctypes --brand <id>
+  docforge batch --brand <id> --type <doctype> --records <file.json|csv>
+                 [--concurrency N] [--dry-run] [--no-render] [--json]
+
 Git-backed (reads the repo through the GitHub API, as Studio will):
   docforge remote-docs [--brand <id>]
   docforge timeline <brand>/<slug> [--limit N]
@@ -57,6 +62,15 @@ matches production regardless of what is installed locally.
 Env: DOCFORGE_RENDER_URL, DOCFORGE_API_KEY
 Git:  DOCFORGE_GH_TOKEN (or GITHUB_TOKEN), DOCFORGE_REPO=owner/repo
 `;
+
+/** Emits a machine-readable result when --json is set, human text otherwise. */
+function report(payload, humanFn) {
+  if (bool("json")) {
+    console.log(JSON.stringify(payload, null, 2));
+  } else {
+    humanFn();
+  }
+}
 
 /**
  * Builds git + document stores from the environment.
@@ -205,6 +219,105 @@ Body copy goes here.
       console.log(res.pdf);
     }
     break;
+  }
+
+  case "doctypes": {
+    const { listDoctypes } = await import("../../core/src/batch.mjs");
+    const brand = flag("brand");
+    if (!brand) { console.error("--brand required"); process.exit(2); }
+    loadBrand(brand);
+    const types = listDoctypes(brand);
+    report({ brand, doctypes: types }, () => {
+      if (!types.length) {
+        console.log(`${brand} has no doctype templates (brands/${brand}/doctypes/)`);
+      } else {
+        types.forEach((t) => console.log(t));
+      }
+    });
+    break;
+  }
+
+  case "batch": {
+    // Bulk production: one doctype + N records -> N validated documents.
+    // This is the path agents use; keep its output machine-readable via --json.
+    const { produceBatch, loadRecords } = await import("../../core/src/batch.mjs");
+
+    const brand = flag("brand");
+    const doctype = flag("type");
+    const recordsFile = flag("records");
+    if (!brand || !doctype || !recordsFile) {
+      console.error("usage: docforge batch --brand <id> --type <doctype> --records <file>");
+      process.exit(2);
+    }
+    loadBrand(brand);
+
+    let records;
+    try {
+      records = loadRecords(recordsFile);
+    } catch (e) {
+      console.error(`Could not read records: ${e.message}`);
+      process.exit(2);
+    }
+
+    const dryRun = bool("dry-run");
+    const wantRender = !bool("no-render") && !dryRun;
+    const quiet = bool("json");
+
+    // Render through the worker when configured, else locally. Either way the
+    // output is identical — that is the point of the Renderer interface.
+    let renderFn = null;
+    if (wantRender) {
+      if (process.env.DOCFORGE_RENDER_URL && !bool("local")) {
+        const { RenderClient } = await import("../../core/src/client.mjs");
+        const client = new RenderClient({ url: flag("url"), key: flag("key") });
+        renderFn = async (abs) => {
+          const stem = path.basename(abs, ".md");
+          const outDir = path.join(path.dirname(abs), "build");
+          fs.mkdirSync(outDir, { recursive: true });
+          const r = await client.renderDocument(abs, { filename: `${stem}.pdf` });
+          const outPdf = path.join(outDir, `${stem}.pdf`);
+          fs.writeFileSync(outPdf, r.pdf);
+          return { pdf: outPdf, renderMs: r.renderMs };
+        };
+      } else {
+        renderFn = async (abs) => {
+          const res = renderDocument(abs, { renderer: flag("renderer", "weasyprint") });
+          return { pdf: res.pdf, renderMs: null };
+        };
+      }
+    }
+
+    const started = Date.now();
+    const summary = await produceBatch({
+      brand,
+      doctype,
+      records,
+      validate: (abs) => validateDoc(abs),
+      render: renderFn,
+      concurrency: Number(flag("concurrency", 4)),
+      dryRun,
+      onProgress: quiet
+        ? undefined
+        : ({ index, total, slug, phase, ok }) => {
+            if (phase === "done" || ok === false) {
+              const mark = ok === false ? "✗" : "✓";
+              console.log(`${mark} [${index + 1}/${total}] ${slug}`);
+            }
+          },
+    });
+
+    const tookMs = Date.now() - started;
+
+    report({ ...summary, brand, doctype, dryRun, tookMs }, () => {
+      console.log("");
+      console.log(`${summary.succeeded}/${summary.total} produced in ${(tookMs / 1000).toFixed(1)}s${dryRun ? " (dry run)" : ""}`);
+      for (const f of summary.failures) {
+        console.log(`\n✗ ${f.slug} (failed at ${f.phase})`);
+        (f.errors || []).forEach((e) => console.log(`    ${e}`));
+      }
+    });
+
+    process.exit(summary.failed ? 1 : 0);
   }
 
   case "health": {
