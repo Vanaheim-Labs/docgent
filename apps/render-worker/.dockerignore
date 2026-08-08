@@ -1,5 +1,9 @@
-pipeline/
-*.md
-.env
+# Staged pipeline assets ARE required by the image (see stage.mjs) - do not ignore.
+
+.venv/
 __pycache__/
 *.pyc
+.env
+README.md
+fly.toml
+stage.mjs

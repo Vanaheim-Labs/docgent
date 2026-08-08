@@ -1,40 +1,38 @@
-# DocForge render worker — Fly.io
+# fly.toml app configuration file generated for docforge-render on 2026-08-08T19:02:13+10:00
 #
-# Build context note: the image needs packages/core (templates, filters, css)
-# and brands/. Run \`npm run worker:stage\` from the repo root to populate
-# apps/render-worker/pipeline before deploying, or deploy with:
-#   fly deploy --dockerfile apps/render-worker/Dockerfile .
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "docforge-render"
-primary_region = "syd"
+app = 'docforge-render'
+primary_region = 'syd'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [env]
-  PORT = "8080"
-  DOCFORGE_PIPELINE_DIR = "/app/pipeline"
+  DOCFORGE_PIPELINE_DIR = '/app/pipeline'
+  PORT = '8080'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "suspend"
+  auto_stop_machines = 'suspend'
   auto_start_machines = true
   min_machines_running = 0
-  processes = ["app"]
+  processes = ['app']
 
   [http_service.concurrency]
-    type = "requests"
-    soft_limit = 8
+    type = 'requests'
     hard_limit = 16
+    soft_limit = 8
 
-[[http_service.checks]]
-  interval = "30s"
-  timeout = "5s"
-  grace_period = "10s"
-  method = "GET"
-  path = "/health"
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '10s'
+    method = 'GET'
+    path = '/health'
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "1gb"
+  size = 'shared-cpu-1x'
+  memory = '1gb'

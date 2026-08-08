@@ -294,10 +294,36 @@ def authorised() -> bool:
     return bool(API_KEY) and hmac.compare_digest(supplied, API_KEY)
 
 
+def pandoc_supports_extensions() -> bool:
+    """Confirms the installed pandoc understands every extension we require.
+
+    Debian's pandoc is old enough to reject some of them, which surfaces as a
+    422 on first render rather than a boot failure. Check it explicitly.
+    """
+    if shutil.which("pandoc") is None:
+        return False
+    try:
+        out = subprocess.run(
+            ["pandoc", "--list-extensions=markdown"],
+            capture_output=True, timeout=15, text=True,
+        ).stdout
+    except Exception:
+        return False
+    available = {line[1:] for line in out.splitlines() if line[:1] in "+-"}
+    required = {
+        e for e in PANDOC_EXTENSIONS.split("+")[1:]
+    }
+    missing = required - available
+    if missing:
+        jlog("pandoc.missing_extensions", missing=sorted(missing))
+    return not missing
+
+
 @app.get("/health")
 def health():
     checks = {
         "pandoc": shutil.which("pandoc") is not None,
+        "pandoc_extensions": pandoc_supports_extensions(),
         "weasyprint": shutil.which("weasyprint") is not None,
         "template": TEMPLATE.exists(),
         "filter": FILTER.exists(),
