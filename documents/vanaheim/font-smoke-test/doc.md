@@ -6,7 +6,7 @@ doctype: "Test Fixture"
 version: "1.0.0"
 date: "2026-08-08"
 classification: internal
-status: review
+status: approved
 ---
 
 # Weight axis
