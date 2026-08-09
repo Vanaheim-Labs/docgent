@@ -1,0 +1,20 @@
+{
+  "name": "@docforge/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "docforge": "./src/docforge.mjs"
+  },
+  "main": "./src/docforge.mjs",
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@docforge/core": "0.1.0",
+    "@docforge/vocabulary": "0.1.0",
+    "@docforge/git-store": "0.1.0"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  }
+}

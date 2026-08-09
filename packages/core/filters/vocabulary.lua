@@ -1,6 +1,48 @@
 -- DocForge vocabulary filter.
 -- Translates fenced divs into semantic HTML with data-attributes for CSS.
 
+-- Source-line mapping (preview only).
+--
+-- Pandoc does not expose source positions to filters, so each top-level block
+-- is matched back to the markdown that produced it. The studio preview uses
+-- these anchors to align its two panes; the PDF path never sets the flag, so
+-- its output is byte-identical to before this existed.
+local SRC = nil
+
+local function source_text()
+  if SRC ~= nil then return SRC end
+  SRC = {}
+  local inputs = PANDOC_STATE and PANDOC_STATE.input_files or {}
+  local path = inputs[1]
+  if path then
+    local fh = io.open(path, 'r')
+    if fh then
+      local n = 0
+      for line in fh:lines() do
+        n = n + 1
+        SRC[n] = line
+      end
+      fh:close()
+    end
+  end
+  return SRC
+end
+
+-- First source line at or after 'from' that contains the start of 'needle'.
+local function find_line(needle, from)
+  local lines = source_text()
+  if not needle or needle == '' then return nil end
+  local squash = [[%s+]]
+  local probe = needle:sub(1, 40):gsub(squash, ' ')
+  probe = probe:match([[^%s*(.-)%s*$]]) or probe
+  if probe == '' then return nil end
+  for i = math.max(from or 1, 1), #lines do
+    local hay = lines[i]:gsub(squash, ' ')
+    if hay:find(probe, 1, true) then return i end
+  end
+  return nil
+end
+
 local function attrget(el, key, default)
   return el.attributes[key] or default
 end
@@ -282,4 +324,30 @@ function Span(el)
     return out
   end
   return el
+end
+
+-- Stamps top-level blocks with their originating source line.
+--
+-- Document-level pass so doc.meta is readable before blocks are emitted.
+function Pandoc(doc)
+  if not doc.meta or not doc.meta.docforge_source_lines then return doc end
+  local cursor = 1
+  local out = {}
+  for _, b in ipairs(doc.blocks) do
+    local text = pandoc.utils.stringify(b)
+    local line = find_line(text, cursor)
+    if line then cursor = line end
+    if line and (b.t == 'Div' or b.t == 'Header') then
+      b.attributes['data-source-line'] = tostring(line)
+      table.insert(out, b)
+    elseif line then
+      local wrap = pandoc.Div({ b })
+      wrap.attributes['data-source-line'] = tostring(line)
+      wrap.classes:insert('src-anchor')
+      table.insert(out, wrap)
+    else
+      table.insert(out, b)
+    end
+  end
+  return pandoc.Pandoc(out, doc.meta)
 end

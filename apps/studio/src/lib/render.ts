@@ -47,6 +47,53 @@ export async function renderMarkdown(
   };
 }
 
+export type RenderHtmlResult = {
+  html: string;
+  renderMs: number | null;
+};
+
+/**
+ * Renders to HTML for the editor preview pane.
+ *
+ * Same worker, same pandoc stage the PDF is built from — the HTML is the
+ * intermediate artifact, not a second styling path, so the preview cannot
+ * drift from the printed document's content.
+ */
+export async function renderMarkdownHtml(
+  markdown: string,
+  brand: string,
+  assets: Record<string, string> = {}
+): Promise<RenderHtmlResult> {
+  const url = process.env.DOCFORGE_RENDER_URL;
+  const key = process.env.DOCFORGE_API_KEY;
+  if (!url) throw new Error("DOCFORGE_RENDER_URL is not set");
+  if (!key) throw new Error("DOCFORGE_API_KEY is not set");
+
+  const res = await fetch(`${url.replace(/\/$/, "")}/render/html`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-DocForge-Key": key,
+    },
+    body: JSON.stringify({ markdown, brand, assets }),
+    signal: AbortSignal.timeout(60_000),
+  });
+
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      const j = await res.json();
+      if (j?.error) detail = j.error;
+    } catch {}
+    throw new Error(`html render failed — ${detail}`);
+  }
+
+  return {
+    html: await res.text(),
+    renderMs: Number(res.headers.get("x-docforge-render-ms")) || null,
+  };
+}
+
 /** Fetches a document's assets from git as base64, for the render call. */
 export async function collectAssetsFromGit(
   git: any,

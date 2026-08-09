@@ -1,0 +1,20 @@
+{
+  "name": "@docforge/core",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/render.mjs",
+  "exports": {
+    ".": "./src/render.mjs",
+    "./client": "./src/client.mjs",
+    "./batch": "./src/batch.mjs"
+  },
+  "files": [
+    "src",
+    "css",
+    "templates",
+    "filters"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "docforge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/studio"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test packages/git-store/test/*.test.mjs",
+    "validate": "node packages/vocabulary/src/validate.mjs",
+    "docforge": "node packages/cli/src/docforge.mjs"
+  }
+}

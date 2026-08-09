@@ -1,0 +1,17 @@
+{
+  "name": "@docforge/vocabulary",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/validate.mjs",
+  "exports": {
+    ".": "./src/validate.mjs",
+    "./vocabulary.yaml": "./vocabulary.yaml"
+  },
+  "files": [
+    "src",
+    "vocabulary.yaml"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  }
+}

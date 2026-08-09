@@ -509,3 +509,30 @@ kbd {
 }
 .diff-detail { color: var(--ink-soft); line-height: 1.4; }
 
+/* Preview mode toggle — fast HTML preview vs paginated PDF. */
+.mode-toggle {
+  display: inline-flex;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--paper);
+}
+.mode-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  line-height: 1.6;
+}
+.mode-btn + .mode-btn { border-left: 1px solid var(--rule); }
+.mode-btn:hover { background: var(--paper-alt); }
+.mode-btn[data-active="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+/* The preview iframe is same-origin so the editor can read its anchors. */
+.pane-preview .preview-frame { background: #edeef1; }

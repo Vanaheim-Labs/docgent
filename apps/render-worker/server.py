@@ -14,7 +14,9 @@ import base64
 import hmac
 import json
 import logging
+import mimetypes
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -205,61 +207,79 @@ def load_brand(brand_id: str) -> dict:
 # Render pipeline
 # --------------------------------------------------------------------------- #
 
+def _stage(work: Path, markdown: str, brand: dict, fm: dict,
+           assets: dict[str, str] | None):
+    """Writes markdown, assets and CSS into a working directory.
+
+    Shared by the PDF and HTML paths so both render from identical inputs;
+    if these diverged the preview would stop predicting the PDF.
+    """
+    md_path = work / "doc.md"
+    md_path.write_text(markdown, encoding="utf-8")
+
+    for rel, b64 in (assets or {}).items():
+        target = (work / rel).resolve()
+        if not str(target).startswith(str(work.resolve())):
+            raise ValueError(f"asset path escapes working directory: {rel}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(base64.b64decode(b64))
+
+    tokens_css = work / "_tokens.css"
+    tokens_css.write_text(
+        brand_tokens_css(brand) + "\n" + footer_css(brand, fm),
+        encoding="utf-8",
+    )
+
+    sheets = [tokens_css, BASE_CSS]
+    brand_css = Path(brand["_dir"]) / "css" / "brand.css"
+    if brand_css.exists():
+        sheets.append(brand_css)
+    return md_path, sheets
+
+
+def _run_pandoc(md_path, html_path, brand, brand_id, fm, sheets, source_lines):
+    cmd = [
+        "pandoc",
+        str(md_path),
+        "--from", PANDOC_EXTENSIONS,
+        "--to", "html5",
+        "--standalone",
+        "--template", str(TEMPLATE),
+        "--lua-filter", str(FILTER),
+        "--section-divs",
+        "--metadata", f"brandname={brand.get('name', brand_id)}",
+        "-o", str(html_path),
+    ]
+    if fm.get("toc"):
+        cmd += ["--toc", "--toc-depth=2"]
+    # Only the preview needs source positions. The PDF path leaves them off so
+    # its output stays byte-identical to what it produced before this existed.
+    if source_lines:
+        cmd += ["--metadata", "docforge_source_lines=1"]
+    for sheet in sheets:
+        cmd += ["--css", str(sheet)]
+
+    t0 = time.time()
+    proc = subprocess.run(cmd, capture_output=True, timeout=RENDER_TIMEOUT)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "pandoc failed: " + proc.stderr.decode("utf-8", "replace")[:2000]
+        )
+    return int((time.time() - t0) * 1000)
+
+
 def render_pdf(markdown: str, brand_id: str, assets: dict[str, str] | None) -> bytes:
     brand = load_brand(brand_id)
     fm = read_frontmatter(markdown)
 
     with tempfile.TemporaryDirectory(prefix="docforge-") as tmp:
         work = Path(tmp)
-        md_path = work / "doc.md"
-        md_path.write_text(markdown, encoding="utf-8")
-
-        # Assets are base64 to keep the API a single JSON body. Paths are
-        # constrained to the working directory — no traversal out of it.
-        for rel, b64 in (assets or {}).items():
-            target = (work / rel).resolve()
-            if not str(target).startswith(str(work.resolve())):
-                raise ValueError(f"asset path escapes working directory: {rel}")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(base64.b64decode(b64))
-
-        tokens_css = work / "_tokens.css"
-        tokens_css.write_text(
-            brand_tokens_css(brand) + "\n" + footer_css(brand, fm),
-            encoding="utf-8",
-        )
-
-        css_args: list[str] = ["--css", str(tokens_css), "--css", str(BASE_CSS)]
-        brand_css = Path(brand["_dir"]) / "css" / "brand.css"
-        if brand_css.exists():
-            css_args += ["--css", str(brand_css)]
+        md_path, sheets = _stage(work, markdown, brand, fm, assets)
 
         html_path = work / "doc.html"
-        pandoc_cmd = [
-            "pandoc",
-            str(md_path),
-            "--from", PANDOC_EXTENSIONS,
-            "--to", "html5",
-            "--standalone",
-            "--template", str(TEMPLATE),
-            "--lua-filter", str(FILTER),
-            "--section-divs",
-            "--metadata", f"brandname={brand.get('name', brand_id)}",
-            "-o", str(html_path),
-        ]
-        if fm.get("toc"):
-            pandoc_cmd += ["--toc", "--toc-depth=2"]
-        pandoc_cmd += css_args
-
-        t0 = time.time()
-        proc = subprocess.run(
-            pandoc_cmd, capture_output=True, timeout=RENDER_TIMEOUT
+        g.pandoc_ms = _run_pandoc(
+            md_path, html_path, brand, brand_id, fm, sheets, False
         )
-        if proc.returncode != 0:
-            raise RuntimeError(
-                "pandoc failed: " + proc.stderr.decode("utf-8", "replace")[:2000]
-            )
-        pandoc_ms = int((time.time() - t0) * 1000)
 
         pdf_path = work / "doc.pdf"
         t1 = time.time()
@@ -272,12 +292,94 @@ def render_pdf(markdown: str, brand_id: str, assets: dict[str, str] | None) -> b
             raise RuntimeError(
                 "weasyprint failed: " + proc.stderr.decode("utf-8", "replace")[:2000]
             )
-        weasy_ms = int((time.time() - t1) * 1000)
-
-        g.pandoc_ms = pandoc_ms
-        g.weasy_ms = weasy_ms
+        g.weasy_ms = int((time.time() - t1) * 1000)
         return pdf_path.read_bytes()
 
+
+# Screen adjustments for the preview pane. WeasyPrint honours @page; browsers
+# do not, so the preview reproduces the page box to keep measure and line
+# breaks close to the PDF without pretending to paginate.
+PREVIEW_CSS = """
+/* injected by DocForge for the HTML preview pane only */
+html { background: #edeef1; }
+body { background: #edeef1; margin: 0; padding: 24px 0; }
+body > section.cover,
+body > nav.toc,
+body > main {
+  background: var(--paper, #fff);
+  box-sizing: border-box;
+  width: 210mm;
+  max-width: 100%;
+  margin: 0 auto 18px;
+  padding: var(--margin-top, 22mm) var(--margin-outer, 20mm)
+           var(--margin-bottom, 20mm) var(--margin-inner, 24mm);
+  box-shadow: 0 1px 3px rgba(16, 22, 32, .14);
+}
+body > section.cover { min-height: 0; }
+[data-source-line] { scroll-margin-top: 8px; }
+.src-anchor { display: contents; }
+"""
+
+
+def _inline_assets(html: str, work: Path) -> str:
+    """Inlines local <img> sources as data URIs.
+
+    The preview is handed to the browser as a standalone string, so relative
+    paths into the worker temp dir would 404.
+    """
+    def repl(m):
+        src = m.group(2)
+        if src.startswith(("http://", "https://", "data:", "//")):
+            return m.group(0)
+        target = (work / src).resolve()
+        if not str(target).startswith(str(work.resolve())) or not target.is_file():
+            return m.group(0)
+        mime, _ = mimetypes.guess_type(str(target))
+        if not mime or not mime.startswith("image/"):
+            return m.group(0)
+        b64 = base64.b64encode(target.read_bytes()).decode("ascii")
+        return m.group(1) + "data:" + mime + ";base64," + b64 + m.group(3)
+
+    return re.sub(r'(<img\b[^>]*?\bsrc=")([^"]+)(")', repl, html, flags=re.I)
+
+
+def render_html(markdown: str, brand_id: str, assets: dict[str, str] | None) -> str:
+    """Renders the same pandoc HTML the PDF is built from, self-contained.
+
+    Stylesheets are inlined because the studio serves this into an iframe
+    with no access to the worker filesystem.
+    """
+    brand = load_brand(brand_id)
+    fm = read_frontmatter(markdown)
+
+    with tempfile.TemporaryDirectory(prefix="docforge-") as tmp:
+        work = Path(tmp)
+        md_path, sheets = _stage(work, markdown, brand, fm, assets)
+
+        html_path = work / "doc.html"
+        g.pandoc_ms = _run_pandoc(
+            md_path, html_path, brand, brand_id, fm, sheets, True
+        )
+        html = html_path.read_text(encoding="utf-8")
+
+        blocks = []
+        for sheet in sheets:
+            try:
+                blocks.append(sheet.read_text(encoding="utf-8"))
+            except OSError:
+                continue
+        blocks.append(PREVIEW_CSS)
+        style = "<style>\n" + "\n".join(blocks) + "\n</style>"
+
+        # Drop <link> tags: they point at paths the browser cannot read.
+        html = re.sub(r'<link\b[^>]*rel="stylesheet"[^>]*>', "", html, flags=re.I)
+        html = _inline_assets(html, work)
+
+        if "</head>" in html:
+            html = html.replace("</head>", style + "\n</head>", 1)
+        else:
+            html = style + html
+        return html
 
 # --------------------------------------------------------------------------- #
 # HTTP
@@ -420,6 +522,65 @@ def render():
         },
     )
 
+
+@app.post("/render/html")
+def render_html_route():
+    """Renders to HTML for the studio preview pane.
+
+    Separate from /render because the contracts differ: this is fast,
+    self-contained, and carries source-line anchors for scroll sync.
+    /render remains the fidelity path.
+    """
+    if not authorised():
+        jlog("render_html.unauthorised", ip=request.remote_addr)
+        return jsonify(error="unauthorised"), 401
+
+    if request.content_length and request.content_length > MAX_BODY_BYTES:
+        return jsonify(error="payload too large"), 413
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify(error="expected a JSON object"), 400
+
+    markdown = body.get("markdown")
+    if not isinstance(markdown, str) or not markdown.strip():
+        return jsonify(error="'markdown' is required"), 400
+
+    fm = read_frontmatter(markdown)
+    brand_id = body.get("brand") or fm.get("brand")
+    if not brand_id:
+        return jsonify(error="no brand given (body 'brand' or frontmatter)"), 400
+
+    assets = body.get("assets") or {}
+    if not isinstance(assets, dict):
+        return jsonify(error="'assets' must be an object of path -> base64"), 400
+
+    try:
+        html = render_html(markdown, str(brand_id), assets)
+    except FileNotFoundError as e:
+        return jsonify(error=str(e)), 404
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    except subprocess.TimeoutExpired:
+        return jsonify(error="render timed out"), 504
+    except RuntimeError as e:
+        jlog("render_html.failed", brand=brand_id, error=str(e)[:500])
+        return jsonify(error=str(e)), 422
+
+    total_ms = int((time.time() - g.t_start) * 1000)
+    jlog("render_html.ok", brand=brand_id, bytes=len(html),
+         pandoc_ms=getattr(g, "pandoc_ms", None), total_ms=total_ms)
+
+    return (
+        html,
+        200,
+        {
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-store",
+            "X-DocForge-Request-Id": g.request_id,
+            "X-DocForge-Render-Ms": str(total_ms),
+        },
+    )
 
 if not API_KEY:
     # Fail closed. An unauthenticated render endpoint is a free PDF farm.

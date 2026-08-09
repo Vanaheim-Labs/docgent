@@ -41,3 +41,7 @@ nfqa/
 #   north-face-investments/docforge-documents
 brands/*/source/
 documents/
+
+# local credentials (never commit)
+.secrets/
+*.token
