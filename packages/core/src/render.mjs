@@ -79,10 +79,22 @@ export function brandRepo(brandId, { override } = {}) {
       if (b.repo) return b.repo;
     } catch {}
   }
-  return process.env.DOCFORGE_REPO || DEFAULT_REPO;
+  const env = process.env.DOCFORGE_REPO;
+  if (env) return env;
+  if (DEFAULT_REPO) return DEFAULT_REPO;
+  throw new Error(
+    brandId
+      ? `Brand '${brandId}' declares no 'repo' in brand.yaml, and no --repo/DOCFORGE_REPO override was given.`
+      : "No brand given, so no document repo could be resolved. Pass --brand, --repo, or set DOCFORGE_REPO."
+  );
 }
 
-export const DEFAULT_REPO = "Vanaheim-Labs/docforge";
+/**
+ * No global default: documents live in per-brand repos, so guessing one would
+ * mean silently committing a brand's documents into another brand's store.
+ * A brand must declare 'repo', or the caller must pass an override.
+ */
+export const DEFAULT_REPO = null;
 
 /** Lists every known brand and the repo it writes to. */
 export function brandRepoMap() {

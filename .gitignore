@@ -36,7 +36,8 @@ apps/studio/.vercel
 nf-extract/
 nfqa/
 
-# North Face document + design-system source lives in
-# north-face-investments/docforge-documents, never in the pipeline repo.
-brands/northface/source/
-documents/northface/
+# Documents live in per-brand stores, never in the pipeline repo:
+#   Vanaheim-Labs/docforge-documents
+#   north-face-investments/docforge-documents
+brands/*/source/
+documents/
