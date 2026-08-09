@@ -135,6 +135,16 @@ blocks:
     syntax: "::: toc"
     description: Table of contents placeholder — populated at render time.
 
+  - id: note
+    syntax: "::: note {author=... resolved=false}"
+    description: Human-in-the-loop editorial direction attached to a section.
+      Written by a reviewer in Studio's Review mode, read by the next AI pass as
+      rewrite direction. Not document content — hidden in print by default.
+    attrs:
+      author: { type: string, required: false }
+      resolved: { type: boolean, default: false }
+    breakInside: avoid
+
 inlines:
   - id: term
     syntax: "[text]{.term}"

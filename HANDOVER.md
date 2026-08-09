@@ -365,6 +365,127 @@ internals:
   to a raw fetch. Works, but wants tidying when branch lifecycle management lands.
 - Durable PDF cache driver (R2) is implemented but not configured.
 
+---
+
+## 7b. Phases 9-11 — Human-in-the-loop creative direction
+
+Specified 2026-08-09 from a design review by Vor, with three architectural
+decisions settled by Andrew. The driving use case: OpenClaw agents produce the
+initial draft, then a human creative steers it by taste — striking sections,
+reordering, and dispatching section-level rewrites across different models —
+expressing the *minimum intent* of their aesthetic response.
+
+### The three settled decisions
+
+**1. Annotations are a vocabulary term, not HTML comments.**
+The original brief proposed `<!-- note: ... -->` comments in the source. Rejected:
+section 2.1 makes raw HTML a hard validator error, and an HTML comment is exactly
+the escape hatch that rule exists to prevent. Notes become a first-class `note`
+block. Consequences: notes survive in readable diffs, CSS gets a clean hook if
+they ever need print treatment, and the validator keeps its teeth.
+
+**2. Strike and reorder are deterministic text transforms.**
+There is no serialiser and none is being introduced. Studio holds a text blob and
+commits it. Strike sets an attribute on a section block; reorder extracts and
+resequences section blocks. Both are scoped, unit-tested string operations over
+the markdown. The outline is the manipulation surface; the transforms are the
+implementation.
+
+**3. AI rewrites are proposals, never direct commits.** *(Andrew, Option A)*
+A rewrite returns proposed text held in memory. The human sees a diff, accepts,
+and *then* it commits against the current SHA per section 2.3. Rejected variants
+never touch git.
+
+The decisive case is "show me three takes": three models rewrite from one base
+SHA and two are discarded. Under direct commits that is two commits of noise for
+every one kept, and the version timeline degrades into a log of attempts. Under
+proposals it stays *a record of decisions*. This is also what makes the
+"be bold, nothing is permanent" contract true — the timeline only ever contains
+things a human chose.
+
+### Architectural boundary: Studio stays thin
+
+Studio does **not** hold provider credentials or routing logic. It is a git
+client with no database and no persistent disk; making it a multi-provider router
+would give it state and secrets it was deliberately designed without.
+
+    Studio  --POST {selection, direction, model, baseSha}-->  OpenClaw
+            <--------------- {proposedText} -----------------
+
+Routing lives where agent orchestration and credentials already are. Swapping or
+adding a provider never touches the Next.js app.
+
+---
+
+### Phase 9 — Legibility and posture *(no architectural risk)*
+
+Everything here is client-side work in `Editor.tsx` plus presentation over data
+that already exists. No new decisions, real utility immediately.
+
+- **Edit / Review toggle.** Edit: source ~60%, preview as live reference.
+  Review: preview ~60%, source as narrow reference column. Editing happens
+  *only* in the source in both modes — no direct manipulation of rendered output.
+  The toggle makes the human's own intent legible to them: authoring vs judging.
+- **Section outline in the source pane.** Collapsible margin outline derived from
+  headings. Click to jump, collapse to hide a section's body while keeping its
+  heading. Navigating a 30-page document by section, not by scrolling 674 lines.
+- **Block syntax tinting.** Background tint on `::: callout`, left border on
+  pullquotes, dimmed frontmatter. Structure legible in the source *without*
+  pretending to be a layout tool.
+- **Version filmstrip.** Extends `VersionPanel.tsx` (258 lines, already exists).
+  Commits already carry `Generated-by:` trailers; content-addressed PDFs mean
+  every version is retrievable rather than regenerable, so thumbnails are real
+  artefacts. Label with what changed and which model. Click to diff, one-click restore.
+- **Grammarly, source-only.** Attaches to the source textarea, so it structurally
+  cannot touch the preview. Clean layering: AI lifts sections, Grammarly polishes
+  sentences. It does not touch AI output until the human chooses to polish.
+
+### Phase 10 — Section operations
+
+- **Add `note` to the vocabulary** (`packages/vocabulary/vocabulary.yaml`), with
+  a validator rule and base CSS. Attrs: author, resolved. Default print treatment
+  is hidden — notes are direction, not content.
+- **Annotation in Review mode.** Tap a paragraph, one text field, one sentence.
+  Renders as a margin flag in the preview and a `note` block in the source.
+  The next AI pass reads them as direction.
+- **Strike.** Click a section in the outline; it dims and shows struck through in
+  both panes. Trivially undoable, commits only on save. Should feel like a red
+  pen on a printed page — near-zero cognitive cost.
+- **Reorder.** Drag sections in the outline. Text transform resequences the
+  blocks. Unit-tested against nesting and adjacent fenced divs.
+
+### Phase 11 — AI direction loop
+
+Depends on Phase 10's `note` term and on the OpenClaw dispatch endpoint.
+
+- **Dispatch endpoint** in OpenClaw: accepts selection, direction, model, base
+  SHA; returns proposed text. Credentials and routing live here.
+- **Studio rewrite route** — a single thin POST that proxies to the above.
+- **Inline contextual action bar.** Select text in the source → Rewrite / Expand /
+  Cut / Route to model. Not a modal, not a sidebar.
+- **Inline prompt with taste chips.** One-line field directly below the selection.
+  Chips above it — "shorter", "more direct", "raise the stakes", "cut to the claim"
+  — as *editable seeds*, not a menu. They activate the vocabulary; the human edits
+  toward actual intent.
+- **Diff before commit.** Proposal renders as an inline diff in the source pane,
+  same monospace. Accept commits against current SHA; reject discards. Never
+  leaves the source surface, never round-trips to Slack.
+- **Model pill per operation.** Defaults to whatever produced the current version
+  (from the `Generated-by:` trailer), changeable per rewrite in two taps.
+  Different models have genuinely different rhetorical texture — that is a
+  creative tool, not a configuration screen.
+- **"Show me three takes."** Same rewrite through three models, presented as
+  numbered variants. Human picks the one with the right feel. Only the chosen
+  take is committed.
+
+### Sequencing rationale
+
+Phase 9 ships standalone value with zero architectural risk and can start
+immediately. Phase 10 introduces one vocabulary term and two text transforms —
+contained, testable. Phase 11 is the largest lift and is deliberately last: it
+depends on the `note` term existing and on the dispatch boundary being built
+outside Studio.
+
 
 ---
 
