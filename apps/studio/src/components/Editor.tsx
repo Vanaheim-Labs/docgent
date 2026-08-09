@@ -330,23 +330,44 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     return r.top + win.scrollY;
   }, []);
 
-  const lockSync = useCallback((who: 1 | 2) => {
-    syncLock.current = who;
+  // Suppresses the echo a programmatic scroll causes on the other pane.
+  //
+  // Two things make a naive flag insufficient. The lock has to be taken
+  // before any layout is read, because forcing layout gives the other pane's
+  // handler a chance to run inside the gap. And scrollTo dispatches its event
+  // asynchronously, so the lock must outlive the call itself; it is released
+  // one frame after the last echoed event rather than on a fixed timer, which
+  // would expire mid-gesture during continuous scrolling.
+  const releaseSync = useCallback(() => {
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(() => {
       syncLock.current = 0;
-    }, 150);
+      syncTimer.current = null;
+    }, 80);
+  }, []);
+
+  const lockSync = useCallback((who: 1 | 2) => {
+    syncLock.current = who;
+    if (syncTimer.current) {
+      clearTimeout(syncTimer.current);
+      syncTimer.current = null;
+    }
   }, []);
 
   // Editor -> preview. Interpolates between the two nearest anchors so the
   // preview tracks continuously rather than jumping block to block.
   const syncEditorToPreview = useCallback(() => {
-    if (mode !== "html" || syncLock.current === 2) return;
+    if (mode !== "html") return;
+    // An echo from a preview-driven scroll: swallow it and re-arm.
+    if (syncLock.current === 2) { releaseSync(); return; }
     const win = frameRef.current?.contentWindow;
-    const doc = frameRef.current?.contentDocument;
-    if (!win || !doc) return;
+    if (!win) return;
+
+    // Claim the lock before reading layout below.
+    lockSync(1);
+
     const list = anchors();
-    if (list.length === 0) return;
+    if (list.length === 0) { releaseSync(); return; }
 
     const line = topSourceLine();
     let lo = list[0];
@@ -361,20 +382,28 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     const span = hi.line - lo.line;
     const frac = span > 0 ? (line - lo.line) / span : 0;
     const target = loTop + (hiTop - loTop) * Math.min(1, Math.max(0, frac));
+    const next = Math.max(0, target - 8);
 
-    lockSync(1);
-    win.scrollTo({ top: Math.max(0, target - 8), behavior: "auto" });
-  }, [mode, anchors, topSourceLine, docTop, lockSync]);
+    // Skip sub-pixel corrections; they generate echoes with no visible gain.
+    if (Math.abs(win.scrollY - next) < 2) { releaseSync(); return; }
+
+    win.scrollTo({ top: next, behavior: "auto" });
+    releaseSync();
+  }, [mode, anchors, topSourceLine, docTop, lockSync, releaseSync]);
 
   // Preview -> editor. Interpolates between the anchors bracketing the
   // viewport top, then converts that line back to a measured pixel offset.
   const syncPreviewToEditor = useCallback(() => {
-    if (mode !== "html" || syncLock.current === 1) return;
+    if (mode !== "html") return;
+    if (syncLock.current === 1) { releaseSync(); return; }
     const el = textareaRef.current;
     const win = frameRef.current?.contentWindow;
     if (!el || !win) return;
+
+    lockSync(2);
+
     const list = anchors();
-    if (list.length === 0) return;
+    if (list.length === 0) { releaseSync(); return; }
 
     const y = win.scrollY + 8;
     let lo = list[0];
@@ -390,10 +419,13 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     const pxSpan = hiTop - loTop;
     const frac = pxSpan > 0 ? (y - loTop) / pxSpan : 0;
     const line = lo.line + (hi.line - lo.line) * Math.min(1, Math.max(0, frac));
+    const next = Math.max(0, offsetForLine(line));
 
-    lockSync(2);
-    el.scrollTop = Math.max(0, offsetForLine(line));
-  }, [mode, anchors, docTop, offsetForLine, lockSync]);
+    if (Math.abs(el.scrollTop - next) < 2) { releaseSync(); return; }
+
+    el.scrollTop = next;
+    releaseSync();
+  }, [mode, anchors, docTop, offsetForLine, lockSync, releaseSync]);
   // Attach the preview-side listener whenever the iframe document changes.
   useEffect(() => {
     if (mode !== "html") return;
