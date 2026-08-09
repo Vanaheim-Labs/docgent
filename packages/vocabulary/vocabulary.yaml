@@ -101,6 +101,36 @@ blocks:
       date: { type: string, required: false }
     breakInside: avoid
 
+  - id: exec-intro
+    syntax: "::: exec-intro"
+    description: Full-bleed dark band opening a document's executive summary.
+    attrs:
+      eyebrow: { type: string, required: false }
+    breakInside: avoid
+
+  - id: funnel
+    syntax: "::: funnel"
+    description: Horizontal stage diagram. Each list item is one stage; use
+      "Label — sublabel" to add a caption beneath the stage name.
+    breakInside: avoid
+
+  - id: milestones
+    syntax: "::: milestones"
+    description: Two-column grid of labelled boxes. Each level-3 heading starts
+      a new box; its list becomes the box contents.
+    breakInside: avoid
+
+  - id: allocation
+    syntax: "::: allocation"
+    description: Proportional bar chart. Each list item is "Label — NN%".
+    breakInside: avoid
+
+  - id: claimclass
+    syntax: "[text]{.claim kind=fact|drafting|gated}"
+    description: Inline chip classifying a claim's evidential status.
+    attrs:
+      kind: { type: enum, values: [fact, drafting, gated], default: gated }
+
   - id: toc
     syntax: "::: toc"
     description: Table of contents placeholder — populated at render time.

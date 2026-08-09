@@ -7,6 +7,36 @@ end
 
 local function raw(s) return pandoc.RawBlock('html', s) end
 
+
+-- Renders a list of inlines to plain text (for labels inside generated chrome).
+local function inlines_to_text(inlines)
+  return pandoc.utils.stringify(inlines)
+end
+
+-- Splits 'Label - sublabel' into two parts. Long-bracket strings are used for
+-- every pattern below: these contain % and quotes, which is exactly what kept
+-- breaking when they were written as escaped single-quoted strings.
+local function split_label(s)
+  -- Long brackets are raw, so \226 escapes do not work inside them.
+  -- Build the em/en dash bytes explicitly instead.
+  local em = string.char(226, 128, 148)
+  local en = string.char(226, 128, 147)
+  local seps = { em, en, '%-%-' }
+  for _, sep in ipairs(seps) do
+    local a, b = s:match([[^(.-)%s*]] .. sep .. [[%s*(.+)$]])
+    if a then return a, b end
+  end
+  return s, nil
+end
+
+-- Items of the first bullet/ordered list inside a block list.
+local function first_list_items(blocks)
+  for _, b in ipairs(blocks) do
+    if b.t == 'BulletList' or b.t == 'OrderedList' then return b.content end
+  end
+  return nil
+end
+
 local function esc(s)
   if s == nil then return '' end
   return s:gsub('&','&amp;'):gsub('<','&lt;'):gsub('>','&gt;'):gsub('"','&quot;')
@@ -142,6 +172,81 @@ function Div(el)
     table.insert(out, raw('</section>'))
     return out
 
+
+  elseif has('exec-intro') then
+    local eyebrow = el.attributes['eyebrow']
+    local out = { raw('<section class="exec-intro">') }
+    if eyebrow then
+      table.insert(out, raw('<div class="exec-intro-eyebrow">' .. esc(eyebrow) .. '</div>'))
+    end
+    table.insert(out, raw('<div class="exec-intro-pull">'))
+    for _, b in ipairs(el.content) do table.insert(out, b) end
+    table.insert(out, raw('</div></section>'))
+    return out
+
+  elseif has('funnel') then
+    local items = first_list_items(el.content)
+    if not items then return el end
+    local out = { raw('<div class="funnel">') }
+    for i, item in ipairs(items) do
+      local label, sub = split_label(inlines_to_text(item))
+      local step = '<div class="funnel-step">' .. esc(label)
+      if sub then
+        step = step .. '<span class="funnel-sublabel">' .. esc(sub) .. '</span>'
+      end
+      table.insert(out, raw(step .. '</div>'))
+      if i < #items then
+        local even = ''
+        if i % 2 == 0 then even = ' even' end
+        table.insert(out, raw('<div class="funnel-arrow' .. even .. '"></div>'))
+      end
+    end
+    table.insert(out, raw('</div>'))
+    return out
+
+  elseif has('milestones') then
+    local out = { raw('<div class="milestone-grid">') }
+    local open = false
+    for _, b in ipairs(el.content) do
+      if b.t == 'Header' and b.level == 3 then
+        if open then table.insert(out, raw('</div>')) end
+        table.insert(out, raw('<div class="milestone-box">'))
+        table.insert(out, raw('<div class="milestone-label">' .. esc(inlines_to_text(b.content)) .. '</div>'))
+        open = true
+      else
+        table.insert(out, b)
+      end
+    end
+    if open then table.insert(out, raw('</div>')) end
+    table.insert(out, raw('</div>'))
+    return out
+
+  elseif has('allocation') then
+    -- Each item is 'Label - NN%'. Bar width comes from the percentage, so the
+    -- diagram cannot drift from the number printed beside it.
+    local items = first_list_items(el.content)
+    if not items then return el end
+    local out = {}
+    for _, item in ipairs(items) do
+      local text = inlines_to_text(item)
+      local label, rest = split_label(text)
+      local n = nil
+      if rest then n = rest:match([[(%d+%.?%d*)%s*%%]]) end
+      if not n then
+        local l2, n2 = text:match([[^(.-)%s+(%d+%.?%d*)%s*%%%s*$]])
+        if n2 then label = l2; n = n2 end
+      end
+      if n then
+        table.insert(out, raw(
+          '<div class="funds-row">' ..
+          '<div class="funds-label">' .. esc(label) .. '</div>' ..
+          '<div class="funds-bar-wrap"><div class="funds-bar" style="width:' .. n .. '%"></div></div>' ..
+          '<div class="funds-pct">' .. esc(n) .. '%</div>' ..
+          '</div>'))
+      end
+    end
+    if #out == 0 then return el end
+    return out
   elseif has('signature') then
     local name = attrget(el, 'name', '')
     local role = el.attributes['role']
@@ -162,6 +267,19 @@ end
 function Header(el)
   if el.level <= 2 and not el.classes:includes('unnumbered') then
     el.classes:insert('numbered')
+  end
+  return el
+end
+
+
+-- Inline claim classification chip.
+function Span(el)
+  if el.classes:includes('claim') then
+    local kind = el.attributes['kind'] or 'gated'
+    local out = { pandoc.RawInline('html', '<span class="class-label ' .. esc(kind) .. '">') }
+    for _, i in ipairs(el.content) do table.insert(out, i) end
+    table.insert(out, pandoc.RawInline('html', '</span>'))
+    return out
   end
   return el
 end
