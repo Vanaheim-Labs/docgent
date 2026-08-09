@@ -10,14 +10,31 @@ import { GitStore, NotFoundError } from "./index.mjs";
 const DOC_ROOT = "documents";
 const BRAND_ROOT = "brands";
 
-/** Parses 'documents/vanaheim/q3-review/doc.md' -> {brand, slug}. */
-export function parseDocPath(path) {
-  const m = String(path).match(/^documents\/([^/]+)\/([^/]+)\//);
-  return m ? { brand: m[1], slug: m[2] } : null;
+/**
+ * Parses a document path into {brand, slug}.
+ *
+ * Two layouts are supported:
+ *   documents/<slug>/doc.md          per-brand store (current)
+ *   documents/<brand>/<slug>/doc.md  legacy, when all brands shared one repo
+ *
+ * In a per-brand store the repo already identifies the brand, so repeating it
+ * in the path is redundant. The caller supplies the brand it asked for; the
+ * nested form is still parsed so older repos keep working.
+ */
+export function parseDocPath(path, brandHint) {
+  const s = String(path);
+  const nested = s.match(/^documents\/([^/]+)\/([^/]+)\/(?:doc\.md|assets\/)/);
+  if (nested) return { brand: nested[1], slug: nested[2] };
+  const flat = s.match(/^documents\/([^/]+)\/(?:doc\.md|assets\/)/);
+  if (flat) return { brand: brandHint || null, slug: flat[1] };
+  return null;
 }
 
-export function docPath(brand, slug) {
-  return `${DOC_ROOT}/${brand}/${slug}/doc.md`;
+/** Path for a document within its store. Flat unless a nested layout is forced. */
+export function docPath(brand, slug, { nested = false } = {}) {
+  return nested
+    ? `${DOC_ROOT}/${brand}/${slug}/doc.md`
+    : `${DOC_ROOT}/${slug}/doc.md`;
 }
 
 export class DocumentStore {
@@ -44,14 +61,18 @@ export class DocumentStore {
    * One tree call rather than a directory walk per brand.
    */
   async listDocuments({ brand, ref } = {}) {
-    const prefix = brand ? `${DOC_ROOT}/${brand}/` : `${DOC_ROOT}/`;
-    const { entries, sha } = await this.git.tree({ ref, prefix });
+    // Per-brand stores are flat (documents/<slug>/), so the brand is not a
+    // path segment to filter on — it identifies the repo, not the directory.
+    // Scan the whole document root and let parseDocPath sort out the layout.
+    const { entries, sha } = await this.git.tree({ ref, prefix: `${DOC_ROOT}/` });
 
     const docs = [];
     for (const e of entries) {
       if (e.type !== "file" || !e.path.endsWith("/doc.md")) continue;
-      const parsed = parseDocPath(e.path);
+      const parsed = parseDocPath(e.path, brand);
       if (!parsed) continue;
+      // Legacy nested stores hold several brands in one repo; honour the filter.
+      if (brand && parsed.brand && parsed.brand !== brand) continue;
       const dir = e.path.replace(/\/doc\.md$/, "");
       docs.push({
         brand: parsed.brand,

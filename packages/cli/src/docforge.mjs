@@ -80,21 +80,61 @@ function report(payload, humanFn) {
  * The repo is resolved from the brand, so commands that touch git must say
  * which brand they mean. Falls back to the gh CLI's token for local use.
  */
+/**
+ * Resolves the GitHub token for a brand's document store.
+ *
+ * Precedence: brand-specific env > ~/.docforge/tokens.env > generic env > gh CLI.
+ *
+ * Per-brand tokens matter here: each is a fine-grained PAT scoped to exactly
+ * one document repo, so a leaked token cannot reach another brand's documents.
+ * The gh CLI fallback is deliberately last — it carries broad personal scope
+ * and is fine for interactive engineering, not for agent-driven writes.
+ */
+async function resolveToken(brandId) {
+  const key = brandId ? `DOCFORGE_GH_TOKEN_${brandId.toUpperCase()}` : null;
+  if (key && process.env[key]) return process.env[key];
+
+  // Token file, kept outside the repo with 0600 perms.
+  if (key) {
+    try {
+      const os = await import("node:os");
+      const file = path.join(os.homedir(), ".docforge", "tokens.env");
+      if (fs.existsSync(file)) {
+        for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+          const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.+?)\s*$/);
+          if (m && m[1] === key) return m[2];
+        }
+      }
+    } catch {}
+  }
+
+  if (process.env.DOCFORGE_GH_TOKEN) return process.env.DOCFORGE_GH_TOKEN;
+  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
+
+  try {
+    const { execFileSync } = await import("node:child_process");
+    const t = execFileSync("gh", ["auth", "token"], { encoding: "utf8" }).trim();
+    if (t) {
+      console.error(
+        `warning: using the gh CLI token for '${brandId || "?"}'. That credential is broadly scoped; ` +
+        `set ${key || "DOCFORGE_GH_TOKEN_<BRAND>"} for agent use.`
+      );
+      return t;
+    }
+  } catch {}
+
+  console.error(
+    `No GitHub token for brand '${brandId || "?"}'. Set ${key || "DOCFORGE_GH_TOKEN_<BRAND>"}, ` +
+    `add it to ~/.docforge/tokens.env, or run 'gh auth login'.`
+  );
+  process.exit(2);
+}
+
 async function makeStores(brandId) {
   const { GitStore } = await import("../../git-store/src/index.mjs");
   const { DocumentStore } = await import("../../git-store/src/documents.mjs");
 
-  let token = process.env.DOCFORGE_GH_TOKEN || process.env.GITHUB_TOKEN;
-  if (!token) {
-    try {
-      const { execFileSync } = await import("node:child_process");
-      token = execFileSync("gh", ["auth", "token"], { encoding: "utf8" }).trim();
-    } catch {}
-  }
-  if (!token) {
-    console.error("No GitHub token. Set DOCFORGE_GH_TOKEN or run 'gh auth login'.");
-    process.exit(2);
-  }
+  const token = await resolveToken(brandId);
 
   // Repo follows the brand: North Face documents belong in the North Face org,
   // not wherever DOCFORGE_REPO happened to point.
