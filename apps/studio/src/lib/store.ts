@@ -13,8 +13,9 @@
 // Untyped ESM package in the monorepo; allowJs resolves it without types.
 import { GitStore } from "../../../../packages/git-store/src/index.mjs";
 import { DocumentStore } from "../../../../packages/git-store/src/documents.mjs";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { join, dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export type DocSummary = {
   brand: string;
@@ -44,7 +45,55 @@ export type TimelineEntry = {
 
 export type Brand = { id: string; name: string; repo: string };
 
-const BRANDS_DIR = join(process.cwd(), "..", "..", "brands");
+/**
+ * Locates the brands/ directory.
+ *
+ * This must not be derived from process.cwd(). Locally the server runs with
+ * cwd = apps/studio, so cwd/../.. is the monorepo root and brands/ resolves.
+ * On Vercel the serverless function runs with a different cwd, that same
+ * expression points outside the bundle, readdirSync throws ENOENT, brands()
+ * returns [], every findBrand() misses and storesFor() throws `Unknown brand`
+ * — which the document route catches as notFound(). The result is that every
+ * document 404s while the index still renders, because listAllDocuments()
+ * swallows per-brand errors.
+ *
+ * So resolve from this module's own location and probe the candidates that
+ * the dev, standalone and traced-serverless layouts each produce. The first
+ * one that actually exists on disk wins; cwd is only a last resort.
+ */
+function resolveBrandsDir(): string {
+  const here = (() => {
+    try {
+      // ESM at runtime.
+      return dirname(fileURLToPath(import.meta.url));
+    } catch {
+      // CJS output, where __dirname exists instead.
+      return typeof __dirname === "string" ? __dirname : process.cwd();
+    }
+  })();
+
+  const candidates = [
+    // Walk up from src/lib (dev) and from the compiled chunk (bundled).
+    resolve(here, "..", "..", "brands"),
+    resolve(here, "..", "..", "..", "brands"),
+    resolve(here, "..", "..", "..", "..", "brands"),
+    resolve(here, "..", "..", "..", "..", "..", "brands"),
+    resolve(here, "..", "..", "..", "..", "..", "..", "brands"),
+    // Vercel traces files under the task root preserving repo layout.
+    join(process.cwd(), "brands"),
+    join(process.cwd(), "..", "..", "brands"),
+  ];
+
+  for (const dir of candidates) {
+    if (existsSync(dir)) return dir;
+  }
+  // Nothing found: return the historical path so the error message is familiar.
+  return join(process.cwd(), "..", "..", "brands");
+}
+
+const BRANDS_DIR = process.env.DOCFORGE_BRANDS_DIR
+  ? resolve(process.env.DOCFORGE_BRANDS_DIR)
+  : resolveBrandsDir();
 
 /**
  * Reads one scalar key from a brand.yaml.
