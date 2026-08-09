@@ -214,17 +214,104 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
 
   /* ---------------- scroll sync ---------------- */
 
-  // Source line for the top visible row of the textarea. Derived from scroll
-  // offset over line height, which is exact because the textarea is uniform
-  // monospace with no wrapped-line accounting beyond its own layout.
-  const topSourceLine = useCallback(() => {
+  // Maps logical source lines to pixel offsets inside the textarea.
+  //
+  // scrollTop / lineHeight is wrong here: the textarea soft-wraps, so one
+  // logical line can occupy many visual rows. On a real document that error
+  // compounds badly (a 674-line memo measured ~1272 visual rows, putting the
+  // naive estimate 288 lines out by the midpoint). Instead the wrapped height
+  // of each line is measured once with a mirror element that copies the
+  // textarea metrics, giving exact offsets.
+  const offsets = useRef<number[] | null>(null);
+
+  const measureOffsets = useCallback((): number[] => {
+    const el = textareaRef.current;
+    if (!el) return [0];
+    const cs = getComputedStyle(el);
+    const mirror = document.createElement("div");
+    // Match every property that affects wrapping, then take it out of flow.
+    mirror.style.position = "absolute";
+    mirror.style.visibility = "hidden";
+    mirror.style.pointerEvents = "none";
+    mirror.style.top = "0";
+    mirror.style.left = "-9999px";
+    mirror.style.whiteSpace = "pre-wrap";
+    mirror.style.wordBreak = cs.wordBreak;
+    mirror.style.overflowWrap = cs.overflowWrap;
+    mirror.style.font = cs.font;
+    mirror.style.fontFamily = cs.fontFamily;
+    mirror.style.fontSize = cs.fontSize;
+    mirror.style.lineHeight = cs.lineHeight;
+    mirror.style.letterSpacing = cs.letterSpacing;
+    mirror.style.tabSize = cs.tabSize;
+    mirror.style.paddingLeft = cs.paddingLeft;
+    mirror.style.paddingRight = cs.paddingRight;
+    mirror.style.boxSizing = cs.boxSizing;
+    mirror.style.width = `${el.clientWidth}px`;
+    document.body.appendChild(mirror);
+
+    const lines = content.split("\n");
+    const out: number[] = new Array(lines.length + 1);
+    // One span per line, measured in a single layout pass.
+    const spans: HTMLElement[] = lines.map((ln) => {
+      const d = document.createElement("div");
+      d.textContent = ln.length ? ln : "\u200b";
+      mirror.appendChild(d);
+      return d;
+    });
+    for (let i = 0; i < spans.length; i++) out[i] = spans[i].offsetTop;
+    out[lines.length] = mirror.scrollHeight;
+    document.body.removeChild(mirror);
+    return out;
+  }, [content]);
+
+  // Re-measure when the text or the pane width changes; both alter wrapping.
+  useEffect(() => {
+    offsets.current = null;
+  }, [content]);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      offsets.current = null;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const lineOffsets = useCallback((): number[] => {
+    if (!offsets.current) offsets.current = measureOffsets();
+    return offsets.current;
+  }, [measureOffsets]);
+
+  // Fractional source line at the top of the viewport. Fractional so the
+  // preview glides through long wrapped paragraphs instead of stepping.
+  const topSourceLine = useCallback((): number => {
     const el = textareaRef.current;
     if (!el) return 1;
-    const cs = getComputedStyle(el);
-    const lh = parseFloat(cs.lineHeight) || 18;
-    const padTop = parseFloat(cs.paddingTop) || 0;
-    return Math.max(1, Math.round((el.scrollTop - padTop) / lh) + 1);
-  }, []);
+    const offs = lineOffsets();
+    const y = el.scrollTop;
+    // Binary search for the line containing this offset.
+    let lo = 0;
+    let hi = offs.length - 1;
+    while (lo < hi - 1) {
+      const mid = (lo + hi) >> 1;
+      if (offs[mid] <= y) lo = mid;
+      else hi = mid;
+    }
+    const span = offs[lo + 1] - offs[lo];
+    const frac = span > 0 ? (y - offs[lo]) / span : 0;
+    return lo + 1 + Math.min(1, Math.max(0, frac));
+  }, [lineOffsets]);
+
+  // Pixel offset for a (possibly fractional) source line.
+  const offsetForLine = useCallback((line: number): number => {
+    const offs = lineOffsets();
+    const idx = Math.min(offs.length - 2, Math.max(0, Math.floor(line) - 1));
+    const frac = line - Math.floor(line);
+    return offs[idx] + (offs[idx + 1] - offs[idx]) * frac;
+  }, [lineOffsets]);
 
   const anchors = useCallback((): { line: number; el: HTMLElement }[] => {
     const doc = frameRef.current?.contentDocument;
@@ -235,21 +322,29 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       .sort((a, b) => a.line - b.line);
   }, []);
 
+  // Absolute document offset of an element inside the iframe. offsetTop is
+  // relative to the offsetParent, which is not the document once blocks sit
+  // inside positioned sections.
+  const docTop = useCallback((el: HTMLElement, win: Window): number => {
+    const r = el.getBoundingClientRect();
+    return r.top + win.scrollY;
+  }, []);
+
   const lockSync = useCallback((who: 1 | 2) => {
     syncLock.current = who;
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(() => {
       syncLock.current = 0;
-    }, 120);
+    }, 150);
   }, []);
 
   // Editor -> preview. Interpolates between the two nearest anchors so the
   // preview tracks continuously rather than jumping block to block.
   const syncEditorToPreview = useCallback(() => {
     if (mode !== "html" || syncLock.current === 2) return;
-    const doc = frameRef.current?.contentDocument;
     const win = frameRef.current?.contentWindow;
-    if (!doc || !win) return;
+    const doc = frameRef.current?.contentDocument;
+    if (!win || !doc) return;
     const list = anchors();
     if (list.length === 0) return;
 
@@ -260,18 +355,19 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       if (list[i].line <= line) lo = list[i];
       if (list[i].line >= line) { hi = list[i]; break; }
     }
-    const loTop = lo.el.offsetTop;
-    const hiTop = hi.el.offsetTop;
+
+    const loTop = docTop(lo.el, win);
+    const hiTop = docTop(hi.el, win);
     const span = hi.line - lo.line;
     const frac = span > 0 ? (line - lo.line) / span : 0;
-    const target = loTop + (hiTop - loTop) * frac;
+    const target = loTop + (hiTop - loTop) * Math.min(1, Math.max(0, frac));
 
     lockSync(1);
     win.scrollTo({ top: Math.max(0, target - 8), behavior: "auto" });
-  }, [mode, anchors, topSourceLine, lockSync]);
+  }, [mode, anchors, topSourceLine, docTop, lockSync]);
 
-  // Preview -> editor. Finds the topmost anchor still on screen and scrolls
-  // the textarea to the line that produced it.
+  // Preview -> editor. Interpolates between the anchors bracketing the
+  // viewport top, then converts that line back to a measured pixel offset.
   const syncPreviewToEditor = useCallback(() => {
     if (mode !== "html" || syncLock.current === 1) return;
     const el = textareaRef.current;
@@ -280,18 +376,24 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     const list = anchors();
     if (list.length === 0) return;
 
-    const y = win.scrollY;
-    let current = list[0];
-    for (const a of list) {
-      if (a.el.offsetTop <= y + 12) current = a;
-      else break;
+    const y = win.scrollY + 8;
+    let lo = list[0];
+    let hi = list[list.length - 1];
+    for (let i = 0; i < list.length; i++) {
+      const t = docTop(list[i].el, win);
+      if (t <= y) lo = list[i];
+      if (t >= y) { hi = list[i]; break; }
     }
-    const cs = getComputedStyle(el);
-    const lh = parseFloat(cs.lineHeight) || 18;
-    lockSync(2);
-    el.scrollTop = Math.max(0, (current.line - 1) * lh);
-  }, [mode, anchors, lockSync]);
 
+    const loTop = docTop(lo.el, win);
+    const hiTop = docTop(hi.el, win);
+    const pxSpan = hiTop - loTop;
+    const frac = pxSpan > 0 ? (y - loTop) / pxSpan : 0;
+    const line = lo.line + (hi.line - lo.line) * Math.min(1, Math.max(0, frac));
+
+    lockSync(2);
+    el.scrollTop = Math.max(0, offsetForLine(line));
+  }, [mode, anchors, docTop, offsetForLine, lockSync]);
   // Attach the preview-side listener whenever the iframe document changes.
   useEffect(() => {
     if (mode !== "html") return;
