@@ -16,5 +16,9 @@
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
+  },
+  "dependencies": {
+    "@docforge/core": "0.1.0",
+    "yaml": "^2.9.0"
   }
 }
