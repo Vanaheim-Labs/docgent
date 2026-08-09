@@ -1,0 +1,497 @@
+/* North Face Investments — brand overlay.
+ *
+ * Derived from the v8 design system (brands/northface/source/v8-design-system.css),
+ * which is the authored original and stays untouched as provenance.
+ *
+ * Literal hex values have been replaced with brand tokens so palette changes in
+ * brand.yaml propagate. Component classes (.cover, .exec-intro, .funnel,
+ * .milestone-grid, .funds-row, .callout, .insight, .class-label) are document
+ * furniture the investment-memorandum doctype relies on — do not prune them
+ * because a given document happens not to use one.
+ *
+ * @page rules are intentionally retained here rather than pushed into core:
+ * this brand runs a full-bleed dark cover and a named 'cover' page, which core
+ * does not model.
+ */
+
+/*
+ * North Face Investments — Document Design System
+ * Version: v8 (August 2026)
+ * Renderer: WeasyPrint (A4 portrait)
+ * Fonts: Cormorant Garamond (headings), Inter (body/UI)
+ * Accent: var(--accent) (terracotta)
+ * Page background: var(--paper) (warm off-white)
+ * Body text: var(--ink) / var(--ink-soft)
+ */
+
+/* ─── PAGE ─────────────────────────────────────────────────────────────── */
+@page {
+  size: A4 portrait;
+  margin: 18mm 20mm 22mm 20mm;
+  background: var(--paper);
+
+  @top-left {
+    content: "NORTH FACE INVESTMENTS";
+    font-family: var(--font-sans);
+    font-size: 7pt; font-weight: 600; letter-spacing: 0.14em;
+    color: var(--accent); vertical-align: middle;
+  }
+  @top-right {
+    content: "STRICTLY CONFIDENTIAL";
+    font-family: var(--font-sans);
+    font-size: 7pt; font-weight: 400; letter-spacing: 0.1em;
+    color: #999; vertical-align: middle;
+  }
+  @bottom-left {
+    /* Override per document: set content via @page { @bottom-left { content: "..." } } */
+    content: "";
+    font-family: var(--font-sans);
+    font-size: 7pt; color: #bbb; vertical-align: middle;
+  }
+  @bottom-center {
+    content: counter(page);
+    font-family: var(--font-sans);
+    font-size: 7pt; color: #999; vertical-align: middle;
+  }
+  @bottom-right {
+    content: "deals@northface.vc  ·  northface.vc";
+    font-family: var(--font-sans);
+    font-size: 7pt; color: #bbb; vertical-align: middle;
+  }
+}
+
+/* Cover page: no margin, no running heads/feet */
+@page cover {
+  margin: 0;
+  @top-left { content: none; }
+  @top-right { content: none; }
+  @bottom-left { content: none; }
+  @bottom-center { content: none; }
+  @bottom-right { content: none; }
+}
+
+/* ─── RESET ─────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ─── BODY ──────────────────────────────────────────────────────────────── */
+body {
+  font-family: var(--font-sans);
+  font-size: 9.5pt;
+  line-height: 1.65;
+  color: var(--ink);
+  background: transparent; /* page background set at @page level */
+}
+
+/* ─── COVER ─────────────────────────────────────────────────────────────── */
+.cover {
+  page: cover;
+  page-break-after: always;
+  width: 210mm;
+  height: 297mm;
+  background: var(--ink);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.cover-band {
+  background: var(--accent);
+  height: 5mm;
+  width: 100%;
+}
+.cover-body {
+  flex: 1;
+  padding: 22mm 24mm 18mm 24mm;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+/* Cover text elements */
+.cover-super {
+  font-family: var(--font-sans);
+  font-size: 7pt; font-weight: 400; font-style: italic;
+  color: var(--ink-faint); letter-spacing: 0.06em;
+  margin-bottom: 5mm;
+}
+.cover-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 7.5pt; font-weight: 600; letter-spacing: 0.2em;
+  color: var(--accent); text-transform: uppercase;
+  margin-bottom: 3mm;
+}
+.cover-wordmark {
+  font-family: var(--font-sans);
+  font-size: 8pt; font-weight: 700; letter-spacing: 0.18em;
+  color: var(--paper); text-transform: uppercase;
+  margin-bottom: 4mm;
+}
+.cover-title {
+  font-family: var(--font-serif);
+  font-size: 38pt; font-weight: 600; line-height: 1.08;
+  color: var(--paper);
+  margin-bottom: 6mm;
+  max-width: 145mm;
+}
+.cover-title em { font-style: italic; color: var(--accent-bright); }
+
+.cover-subtitle {
+  font-family: var(--font-sans);
+  font-size: 9.5pt; font-weight: 300;
+  color: #BBBBAA; line-height: 1.55; /* cover-only: warm grey on dark ground */
+  margin-bottom: 12mm;
+  max-width: 118mm;
+}
+.cover-tagline {
+  font-family: var(--font-serif);
+  font-size: 11pt; font-style: italic;
+  color: var(--ink-faint); line-height: 1.45;
+  margin-bottom: 10mm;
+}
+.cover-rule {
+  width: 40mm; height: 1px;
+  background: var(--accent);
+  margin-bottom: 10mm;
+}
+.cover-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8mm;
+  margin-bottom: 16mm;
+}
+.cover-meta-label {
+  font-family: var(--font-sans);
+  font-size: 6.5pt; font-weight: 600; letter-spacing: 0.14em;
+  color: var(--accent); text-transform: uppercase;
+  margin-bottom: 1.5mm;
+}
+.cover-meta-value {
+  font-family: var(--font-serif);
+  font-size: 12.5pt; font-weight: 600;
+  color: var(--paper); line-height: 1.2;
+}
+.cover-footer {
+  border-top: 1px solid #3A3A38;
+  padding-top: 6mm;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+.cover-footer-left,
+.cover-footer-right {
+  font-family: var(--font-sans);
+  font-size: 7pt; color: #666660; line-height: 1.7;
+}
+.cover-footer-right { text-align: right; }
+
+/* ─── EXECUTIVE SUMMARY INTRO BAND ─────────────────────────────────────── */
+/*
+ * Dark band that spans full page width at the top of the exec summary page.
+ * Apply page-break-before: always to the containing element.
+ * Negative margins bleed to page edge; padding restores inner spacing.
+ */
+.exec-intro {
+  page-break-before: always;
+  background: var(--band);
+  margin: -18mm -20mm 12mm -20mm;
+  padding: 13mm 20mm 11mm 20mm;
+}
+.exec-intro-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 6.5pt; font-weight: 600; letter-spacing: 0.2em;
+  color: var(--accent); text-transform: uppercase;
+  margin-bottom: 4mm;
+  display: flex; align-items: center; gap: 2mm;
+}
+.exec-intro-eyebrow::before { content: "●"; font-size: 5pt; }
+.exec-intro-pull {
+  font-family: var(--font-serif);
+  font-size: 19.5pt; font-weight: 400; line-height: 1.28;
+  color: var(--paper);
+  max-width: 158mm;
+}
+.exec-intro-pull em { font-style: italic; color: var(--accent-bright); }
+
+/* ─── SECTION STRUCTURE ─────────────────────────────────────────────────── */
+.content { padding: 0; }
+
+/* Force page break before each major section */
+.section-break { page-break-before: always; }
+
+/* Section eyebrow label — appears above h1 */
+.section-number {
+  font-family: var(--font-sans);
+  font-size: 6.5pt; font-weight: 600; letter-spacing: 0.2em;
+  color: var(--accent); text-transform: uppercase;
+  margin-bottom: 2mm;
+  display: flex; align-items: center; gap: 2mm;
+}
+.section-number::before { content: "●"; font-size: 5pt; }
+
+/* ─── HEADINGS ──────────────────────────────────────────────────────────── */
+h1 {
+  font-family: var(--font-serif);
+  font-size: 27pt; font-weight: 600; line-height: 1.1;
+  color: var(--ink);
+  margin-bottom: 5mm;
+}
+h1 em { font-style: italic; color: var(--accent); }
+
+h2 {
+  font-family: var(--font-serif);
+  font-size: 17.5pt; font-weight: 600; line-height: 1.2;
+  color: var(--ink);
+  margin-top: 8mm; margin-bottom: 3mm;
+  page-break-after: avoid;
+}
+
+h3 {
+  font-family: var(--font-sans);
+  font-size: 8.5pt; font-weight: 700; letter-spacing: 0.03em;
+  color: var(--ink);
+  margin-top: 6mm; margin-bottom: 2mm;
+  page-break-after: avoid;
+}
+
+/* ─── BODY TEXT ─────────────────────────────────────────────────────────── */
+p { margin-bottom: 3.5mm; color: var(--ink-soft); }
+strong { font-weight: 600; color: var(--ink); }
+em { font-style: italic; }
+
+ul, ol { margin: 2mm 0 4mm 5mm; padding: 0; }
+li { margin-bottom: 1.5mm; padding-left: 2mm; color: var(--ink-soft); }
+ul li::marker { color: var(--accent); }
+
+/* Footnote / caption text */
+.fn {
+  font-size: 7.5pt; color: #888;
+  margin-top: -2mm; margin-bottom: 4mm;
+  font-style: italic;
+}
+
+/* ─── BLOCKQUOTE ────────────────────────────────────────────────────────── */
+blockquote {
+  margin: 6mm 0;
+  padding: 5mm 8mm 5mm 10mm;
+  background: var(--surface-quote);
+  border-left: 3px solid var(--accent);
+  page-break-inside: avoid;
+}
+blockquote p {
+  font-family: var(--font-serif);
+  font-size: 13pt; font-weight: 400; line-height: 1.45;
+  color: var(--ink); margin: 0;
+}
+blockquote p + p { margin-top: 3mm; }
+blockquote p strong { font-weight: 700; }
+
+/* ─── TABLES ────────────────────────────────────────────────────────────── */
+table {
+  width: 100%; border-collapse: collapse;
+  margin: 4mm 0 6mm 0;
+  font-size: 8.5pt;
+  page-break-inside: avoid;
+}
+thead tr { background: var(--ink); color: var(--paper); }
+thead th {
+  font-family: var(--font-sans);
+  font-size: 7pt; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3mm 4mm; text-align: left; border: none;
+}
+thead th:not(:first-child) { text-align: right; }
+
+/* .wide-table: all columns left-aligned (for narrative/text tables) */
+table.wide-table thead th { text-align: left; }
+table.wide-table tbody td { text-align: left; }
+
+tbody tr { border-bottom: 1px solid var(--surface-mute); }
+tbody tr:nth-child(even) { background: var(--paper-alt); }
+tbody td {
+  padding: 2.5mm 4mm; color: var(--ink-soft); vertical-align: top;
+}
+tbody td:not(:first-child) { text-align: right; font-feature-settings: "tnum"; }
+
+tfoot tr { background: var(--surface-quote); border-top: 2px solid var(--accent); }
+tfoot td { padding: 2.5mm 4mm; font-weight: 700; color: var(--ink); }
+tfoot td:not(:first-child) { text-align: right; }
+
+/* ─── CALLOUT (dark) ─────────────────────────────────────────────────────── */
+.callout {
+  background: var(--ink);
+  padding: 7mm 9mm;
+  margin: 7mm 0;
+  page-break-inside: avoid;
+}
+.callout p {
+  font-family: var(--font-serif);
+  font-size: 13.5pt; font-weight: 400; line-height: 1.42;
+  color: var(--paper); margin: 0;
+}
+.callout p + p { margin-top: 3.5mm; }
+.callout p strong { color: var(--accent-bright); font-weight: 600; }
+
+/* ─── INSIGHT BOX (warm accent) ─────────────────────────────────────────── */
+.insight {
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  padding: 5mm 8mm;
+  margin: 5mm 0;
+  page-break-inside: avoid;
+}
+.insight p { font-size: 9pt; color: var(--ink-soft); margin: 0; }
+.insight p + p { margin-top: 2.5mm; }
+
+/* ─── MILESTONE GRID (2-column) ─────────────────────────────────────────── */
+.milestone-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4mm;
+  margin: 5mm 0 7mm 0;
+}
+.milestone-box {
+  border: 1px solid var(--rule);
+  padding: 5mm;
+  page-break-inside: avoid;
+}
+.milestone-label {
+  font-family: var(--font-sans);
+  font-size: 6.5pt; font-weight: 700; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--accent);
+  margin-bottom: 3mm;
+}
+.milestone-box ul { margin: 0; padding-left: 4mm; }
+.milestone-box li { font-size: 8.5pt; margin-bottom: 1mm; }
+
+/* ─── USE-OF-FUNDS BARS ─────────────────────────────────────────────────── */
+.funds-row {
+  display: flex; align-items: center; gap: 4mm;
+  margin-bottom: 2mm;
+  page-break-inside: avoid;
+}
+.funds-label {
+  font-family: var(--font-sans);
+  font-size: 8.5pt; color: var(--ink-soft);
+  min-width: 52mm;
+}
+.funds-bar-wrap {
+  flex: 1; height: 4mm;
+  background: var(--surface-track);
+  position: relative;
+}
+.funds-bar {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  background: var(--accent);
+  /* width set inline as percentage, e.g. style="width:35%" */
+}
+.funds-pct {
+  font-family: var(--font-sans);
+  font-size: 8pt; font-weight: 600;
+  color: var(--accent); min-width: 10mm; text-align: right;
+}
+
+/* ─── FUNNEL DIAGRAM ────────────────────────────────────────────────────── */
+/*
+ * Usage: alternating dark/darker blocks with CSS triangle arrows between them.
+ * HTML: <div class="funnel">
+ *         <div class="funnel-step">Label<span class="funnel-sublabel">sub</span></div>
+ *         <div class="funnel-arrow"></div>
+ *         <div class="funnel-step">...</div>
+ *         <div class="funnel-arrow even"></div>
+ *         ...
+ *       </div>
+ */
+.funnel {
+  display: flex; align-items: center;
+  margin: 5mm 0 7mm 0;
+  page-break-inside: avoid;
+}
+.funnel-step {
+  flex: 1;
+  background: var(--band); color: var(--paper);
+  padding: 4mm 3mm; text-align: center;
+  font-family: var(--font-sans);
+  font-size: 7pt; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.funnel-step:nth-child(odd) { background: var(--ink); }
+.funnel-sublabel {
+  font-size: 6pt; font-weight: 400; color: #AAA;
+  text-transform: none; letter-spacing: 0;
+  display: block; margin-top: 1.5mm;
+}
+.funnel-arrow {
+  width: 0; height: 0;
+  border-top: 7mm solid transparent;
+  border-bottom: 7mm solid transparent;
+  border-left: 4mm solid var(--band);
+  flex-shrink: 0;
+}
+.funnel-arrow.even { border-left-color: var(--ink); }
+
+/* ─── CLAIM CLASSIFICATION LABELS ──────────────────────────────────────── */
+.class-label {
+  display: inline-block;
+  font-size: 6.5pt; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 1mm 2.5mm;
+  background: var(--surface-mute); color: #555;
+}
+.class-label.fact     { background: var(--ink); color: var(--paper); }
+.class-label.drafting { background: var(--accent); color: var(--paper); }
+.class-label.gated    { background: var(--surface-mute); color: #555;    }
+
+/* ─── HORIZONTAL RULE ───────────────────────────────────────────────────── */
+hr { border: none; border-top: 1px solid var(--rule); margin: 7mm 0; }
+
+/* ─── DISCLAIMER ────────────────────────────────────────────────────────── */
+.disclaimer {
+  font-size: 7pt; color: #AAA; line-height: 1.5;
+  margin-top: 8mm;
+  border-top: 1px solid var(--rule); padding-top: 4mm;
+  page-break-inside: avoid;
+}
+
+
+/* ─── CORE OVERRIDES ────────────────────────────────────────────────────── */
+/*
+ * Suppress core section numbering. This brand renders its own '● 01 · TITLE'
+ * eyebrow; core's h1/h2 counters would render "0.1 Executive Summary"
+ * alongside it.
+ */
+h1.numbered::before,
+h2.numbered::before { content: none; }
+
+/* Narrative tables: the v8 system right-aligns non-first columns for figures,
+ * but the product/role tables are prose. Keep numeric alignment as the default
+ * and let a table opt into left alignment via .wide-table. */
+table.wide-table tbody td:not(:first-child) { text-align: left; }
+
+
+/* ─── COVER METADATA ────────────────────────────────────────────────────── */
+/*
+ * A single flat grid. Earlier attempts used two sibling <dl> grids (they
+ * interleaved and overprinted) and display:contents (which collapsed the
+ * tracks so labels hyphenated mid-word). Emitting one <dl> from the template
+ * removes the problem rather than styling around it.
+ */
+.cover-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 8mm;
+  row-gap: 7mm;
+  margin: 0 0 12mm 0;
+}
+.cover-meta-item { min-width: 0; }
+.cover-meta-grid dt, .cover-meta-grid dd { margin: 0; }
+.cover-meta-label {
+  font-family: var(--font-sans);
+  font-size: 6.5pt; font-weight: 600; letter-spacing: 0.14em;
+  color: var(--accent); text-transform: uppercase;
+  margin-bottom: 1.5mm; white-space: nowrap; hyphens: none;
+}
+.cover-meta-value {
+  font-family: var(--font-serif);
+  font-size: 12.5pt; font-weight: 600;
+  color: var(--paper); line-height: 1.25; hyphens: none;
+}

@@ -62,11 +62,55 @@ export function loadBrand(brandId) {
   return { id: brandId, dir, ...parseSimpleYaml(fs.readFileSync(yml, "utf8")) };
 }
 
+/* ---------------- brand -> document repo ---------------- */
+/**
+ * Resolves which GitHub repo holds a brand's documents.
+ *
+ * Precedence: explicit override > brand.yaml 'repo' > global default.
+ * The override exists for testing and migrations; steady state is that the
+ * brand declares its own repo, because a brand owned by another org must not
+ * depend on a process-wide env var that some other brand also reads.
+ */
+export function brandRepo(brandId, { override } = {}) {
+  if (override) return override;
+  if (brandId) {
+    try {
+      const b = loadBrand(brandId);
+      if (b.repo) return b.repo;
+    } catch {}
+  }
+  return process.env.DOCFORGE_REPO || DEFAULT_REPO;
+}
+
+export const DEFAULT_REPO = "Vanaheim-Labs/docforge";
+
+/** Lists every known brand and the repo it writes to. */
+export function brandRepoMap() {
+  const dir = path.join(ROOT, "brands");
+  const out = {};
+  if (!fs.existsSync(dir)) return out;
+  for (const id of fs.readdirSync(dir)) {
+    try { out[id] = brandRepo(id); } catch {}
+  }
+  return out;
+}
+
 /* ---------------- brand tokens -> CSS custom properties ---------------- */
 export function brandTokensCss(brand) {
   const t = brand.typography || {};
   const p = brand.palette || {};
   const pg = brand.page || {};
+
+  // Brands carry palette keys core does not know about (North Face has
+  // accent_bright, band, surface_*). Emit every key as a custom property so a
+  // brand can extend its palette without a core change; the named defaults
+  // below stay for the tokens core guarantees.
+  const KNOWN = new Set(["ink","ink_soft","ink_faint","rule","paper","paper_alt",
+    "accent","accent_soft","warning","warning_soft","risk","risk_soft","success","success_soft"]);
+  const extraTokens = Object.entries(p)
+    .filter(([k]) => !KNOWN.has(k))
+    .map(([k, v]) => `  --${k.replace(/_/g, "-")}: ${v};`)
+    .join("\n");
   const fam = (k) => t[k] || "";
   const bodyFam = t.body_family === "sans" ? fam("sans") : fam("serif");
   const headFam = t.heading_family === "serif" ? fam("serif") : fam("sans");
@@ -95,6 +139,7 @@ export function brandTokensCss(brand) {
   --success: ${p.success || "#1f6b45"};
   --success-soft: ${p.success_soft || "#e9f5ef"};
 
+${extraTokens ? extraTokens + "\n" : ""}  --section-numbering: ${brand.numbering && brand.numbering.sections === false ? "none" : "decimal"};
   --page-size: ${pg.size || "A4"};
   --margin-top: ${pg.margin_top || "22mm"};
   --margin-bottom: ${pg.margin_bottom || "20mm"};
@@ -122,6 +167,17 @@ export function mdToHtml(mdPath, { brand, frontmatter, outHtml, cssHrefs }) {
     "--metadata", `brandname=${brand.name || brand.id}`,
     "-o", outHtml,
   ];
+
+  // Deal/offer fields and the brand's display wording for the classification
+  // level. Frontmatter carries the registry enum ('restricted'); the brand
+  // decides how that reads on the page ('STRICTLY CONFIDENTIAL').
+  const labels = brand.classification_labels || {};
+  const label = labels[frontmatter.classification] ||
+    String(frontmatter.classification || "").toUpperCase();
+  if (label) args.push("--metadata", `classification_label=${label}`);
+  for (const k of ["capital_sought", "instrument", "target_close", "contact"]) {
+    if (frontmatter[k]) args.push("--metadata", `${k}=${frontmatter[k]}`);
+  }
   if (frontmatter.toc) args.push("--toc", "--toc-depth=2");
   for (const href of cssHrefs) args.push("--css", href);
   execFileSync("pandoc", args, { stdio: ["ignore", "pipe", "pipe"] });

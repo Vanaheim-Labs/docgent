@@ -43,10 +43,27 @@ for (const brand of fs.readdirSync(brandsSrc)) {
   copyDir(bdir, path.join(OUT, "brands", brand));
 }
 
-// fonts dir must exist for the Dockerfile COPY to succeed
+// fonts: core faces stay in apps/render-worker/fonts (shared baseline).
+// Brand-specific faces live in brands/<id>/fonts and are collected here, so a
+// brand carries its own typography instead of every brand sharing one pile.
 fs.mkdirSync(FONTS, { recursive: true });
 const gitkeep = path.join(FONTS, ".gitkeep");
 if (!fs.existsSync(gitkeep)) fs.writeFileSync(gitkeep, "");
+
+const brandFontDir = path.join(OUT, "fonts");
+const collected = [];
+for (const brand of fs.readdirSync(brandsSrc)) {
+  const fdir = path.join(brandsSrc, brand, "fonts");
+  if (!fs.existsSync(fdir)) continue;
+  const dest = path.join(brandFontDir, brand);
+  fs.mkdirSync(dest, { recursive: true });
+  for (const f of fs.readdirSync(fdir)) {
+    if (!/\.(ttf|otf|woff2?)$/i.test(f)) continue;
+    fs.copyFileSync(path.join(fdir, f), path.join(dest, f));
+    collected.push(`${brand}/${f}`);
+  }
+}
+if (collected.length) console.log(`brand fonts: ${collected.join(", ")}`);
 
 const count = (dir) => {
   let n = 0;

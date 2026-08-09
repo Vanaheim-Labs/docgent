@@ -59,6 +59,9 @@ RUN set -eux; \
 # small and CSS font-weight works across the whole range.
 COPY fonts/ /usr/local/share/fonts/docforge/
 
+# Brand-specific faces, staged from brands/<id>/fonts by stage.mjs.
+COPY pipeline/fonts/ /usr/local/share/fonts/docforge-brands/
+
 # Alias design-intent family names onto the variable-font family names the
 # binaries actually register under. Without this fontconfig falls back to
 # DejaVu/Liberation and every build still reports success.
@@ -67,6 +70,7 @@ COPY fontconfig/49-docforge-aliases.conf /etc/fonts/conf.d/49-docforge-aliases.c
 RUN fc-cache -f > /dev/null 2>&1 || true; \
     fc-match "Inter" | grep -qi "inter" || (echo "FONT ALIAS FAILED: Inter" >&2; exit 1); \
     fc-match "Source Serif 4" | grep -qi "sourceserif" || (echo "FONT ALIAS FAILED: Source Serif 4" >&2; exit 1); \
+    fc-match "Cormorant Garamond" | grep -qi "cormorant" || (echo "FONT MISSING: Cormorant Garamond (North Face)" >&2; exit 1); \
     echo "font aliases verified"
 
 # --- python deps -----------------------------------------------------------

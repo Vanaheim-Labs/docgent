@@ -2,6 +2,11 @@ id: vanaheim
 name: Vanaheim Partners
 tagline: Strategy & Advisory
 
+# Where this brand's documents are stored. One pipeline, many document repos:
+# a brand owned by a different org keeps its documents in that org, so access
+# control follows ownership rather than convenience.
+repo: Vanaheim-Labs/docforge
+
 typography:
   serif: "Source Serif 4, Georgia, serif"
   sans: "Inter, Helvetica Neue, Arial, sans-serif"

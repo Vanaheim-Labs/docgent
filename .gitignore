@@ -31,3 +31,12 @@ apps/studio/.vercel
 
 # batch dry-run scratch space
 .dryrun/
+
+# QA render output — never commit, may contain confidential document pages
+nf-extract/
+nfqa/
+
+# North Face document + design-system source lives in
+# north-face-investments/docforge-documents, never in the pipeline repo.
+brands/northface/source/
+documents/northface/

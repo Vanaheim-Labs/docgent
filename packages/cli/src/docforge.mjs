@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { renderDocument, ROOT, loadBrand } from "../../core/src/render.mjs";
+import { renderDocument, ROOT, loadBrand, brandRepo, brandRepoMap } from "../../core/src/render.mjs";
 import { validateDoc } from "../../vocabulary/src/validate.mjs";
 
 const argv = process.argv.slice(2);
@@ -60,7 +60,9 @@ Git-backed (reads the repo through the GitHub API, as Studio will):
 Remote rendering uses the render worker (see apps/render-worker), so output
 matches production regardless of what is installed locally.
 Env: DOCFORGE_RENDER_URL, DOCFORGE_API_KEY
-Git:  DOCFORGE_GH_TOKEN (or GITHUB_TOKEN), DOCFORGE_REPO=owner/repo
+Git:  DOCFORGE_GH_TOKEN (or GITHUB_TOKEN)
+      Repo is resolved per brand from brand.yaml 'repo'; --repo or
+      DOCFORGE_REPO override it.
 `;
 
 /** Emits a machine-readable result when --json is set, human text otherwise. */
@@ -73,10 +75,12 @@ function report(payload, humanFn) {
 }
 
 /**
- * Builds git + document stores from the environment.
- * Falls back to the gh CLI's token so local use needs no extra setup.
+ * Builds git + document stores for a brand.
+ *
+ * The repo is resolved from the brand, so commands that touch git must say
+ * which brand they mean. Falls back to the gh CLI's token for local use.
  */
-async function makeStores() {
+async function makeStores(brandId) {
   const { GitStore } = await import("../../git-store/src/index.mjs");
   const { DocumentStore } = await import("../../git-store/src/documents.mjs");
 
@@ -92,10 +96,12 @@ async function makeStores() {
     process.exit(2);
   }
 
-  const slug = process.env.DOCFORGE_REPO || "Vanaheim-Labs/docforge";
+  // Repo follows the brand: North Face documents belong in the North Face org,
+  // not wherever DOCFORGE_REPO happened to point.
+  const slug = brandRepo(brandId, { override: flag("repo") });
   const [owner, repo] = slug.split("/");
   const git = new GitStore({ owner, repo, token, branch: process.env.DOCFORGE_BRANCH || "main" });
-  return { git, docs: new DocumentStore(git) };
+  return { git, docs: new DocumentStore(git), repo: slug };
 }
 
 function slugify(s) {
@@ -108,7 +114,7 @@ switch (cmd) {
     for (const b of fs.readdirSync(dir)) {
       try {
         const brand = loadBrand(b);
-        console.log(`${b.padEnd(14)} ${brand.name || ""}`);
+        console.log(`${b.padEnd(14)} ${(brand.name || "").padEnd(24)} ${brandRepo(b)}`);
       } catch {}
     }
     break;
@@ -334,7 +340,8 @@ Body copy goes here.
   // web UI honest about sharing one source of truth.
 
   case "remote-docs": {
-    const { git, docs } = await makeStores();
+    const { git, docs, repo } = await makeStores(flag("brand"));
+    console.log(`repo ${repo}`);
     const { documents, treeSha } = await docs.listDocuments({ brand: flag("brand") });
     console.log(`tree ${treeSha.slice(0, 7)} — ${documents.length} document(s)`);
     for (const d of documents) {
@@ -351,7 +358,7 @@ Body copy goes here.
       process.exit(2);
     }
     const [brand, slug] = target.split("/");
-    const { docs } = await makeStores();
+    const { docs } = await makeStores(brand);
     const tl = await docs.timeline(brand, slug, { limit: Number(flag("limit", 20)) });
     if (!tl.length) {
       console.log("no history (is the document committed?)");
@@ -369,7 +376,8 @@ Body copy goes here.
   case "git-check": {
     // Live integration check against a scratch branch. Proves optimistic
     // concurrency works against real GitHub, not just the stubbed tests.
-    const { git, docs } = await makeStores();
+    const { git, docs, repo } = await makeStores(flag("brand"));
+    console.log(`repo ${repo}`);
     const { StaleWriteError } = await import("../../git-store/src/index.mjs");
     const branch = `docforge-check-${Date.now().toString(36)}`;
     const results = [];

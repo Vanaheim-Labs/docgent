@@ -131,6 +131,13 @@ frontmatter:
     - cover_image
     - toc
     - footer_note
+    # Deal/offer documents (investment memoranda, term sheets). Kept in the
+    # shared registry rather than a brand-local one: a second brand issuing
+    # an IM should describe the raise with the same keys.
+    - capital_sought
+    - instrument
+    - target_close
+    - contact
   enums:
     classification: [public, internal, confidential, restricted]
     status: [draft, review, approved, released, superseded]

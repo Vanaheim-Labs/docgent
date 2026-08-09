@@ -21,14 +21,18 @@ $else$
   <h1 class="cover-title">$title$</h1>
   $if(subtitle)$<p class="cover-subtitle">$subtitle$</p>$endif$
   <div class="cover-rule"></div>
-  <dl class="cover-meta">
-    $if(client)$<div><dt>Prepared for</dt><dd>$client$</dd></div>$endif$
-    $if(author)$<div><dt>Prepared by</dt><dd>$author$</dd></div>$endif$
-    <div><dt>Version</dt><dd>$version$</dd></div>
-    <div><dt>Date</dt><dd>$date$</dd></div>
-    $if(reference)$<div><dt>Reference</dt><dd>$reference$</dd></div>$endif$
+  <dl class="cover-meta cover-meta-grid">
+    $if(client)$<div class="cover-meta-item"><dt class="cover-meta-label">Prepared for</dt><dd class="cover-meta-value">$client$</dd></div>$endif$
+    $if(author)$<div class="cover-meta-item"><dt class="cover-meta-label">Prepared by</dt><dd class="cover-meta-value">$author$</dd></div>$endif$
+    <div class="cover-meta-item"><dt class="cover-meta-label">Version</dt><dd class="cover-meta-value">$version$</dd></div>
+    <div class="cover-meta-item"><dt class="cover-meta-label">Date</dt><dd class="cover-meta-value">$date$</dd></div>
+    $if(reference)$<div class="cover-meta-item"><dt class="cover-meta-label">Reference</dt><dd class="cover-meta-value">$reference$</dd></div>$endif$
+    $if(capital_sought)$<div class="cover-meta-item"><dt class="cover-meta-label">Capital sought</dt><dd class="cover-meta-value">$capital_sought$</dd></div>$endif$
+    $if(instrument)$<div class="cover-meta-item"><dt class="cover-meta-label">Instrument</dt><dd class="cover-meta-value">$instrument$</dd></div>$endif$
+    $if(target_close)$<div class="cover-meta-item"><dt class="cover-meta-label">Target close</dt><dd class="cover-meta-value">$target_close$</dd></div>$endif$
+    $if(contact)$<div class="cover-meta-item"><dt class="cover-meta-label">Contact</dt><dd class="cover-meta-value">$contact$</dd></div>$endif$
   </dl>
-  $if(classification)$<div class="cover-classification">$classification$$if(status)$ &middot; $status$$endif$</div>$endif$
+  $if(classification)$<div class="cover-classification">$if(classification_label)$$classification_label$$else$$classification$$endif$$if(status)$ · $status$$endif$</div>$endif$
 </section>
 $endif$
 
