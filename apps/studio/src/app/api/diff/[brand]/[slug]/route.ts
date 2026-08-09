@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { stores } from "@/lib/store";
+import { storesFor } from "@/lib/store";
 import { diffDocuments, diffHeadline } from "@/lib/diff";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +29,7 @@ export async function GET(
   }
 
   try {
-    const { docs } = stores();
+    const { docs } = storesFor(brand);
 
     const [beforeDoc, afterDoc] = await Promise.all([
       docs.readAt(brand, slug, base),

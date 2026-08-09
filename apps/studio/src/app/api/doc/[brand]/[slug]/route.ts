@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { stores } from "@/lib/store";
+import { storesFor } from "@/lib/store";
 import { loadVocabulary } from "@/lib/vocabulary";
 import { validateMarkdown } from "@/lib/validate-client";
 
@@ -22,7 +22,7 @@ export async function GET(
   const ref = new URL(req.url).searchParams.get("ref") || undefined;
 
   try {
-    const { docs } = stores();
+    const { docs } = storesFor(brand);
     const doc = ref
       ? await docs.readAt(brand, slug, ref)
       : await docs.readDocument(brand, slug);
@@ -95,7 +95,7 @@ export async function PUT(
 
   // Guard 2: optimistic concurrency, plus attribution.
   try {
-    const { docs } = stores();
+    const { docs } = storesFor(brand);
     const author = {
       name: session.user.name || (session.user as { login?: string }).login || "DocForge Studio",
       email: session.user.email || "studio@docforge.local",

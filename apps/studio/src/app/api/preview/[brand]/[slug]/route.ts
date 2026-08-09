@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { stores } from "@/lib/store";
+import { storesFor } from "@/lib/store";
 import { renderMarkdown, collectAssetsFromGit } from "@/lib/render";
 
 export const dynamic = "force-dynamic";
@@ -34,8 +34,8 @@ export async function POST(
   }
 
   try {
-    const { git } = stores();
-    const dir = `documents/${brand}/${slug}`;
+    const { git } = storesFor(brand);
+    const dir = `documents/${slug}`;
 
     let assetPaths: string[] = [];
     try {

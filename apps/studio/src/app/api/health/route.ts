@@ -1,4 +1,4 @@
-import { stores, repoSlug } from "@/lib/store";
+import { brands, storesFor } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
@@ -18,11 +18,21 @@ export async function GET() {
     worker_reachable: false,
   };
 
-  try {
-    const { git } = stores();
-    await git.head();
-    checks.repo_readable = true;
-  } catch {}
+  // Every brand store must be reachable; one broken repo is degraded, not ok.
+  const repos: Record<string, boolean> = {};
+  await Promise.all(
+    brands().map(async (b) => {
+      try {
+        const { git } = storesFor(b.id);
+        await git.head();
+        repos[b.repo] = true;
+      } catch {
+        repos[b.repo] = false;
+      }
+    })
+  );
+  const all = Object.values(repos);
+  checks.repo_readable = all.length > 0 && all.every(Boolean);
 
   try {
     const url = process.env.DOCFORGE_RENDER_URL;
@@ -36,7 +46,7 @@ export async function GET() {
 
   const ok = Object.values(checks).every(Boolean);
   return Response.json(
-    { status: ok ? "ok" : "degraded", repo: repoSlug(), checks },
+    { status: ok ? "ok" : "degraded", repos, checks },
     { status: ok ? 200 : 503 }
   );
 }

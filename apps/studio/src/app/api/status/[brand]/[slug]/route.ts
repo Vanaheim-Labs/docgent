@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { stores } from "@/lib/store";
+import { storesFor } from "@/lib/store";
 import { loadVocabulary } from "@/lib/vocabulary";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +53,7 @@ export async function POST(
   }
 
   try {
-    const { docs } = stores();
+    const { docs } = storesFor(brand);
     const doc = await docs.readDocument(brand, slug);
     const from = doc.frontmatter?.status || "draft";
 
@@ -131,7 +131,7 @@ export async function GET(
 
   const { brand, slug } = await ctx.params;
   try {
-    const { docs } = stores();
+    const { docs } = storesFor(brand);
     const doc = await docs.readDocument(brand, slug);
     const from = doc.frontmatter?.status || "draft";
     return Response.json({ status: from, allowed: TRANSITIONS[from] ?? [] });

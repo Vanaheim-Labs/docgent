@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
-import { stores, repoSlug, type DocSummary } from "@/lib/store";
+import { brands, listAllDocuments, type DocSummary } from "@/lib/store";
 import { Sidebar } from "@/components/Sidebar";
 import { UserChip } from "@/components/UserChip";
 import Link from "next/link";
@@ -13,24 +13,28 @@ export default async function Home() {
 
   let documents: DocSummary[] = [];
   let error: string | null = null;
+  let errors: { brand: string; message: string }[] = [];
 
   try {
-    const { docs } = stores();
-    const res = await docs.listDocuments();
+    const res = await listAllDocuments();
     documents = res.documents;
+    errors = res.errors;
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
 
-  const brands = [...new Set(documents.map((d) => d.brand))];
+  const configured = brands();
+  const brandIds = [...new Set(documents.map((d) => d.brand))];
 
   return (
     <div className="shell">
-      <Sidebar documents={documents} />
+      <Sidebar documents={documents} errors={errors} />
       <div className="main">
         <div className="topbar">
           <div>
-            <div className="crumb">{repoSlug()}</div>
+            <div className="crumb">
+              {configured.length} brand{configured.length === 1 ? "" : "s"}
+            </div>
             <h1 className="doc-title">Documents</h1>
           </div>
           <UserChip />
@@ -58,7 +62,7 @@ export default async function Home() {
               <div className="panel-head">
                 <span>
                   {documents.length} document{documents.length > 1 ? "s" : ""} across{" "}
-                  {brands.length} brand{brands.length > 1 ? "s" : ""}
+                  {brandIds.length} brand{brandIds.length > 1 ? "s" : ""}
                 </span>
               </div>
               <div>

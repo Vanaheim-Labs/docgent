@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { stores } from "@/lib/store";
+import { storesFor } from "@/lib/store";
 import { renderMarkdown, collectAssetsFromGit } from "@/lib/render";
 import { pdfStore, cacheKey, cacheDriver } from "@/lib/pdf-cache";
 
@@ -31,7 +31,7 @@ export async function GET(
   const ref = new URL(req.url).searchParams.get("ref") || undefined;
 
   try {
-    const { git, docs } = stores();
+    const { git, docs } = storesFor(brand);
 
     // Resolve HEAD to a concrete commit so the current version is cacheable
     // too - it stops being "current" the moment someone commits.
@@ -60,7 +60,7 @@ export async function GET(
       : await docs.readDocument(brand, slug);
 
     // Assets live beside the document; the renderer needs them inlined.
-    const dir = `documents/${brand}/${slug}`;
+    const dir = `documents/${slug}`;
     let assetPaths: string[] = [];
     try {
       const tree = await git.tree({ ref, prefix: `${dir}/assets/` });

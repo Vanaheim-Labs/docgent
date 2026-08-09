@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { redirect, notFound } from "next/navigation";
-import { stores, repoSlug, type DocSummary, type TimelineEntry } from "@/lib/store";
+import { storesFor, repoSlug, listAllDocuments, type DocSummary, type TimelineEntry } from "@/lib/store";
 import { Sidebar } from "@/components/Sidebar";
 import { UserChip } from "@/components/UserChip";
 import { VersionPanel } from "@/components/VersionPanel";
@@ -19,11 +19,12 @@ export default async function DocumentPage({ params, searchParams }: Props) {
   const { brand, slug } = await params;
   const { v: commitSha } = await searchParams;
 
-  const { docs } = stores();
+  const { docs } = storesFor(brand);
 
   let documents: DocSummary[] = [];
   try {
-    documents = (await docs.listDocuments()).documents;
+    // Sidebar spans every brand so the switcher works from any document.
+    documents = (await listAllDocuments()).documents;
   } catch {
     // sidebar degrades to empty rather than failing the page
   }
@@ -60,7 +61,7 @@ export default async function DocumentPage({ params, searchParams }: Props) {
         <div className="topbar">
           <div>
             <div className="crumb">
-              {repoSlug()} · <strong>{brand}</strong>
+              {repoSlug(brand)} · <strong>{brand}</strong>
             </div>
             <h1 className="doc-title">{fm.title || slug}</h1>
           </div>

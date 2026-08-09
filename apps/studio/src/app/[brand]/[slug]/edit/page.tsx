@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { stores, repoSlug } from "@/lib/store";
+import { storesFor, repoSlug } from "@/lib/store";
 import { loadVocabulary } from "@/lib/vocabulary";
 import { UserChip } from "@/components/UserChip";
 import { Editor } from "@/components/Editor";
@@ -18,7 +18,7 @@ export default async function EditPage({ params }: Props) {
 
   let doc;
   try {
-    const { docs } = stores();
+    const { docs } = storesFor(brand);
     doc = await docs.readDocument(brand, slug);
   } catch {
     notFound();
@@ -49,7 +49,7 @@ export default async function EditPage({ params }: Props) {
       <div className="topbar">
         <div>
           <div className="crumb">
-            {repoSlug()} · <strong>{brand}</strong> ·{" "}
+            {repoSlug(brand)} · <strong>{brand}</strong> ·{" "}
             <Link href={`/${brand}/${slug}`}>{slug}</Link>
           </div>
           <h1 className="doc-title">{fm.title || slug}</h1>
