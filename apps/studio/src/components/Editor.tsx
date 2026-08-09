@@ -23,6 +23,17 @@ const PREVIEW_DEBOUNCE_MS = 1200;
 
 type PreviewMode = "html" | "pdf";
 
+// Edit weights the source; Review weights the preview. Editing only ever
+// happens in the source, so this changes proportions, never affordances.
+type Posture = "edit" | "review";
+
+type Heading = { line: number; level: number; text: string };
+
+// A folded section hides its body lines in the source while keeping the
+// heading visible. Folding is a view state over the buffer: the underlying
+// content is never modified, so a fold can never corrupt a document.
+type Fold = { startLine: number; endLine: number };
+
 export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: Props) {
   const [content, setContent] = useState(initialContent);
   const [baseSha, setBaseSha] = useState(initialSha);
@@ -34,6 +45,9 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [pdfStale, setPdfStale] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
+  const [posture, setPosture] = useState<Posture>("edit");
+  const [showOutline, setShowOutline] = useState(true);
+  const [folded, setFolded] = useState<number[]>([]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -444,6 +458,116 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     };
   }, [mode, previewHtml, syncPreviewToEditor]);
 
+  /* ---------------- outline ---------------- */
+
+  // Headings are derived from the buffer on every change rather than cached.
+  // A stale outline that points at the wrong line is worse than no outline:
+  // the human loses trust in navigation the first time it lands them badly.
+  // Fenced code blocks are skipped so a '#' comment inside one is not
+  // mistaken for a section.
+  const headings = useMemo<Heading[]>(() => {
+    const lines = content.split("\n");
+    const out: Heading[] = [];
+    let inFence = false;
+    let inFrontmatter = false;
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i];
+      if (i === 0 && raw.trim() === "---") { inFrontmatter = true; continue; }
+      if (inFrontmatter) {
+        if (raw.trim() === "---") inFrontmatter = false;
+        continue;
+      }
+      if (/^\s*(```|~~~)/.test(raw)) { inFence = !inFence; continue; }
+      if (inFence) continue;
+      const m = raw.match(/^(#{1,6})\s+(.*\S)\s*$/);
+      if (m) out.push({ line: i + 1, level: m[1].length, text: m[2] });
+    }
+    return out;
+  }, [content]);
+
+  // A section runs to the next heading of the same or shallower level.
+  // Folding a level-1 heading therefore folds its subsections too, which is
+  // what "collapse this section" means to a reader.
+  const sectionEnd = useCallback((h: Heading): number => {
+    const lines = content.split("\n").length;
+    const idx = headings.findIndex((x) => x.line === h.line);
+    for (let i = idx + 1; i < headings.length; i++) {
+      if (headings[i].level <= h.level) return headings[i].line - 1;
+    }
+    return lines;
+  }, [content, headings]);
+
+  const folds = useMemo<Fold[]>(() => {
+    return folded
+      .map((line) => {
+        const h = headings.find((x) => x.line === line);
+        if (!h) return null;
+        const end = sectionEnd(h);
+        return end > h.line ? { startLine: h.line, endLine: end } : null;
+      })
+      .filter((f): f is Fold => f !== null)
+      .sort((a, b) => a.startLine - b.startLine);
+  }, [folded, headings, sectionEnd]);
+
+  // Folds are a view over the buffer, so the textarea must show a reduced
+  // string. Editing while folded is disabled rather than remapped: mapping
+  // cursor offsets back through hidden ranges is a well-known source of
+  // silent corruption, and this document is the source of truth for a client
+  // deliverable. Fold to navigate, unfold to edit.
+  const displayContent = useMemo(() => {
+    if (folds.length === 0) return content;
+    const lines = content.split("\n");
+    const out: string[] = [];
+    let i = 0;
+    while (i < lines.length) {
+      const ln = i + 1;
+      const fold = folds.find((f) => f.startLine === ln);
+      if (fold) {
+        out.push(lines[i]);
+        const hidden = fold.endLine - fold.startLine;
+        out.push(`⋯ ${hidden} line${hidden === 1 ? "" : "s"} folded`);
+        i = fold.endLine;
+        continue;
+      }
+      out.push(lines[i]);
+      i++;
+    }
+    return out.join("\n");
+  }, [content, folds]);
+
+  const isFolded = folds.length > 0;
+
+  const toggleFold = useCallback((line: number) => {
+    setFolded((prev) =>
+      prev.includes(line) ? prev.filter((l) => l !== line) : [...prev, line]
+    );
+  }, []);
+
+  // Jumping unfolds anything covering the target, otherwise the scroll lands
+  // on a collapsed placeholder and the human sees nothing.
+  const jumpToLine = useCallback((line: number) => {
+    setFolded((prev) =>
+      prev.filter((f) => {
+        const h = headings.find((x) => x.line === f);
+        if (!h) return false;
+        if (h.line === line) return false;
+        return !(line > h.line && line <= sectionEnd(h));
+      })
+    );
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      offsets.current = null;
+      const offs = lineOffsets();
+      const idx = Math.min(offs.length - 2, Math.max(0, line - 1));
+      el.scrollTop = Math.max(0, offs[idx] - 8);
+      el.focus();
+      const pos = content.split("\n").slice(0, line - 1).join("\n").length + (line > 1 ? 1 : 0);
+      el.setSelectionRange(pos, pos);
+      syncEditorToPreview();
+    });
+  }, [headings, sectionEnd, lineOffsets, content, syncEditorToPreview]);
+
   /* ---------------- snippet insertion ---------------- */
 
   const insertSnippet = useCallback((snippet: string) => {
@@ -498,7 +622,38 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           <button className="btn btn-secondary" onClick={() => setShowPalette((v) => !v)}>
             Insert block <kbd>⌘/</kbd>
           </button>
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowOutline((v) => !v)}
+            data-active={showOutline}
+            title="Toggle document outline"
+          >
+            Outline
+          </button>
+          <div className="mode-toggle" role="group" aria-label="Working posture">
+            <button
+              className="mode-btn"
+              data-active={posture === "edit"}
+              onClick={() => setPosture("edit")}
+              title="Authoring — source takes the space"
+            >
+              Edit
+            </button>
+            <button
+              className="mode-btn"
+              data-active={posture === "review"}
+              onClick={() => setPosture("review")}
+              title="Judgement — read it as the reader will"
+            >
+              Review
+            </button>
+          </div>
           <span className="editor-stat">{lineCount} lines · {wordCount} words</span>
+          {isFolded && (
+            <span className="diag-pill" data-severity="warning" title="Unfold to edit">
+              folded — read only
+            </span>
+          )}
         </div>
 
         <div className="editor-toolbar-right">
@@ -589,15 +744,61 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
       )}
 
-      <div className="editor-panes">
-        <div className="pane pane-source">
+      <div className="editor-panes" data-posture={posture}>
+        <div className="pane pane-source" data-outline={showOutline && headings.length > 0}>
+          {showOutline && headings.length > 0 && (
+            <nav className="outline" aria-label="Document outline">
+              <div className="outline-head">
+                <span>Outline</span>
+                <span className="outline-count">{headings.length}</span>
+              </div>
+              <div className="outline-list">
+                {headings.map((h) => {
+                  const foldable = sectionEnd(h) > h.line;
+                  const isOpen = !folded.includes(h.line);
+                  return (
+                    <div key={h.line} className="outline-row" data-level={h.level}>
+                      <button
+                        className="outline-fold"
+                        onClick={() => toggleFold(h.line)}
+                        disabled={!foldable}
+                        aria-label={isOpen ? "Fold section" : "Unfold section"}
+                        title={foldable ? (isOpen ? "Fold section" : "Unfold section") : "Nothing to fold"}
+                      >
+                        {foldable ? (isOpen ? "▾" : "▸") : "·"}
+                      </button>
+                      <button
+                        className="outline-link"
+                        onClick={() => jumpToLine(h.line)}
+                        title={`Line ${h.line}`}
+                      >
+                        {h.text}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </nav>
+          )}
           <textarea
             ref={textareaRef}
             className="source"
-            value={content}
+            value={displayContent}
             spellCheck={false}
+            readOnly={isFolded}
+            title={isFolded ? "Unfold to edit — folding is for navigation" : undefined}
+            // Grammarly attaches to the textarea and nowhere else. It cannot
+            // reach the preview iframe, which is what keeps the layers clean:
+            // AI lifts sections, Grammarly polishes sentences.
+            data-gramm="true"
+            data-gramm_editor="true"
+            data-enable-grammarly="true"
             onScroll={syncEditorToPreview}
             onChange={(e) => {
+              // Guarded rather than remapped: while folded the visible string
+              // is a projection, so an offset-based write would corrupt the
+              // buffer. Folding is navigation, not an editing mode.
+              if (isFolded) return;
               setContent(e.target.value);
               if (save.kind === "saved") setSave({ kind: "idle" });
             }}

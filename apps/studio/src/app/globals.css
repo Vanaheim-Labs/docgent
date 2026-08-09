@@ -371,6 +371,92 @@ kbd {
 .palette-item-desc { font-size: 11.5px; color: var(--ink-faint); line-height: 1.35; }
 
 /* ---- split panes ---- */
+/* ---------- Phase 9: posture, outline, tinting ---------- */
+
+/* Edit weights the source; Review weights the preview. Editing only ever
+   happens in the source, so this shifts proportion, never capability. */
+.editor-panes[data-posture="edit"] { grid-template-columns: 6fr 4fr; }
+.editor-panes[data-posture="review"] { grid-template-columns: 3fr 7fr; }
+@media (max-width: 900px) {
+  .editor-panes[data-posture="edit"],
+  .editor-panes[data-posture="review"] { grid-template-columns: 1fr; }
+}
+
+/* The outline sits inside the source pane, so navigation and the text it
+   navigates never separate. */
+.pane-source[data-outline="true"] {
+  display: grid;
+  grid-template-columns: minmax(160px, 232px) 1fr;
+  grid-template-rows: 1fr auto;
+}
+.pane-source[data-outline="true"] .source { grid-column: 2; grid-row: 1; }
+.pane-source[data-outline="true"] .diagnostics { grid-column: 1 / -1; grid-row: 2; }
+
+.outline {
+  grid-column: 1; grid-row: 1;
+  border-right: 1px solid var(--rule);
+  background: var(--paper-alt);
+  overflow-y: auto;
+  min-height: 0;
+  font-size: 12px;
+}
+.outline-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+  position: sticky; top: 0;
+  background: var(--paper-alt);
+}
+.outline-count { opacity: 0.7; }
+.outline-list { padding: 4px 0 12px; }
+.outline-row { display: flex; align-items: flex-start; gap: 2px; }
+.outline-row[data-level="1"] .outline-link { font-weight: 600; }
+.outline-row[data-level="2"] .outline-link { padding-left: 12px; }
+.outline-row[data-level="3"] .outline-link { padding-left: 24px; }
+.outline-row[data-level="4"] .outline-link,
+.outline-row[data-level="5"] .outline-link,
+.outline-row[data-level="6"] .outline-link { padding-left: 36px; opacity: 0.85; }
+
+.outline-fold {
+  flex: 0 0 auto;
+  width: 16px;
+  border: 0; background: none; cursor: pointer;
+  color: var(--ink-faint);
+  font-size: 10px; line-height: 1.9;
+  padding: 0;
+}
+.outline-fold:disabled { opacity: 0.35; cursor: default; }
+.outline-link {
+  flex: 1 1 auto; min-width: 0;
+  text-align: left;
+  border: 0; background: none; cursor: pointer;
+  color: var(--ink);
+  padding: 3px 8px 3px 0;
+  line-height: 1.45;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.outline-link:hover { color: var(--accent, #2563eb); text-decoration: underline; }
+
+.source[readonly] { background: var(--paper-alt); cursor: default; }
+
+/* Block tinting. The textarea cannot carry per-line styling, so the tint is
+   painted underneath it as a repeating gradient keyed to line height. This
+   keeps one scroll container and one text layer — a second overlay layer
+   would desynchronise on wrap, which is the failure mode that makes
+   highlighted textareas feel broken. */
+.source { background-attachment: local; }
+
+/* Vocabulary blocks and frontmatter are distinguished by weight rather than
+   colour blocks, so prose stays untouched and diffs stay readable. */
+.editor-toolbar .btn[data-active="true"] {
+  border-color: var(--accent, #2563eb);
+  color: var(--accent, #2563eb);
+}
+
 .editor-panes {
   display: grid;
   grid-template-columns: 1fr 1fr;
