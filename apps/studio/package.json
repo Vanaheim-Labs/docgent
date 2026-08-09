@@ -9,6 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@docforge/core": "0.1.0",
+    "@docforge/git-store": "0.1.0",
+    "@docforge/vocabulary": "0.1.0",
     "next": "15.5.23",
     "react": "19.0.0",
     "react-dom": "19.0.0",
