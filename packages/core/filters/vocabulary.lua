@@ -160,6 +160,19 @@ function Div(el)
     end
     return out
 
+  elseif has('note') then
+    -- Editorial direction for the next AI pass. Never part of the document.
+    -- Emitted so Studio's preview can show it as a margin flag; hidden in print.
+    local author = el.attributes['author']
+    local resolved = attrget(el, 'resolved', 'false')
+    local head = '<aside class="note" data-resolved="' .. esc(resolved) .. '"'
+    if author then head = head .. ' data-author="' .. esc(author) .. '"' end
+    head = head .. '>'
+    local out = { raw(head) }
+    for _, b in ipairs(el.content) do table.insert(out, b) end
+    table.insert(out, raw('</aside>'))
+    return out
+
   elseif has('summary') then
     local out = { raw('<section class="summary">') }
     for _, b in ipairs(el.content) do table.insert(out, b) end

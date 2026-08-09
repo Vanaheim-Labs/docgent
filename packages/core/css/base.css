@@ -233,6 +233,12 @@ blockquote {
   color: var(--ink-faint);
 }
 
+/* ---------- Vocabulary: note ---------- */
+/* Editorial direction for the next AI pass — never part of the document.
+   Hidden in print by default. Studio's preview overrides this to show
+   notes as margin flags. */
+.note { display: none; }
+
 /* ---------- Vocabulary: callout ---------- */
 .callout {
   break-inside: avoid;
