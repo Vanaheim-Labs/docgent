@@ -79,7 +79,8 @@ export default async function DocumentPage({ params, searchParams }: Props) {
                 marginBottom: 16,
               }}
             >
-              Viewing version {viewing?.version ?? "?"} ({commitSha.slice(0, 7)}) —{" "}
+              Viewing revision {viewing?.version ?? "?"} ({commitSha.slice(0, 7)})
+              {fm.version ? ` · document version ${fm.version}` : ""} —{" "}
               <a href={`/${brand}/${slug}`}>back to current</a>
             </div>
           )}
@@ -148,6 +149,7 @@ export default async function DocumentPage({ params, searchParams }: Props) {
                   timeline={timeline}
                   currentStatus={fm.status || "draft"}
                   viewingSha={commitSha}
+                  docVersion={fm.version}
                 />
               )}
             </div>

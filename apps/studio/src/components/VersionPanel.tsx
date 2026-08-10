@@ -55,12 +55,24 @@ export function VersionPanel({
   timeline,
   currentStatus,
   viewingSha,
+  docVersion,
 }: {
   brand: string;
   slug: string;
   timeline: TimelineEntry[];
   currentStatus: string;
   viewingSha?: string;
+  /**
+   * The `version:` value from the document's own frontmatter.
+   *
+   * Deliberately distinct from `TimelineEntry.version`, which is a count of
+   * commits touching the path. The two are independent: an author can bump
+   * (or, via a restore, roll back) the frontmatter version without any
+   * relationship to how many revisions exist. Showing a revision count
+   * prefixed with "v" made them look like the same number and produced a
+   * document whose cover read v14 next to a panel reading v11.
+   */
+  docVersion?: string;
 }) {
   const [compareBase, setCompareBase] = useState<string | null>(null);
   const [diff, setDiff] = useState<DiffResult | null>(null);
@@ -114,11 +126,13 @@ export function VersionPanel({
    * Confirmation is warranted because this lands on the timeline immediately
    * rather than opening in the editor first.
    */
-  const restore = useCallback(async (sha: string, version: number) => {
+  const restore = useCallback(async (sha: string, revision: number) => {
     if (!window.confirm(
-      `Restore v${version} (${sha.slice(0, 7)})?\n\n` +
-      "This writes its content back as a new version on top of the current one. " +
-      "Nothing in the history is rewritten."
+      `Restore revision ${revision} (${sha.slice(0, 7)})?\n\n` +
+      "This writes its content back as a new revision on top of the current one. " +
+      "Nothing in the history is rewritten.\n\n" +
+      "Note: this also restores that revision's frontmatter version, which may " +
+      "move the document version backwards."
     )) return;
 
     setRestoring(sha);
@@ -207,9 +221,24 @@ export function VersionPanel({
 
       <div className="panel">
         <div className="panel-head">
-          <span>Version history</span>
-          <span style={{ textTransform: "none", letterSpacing: 0 }}>{timeline.length}</span>
+          <span>Revision history</span>
+          <span style={{ textTransform: "none", letterSpacing: 0 }}>
+            {timeline.length} {timeline.length === 1 ? "revision" : "revisions"}
+          </span>
         </div>
+
+        {docVersion && (
+          <div className="panel-body" style={{ paddingBottom: 0 }}>
+            <div className="meta-row">
+              <span className="meta-key">Document version</span>
+              <span className="meta-val">{docVersion}</span>
+            </div>
+            <div className="approval-note" style={{ marginTop: 6 }}>
+              Set by <code>version:</code> in the document&rsquo;s frontmatter. Independent
+              of the revision count below, which counts commits.
+            </div>
+          </div>
+        )}
 
         {restoreError && (
           <div className="panel-body" style={{ paddingBottom: 0 }}>
@@ -229,7 +258,7 @@ export function VersionPanel({
             return (
               <div key={t.sha} className="version" data-current={isViewing}>
                 <div className="version-head">
-                  <span className="version-num">v{t.version}</span>
+                  <span className="version-num">r{t.version}</span>
                   <span className="version-sha">{t.shortSha}</span>
                   {t.isCurrent && (
                     <span className="badge" style={{ marginLeft: "auto" }}>current</span>
