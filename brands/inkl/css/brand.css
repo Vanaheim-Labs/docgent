@@ -1,81 +1,83 @@
 /* inkl — brand overlay.
  *
- * Derived from Inkl's established document design system as used across
- * 80+ internal documents (strategic reports, partner briefs, memos, etc.)
- * produced by Inky since March 2026.
+ * Reference: Inkl Shareholder Update FY26 (August 2026).
+ * Design language: Manrope (sans, body + headings) + Inconsolata (mono,
+ * labels/headers/footers). Orange accent, dark covers, clean and corporate.
  *
- * Design language: Lora (serif headings) + Manrope (sans body) + Inconsolata
- * (mono labels). Purple/orange dual accent. Clean, modern, data-rich.
- *
- * @page rules retained here: this brand uses a centered light cover page
- * with inline SVG logo, distinct from the full-bleed dark pattern.
+ * Deliberately Manrope-dominant. Lora is available for optional serif
+ * emphasis (cover taglines, pullquotes) but is NOT the default heading face.
  */
 
-/* ─── CUSTOM PROPERTIES (extended beyond brand.yaml tokens) ────────────── */
+/* ─── CUSTOM PROPERTIES ────────────────────────────────────────────────── */
 :root {
   --body-align: left;
   --body-hyphens: none;
-  /* Extended palette — surfaced as CSS vars for use in brand components */
-  --accent-text: #4E3C80;
+  /* Ink hierarchy */
+  --ink-cover: #1C2028;
+  --ink-cover-text: #FFFFFF;
+  --ink-cover-muted: #8A8F99;
+  /* Orange accent */
   --orange: #FF5E17;
   --orange-soft: #FBEBE2;
+  /* Extended palette for data cards */
   --green: #61BE88;
   --green-soft: #ECF8F3;
-  --sun: #FDB84B;
-  --sun-soft: #FAF0D5;
-  --sky: #82A9F7;
-  --sky-soft: #E7F0FC;
-  --rose: #FF95C8;
-  --rose-soft: #FAE7F0;
-  --aqua: #7DE0DB;
-  --aqua-soft: #E3F7F6;
-  --lilac: #C199E8;
-  --lilac-soft: #F0E5F7;
+  /* Callout palette */
+  --callout-bg: #F5F7FA;
+  --callout-border: #C5CBD6;
+  --callout-accent-bg: #FFF8F5;
+  --callout-accent-border: #FF5E17;
+  --callout-info-bg: #EEF3FA;
+  --callout-info-border: #6B8DB5;
+  /* Grey tones */
   --gray-dark: #333333;
   --gray-mid: #666666;
   --gray-light: #999999;
+  --gray-rule: #E0E0E0;
+  --gray-card-border: #E5E7EB;
 }
 
 /* ─── PAGE ─────────────────────────────────────────────────────────────── */
 @page {
   size: A4 portrait;
-  margin: 20mm 20mm 25mm 20mm;
+  margin: 20mm 20mm 22mm 20mm;
   background: var(--paper);
 
   @top-left {
-    content: "";
-    font-family: var(--font-sans);
-    font-size: 7pt; font-weight: 500; letter-spacing: 0.08em;
-    color: var(--gray-light); vertical-align: middle;
+    content: string(sectioneyebrow);
+    font-family: var(--font-mono);
+    font-size: 7pt; font-weight: 500; letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--orange); vertical-align: middle;
   }
   @top-right {
-    content: "";
+    content: "Inkl Pty Ltd · Confidential";
     font-family: var(--font-mono);
-    font-size: 7pt; font-weight: 500; letter-spacing: 0.08em;
-    text-transform: uppercase;
+    font-size: 7pt; font-weight: 400;
     color: var(--gray-light); vertical-align: middle;
   }
   @bottom-left {
-    content: "inkl";
-    font-family: var(--font-sans);
-    font-size: 7pt; font-weight: 600;
+    content: "Inkl Pty Ltd · ABN 62 167 159 819";
+    font-family: var(--font-mono);
+    font-size: 7pt; font-weight: 400;
     color: var(--gray-light); vertical-align: middle;
   }
   @bottom-center {
     content: counter(page);
-    font-family: var(--font-sans);
+    font-family: var(--font-mono);
     font-size: 7pt; color: var(--gray-light); vertical-align: middle;
   }
   @bottom-right {
-    content: "";
-    font-family: var(--font-sans);
-    font-size: 7pt; color: var(--gray-light); vertical-align: middle;
+    content: "Confidential — not for distribution";
+    font-family: var(--font-mono);
+    font-size: 7pt; font-weight: 400;
+    color: var(--gray-light); vertical-align: middle;
   }
 }
 
-/* Cover page: no margin adjustments, suppress running heads/feet */
+/* Cover page: no margins, no running heads/feet */
 @page cover {
-  margin: 20mm;
+  margin: 0;
   @top-left { content: none; }
   @top-right { content: none; }
   @bottom-left { content: none; }
@@ -89,7 +91,7 @@
 /* ─── BODY ──────────────────────────────────────────────────────────────── */
 body {
   font-family: var(--font-sans);
-  font-size: 10pt;
+  font-size: 10.5pt;
   line-height: 1.6;
   color: var(--ink);
   background: transparent;
@@ -97,128 +99,145 @@ body {
 }
 p { text-align: left; hyphens: none; -weasy-hyphens: none; }
 
-/* ─── COVER (centered light) ───────────────────────────────────────────── */
+/* ─── COVER (full-bleed dark, left-aligned) ────────────────────────────── */
 .cover {
   page: cover;
   page-break-after: always;
-  text-align: center;
-  padding: 60px 0 40px 0;
+  width: 210mm;
+  height: 297mm;
+  background: var(--ink-cover);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 22mm 24mm 18mm 24mm;
 }
 
-/* Logo container — expects inline SVG or <img> */
+/* Logo row: inkl wordmark + orange dot */
 .cover-logo {
-  margin-bottom: 32px;
+  margin-bottom: auto;
 }
 .cover-logo svg,
 .cover-logo img {
-  width: 140px;
-  height: auto;
+  height: 22px;
+  width: auto;
 }
 
-/* Confidentiality / document-type label above title */
-.cover-super,
-.cover-eyebrow {
+/* Eyebrow: classification · document type */
+.cover-eyebrow,
+.cover-super {
   font-family: var(--font-mono);
-  font-size: 9pt;
+  font-size: 8pt;
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--gray-mid);
-  margin-bottom: 8px;
+  letter-spacing: 0.12em;
+  color: var(--orange);
+  margin-bottom: 4mm;
 }
 
-/* Main title */
+/* Main title — Manrope bold, white, left-aligned */
 .cover-title {
-  font-family: var(--font-serif);
-  font-size: 28pt;
-  font-weight: 400;
-  color: var(--ink);
-  line-height: 1.2;
-  margin-bottom: 8px;
+  font-family: var(--font-sans);
+  font-size: 38pt;
+  font-weight: 700;
+  line-height: 1.08;
+  color: var(--ink-cover-text);
+  margin-bottom: 5mm;
+  max-width: 160mm;
   border: none;
 }
+/* Orange emphasis within title */
+.cover-title em {
+  font-style: normal;
+  color: var(--orange);
+}
 
-/* Orange accent bar */
+/* Orange bar below title */
 .cover-rule {
-  width: 80px;
+  width: 40mm;
   height: 3px;
   background: var(--orange);
-  margin: 24px auto;
+  margin-bottom: 8mm;
 }
 
-/* Subtitle */
+/* Subtitle / tagline */
 .cover-subtitle {
-  font-family: var(--font-serif);
-  font-size: 13pt;
-  font-weight: 400;
-  color: var(--accent-text);
-  margin-top: 12px;
-  line-height: 1.5;
+  font-family: var(--font-sans);
+  font-size: 11pt;
+  font-weight: 300;
+  color: var(--ink-cover-muted);
+  line-height: 1.55;
+  max-width: 140mm;
+  margin-bottom: auto;
 }
 
-/* Meta line (date, version, classification) */
-.cover-meta-grid {
+/* Cover footer: company details */
+.cover-footer {
+  border-top: 1px solid #3A3D44;
+  padding-top: 5mm;
   font-family: var(--font-mono);
-  font-size: 9pt;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--gray-mid);
-  margin-top: 40px;
+  font-size: 7pt;
+  font-weight: 400;
+  color: var(--ink-cover-muted);
+  letter-spacing: 0.04em;
+  display: flex;
+  justify-content: space-between;
+}
+.cover-footer-left,
+.cover-footer-right {
+  color: var(--ink-cover-muted);
+}
+
+/* Cover meta grid (for documents that show prepared-by / version / date) */
+.cover-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6mm;
+  margin-bottom: 12mm;
 }
 .cover-meta-label {
   font-family: var(--font-mono);
-  font-size: 7pt;
+  font-size: 6.5pt;
   font-weight: 500;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--gray-mid);
-  margin-bottom: 2px;
+  color: var(--ink-cover-muted);
+  margin-bottom: 1.5mm;
 }
 .cover-meta-value {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: 11pt;
-  font-weight: 500;
-  color: var(--ink);
+  font-weight: 600;
+  color: var(--ink-cover-text);
   line-height: 1.3;
 }
 
-/* Status chip (draft/review/approved) */
+/* Status chip */
 .cover-status-chip {
   display: inline-block;
-  margin-top: 8px;
+  margin-top: 3mm;
   padding: 1mm 3mm;
-  border: 1px solid var(--gray-light);
-  border-radius: 2mm;
+  border: 1px solid #555;
+  border-radius: 1mm;
   font-family: var(--font-mono);
-  font-size: 7pt;
+  font-size: 6pt;
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--gray-mid);
-}
-
-/* Cover footer */
-.cover-footer {
-  margin-top: 40px;
-  padding-top: 12px;
-  border-top: 1px solid #E0E0E0;
-  font-size: 8pt;
-  color: var(--gray-light);
-  text-align: center;
+  color: var(--ink-cover-muted);
 }
 
 /* ─── SECTION STRUCTURE ─────────────────────────────────────────────────── */
 .content { padding: 0; }
 
-/* Section eyebrow — orange numbered label */
+/* Section eyebrow — orange label, pushed to running header */
 .section-number {
   font-family: var(--font-mono);
   font-weight: 500;
-  font-size: 9pt;
+  font-size: 8pt;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   color: var(--orange);
-  margin-bottom: 2px;
+  margin-bottom: 3mm;
   break-before: page;
   page-break-before: always;
   break-after: avoid;
@@ -234,28 +253,27 @@ p { text-align: left; hyphens: none; -weasy-hyphens: none; }
   page-break-before: avoid;
 }
 
-/* ─── HEADINGS ──────────────────────────────────────────────────────────── */
+/* ─── HEADINGS (all Manrope) ────────────────────────────────────────────── */
 h1 {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: 22pt;
-  font-weight: 400;
+  font-weight: 700;
   color: var(--ink);
-  border-bottom: 2px solid var(--ink);
-  padding-bottom: 6px;
-  margin-top: 36px;
+  border-bottom: 2px solid var(--orange);
+  padding-bottom: 5px;
+  margin-top: 10mm;
   margin-bottom: 5mm;
   letter-spacing: -0.02em;
+  line-height: 1.15;
 }
 
 h2 {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: 14pt;
-  font-weight: 400;
-  color: var(--accent-text);
-  margin-top: 26px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-top: 8mm;
   margin-bottom: 3mm;
-  border-bottom: 1px solid var(--accent-soft);
-  padding-bottom: 4px;
   letter-spacing: -0.01em;
   page-break-after: avoid;
 }
@@ -265,30 +283,31 @@ h3 {
   font-size: 11pt;
   font-weight: 600;
   color: var(--ink);
-  margin-top: 18px;
+  margin-top: 6mm;
   margin-bottom: 2mm;
   page-break-after: avoid;
 }
 
 /* ─── BODY TEXT ─────────────────────────────────────────────────────────── */
-p { margin-bottom: 3mm; color: var(--ink); }
+p { margin-bottom: 3.5mm; color: var(--ink); }
 strong { font-weight: 600; }
 em { font-style: italic; }
 
 ul, ol { margin: 2mm 0 4mm 5mm; padding: 0; }
-li { margin-bottom: 1.5mm; padding-left: 2mm; }
+li { margin-bottom: 2mm; padding-left: 2mm; line-height: 1.55; }
+ul li::marker { color: var(--ink); font-size: 6pt; }
 
 /* ─── TABLES ────────────────────────────────────────────────────────────── */
 table {
   width: 100%;
   border-collapse: collapse;
-  margin: 14px 0;
-  font-size: 9pt;
+  margin: 5mm 0;
+  font-size: 9.5pt;
   page-break-inside: avoid;
 }
 thead th {
   font-family: var(--font-mono);
-  font-size: 8pt;
+  font-size: 7.5pt;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--gray-mid);
@@ -298,15 +317,16 @@ thead th {
 }
 tbody td {
   padding: 7px 8px;
-  border-bottom: 1px solid #E8E8E8;
+  border-bottom: 1px solid var(--gray-rule);
   vertical-align: top;
+  line-height: 1.5;
 }
 tbody tr:last-child td {
   border-bottom: 1px solid var(--ink);
 }
 tfoot tr {
-  background: var(--accent-soft);
-  border-top: 2px solid var(--accent);
+  background: #F5F7FA;
+  border-top: 2px solid var(--orange);
 }
 tfoot td {
   padding: 6px 8px;
@@ -315,147 +335,169 @@ tfoot td {
 }
 
 /* ─── CALLOUT ───────────────────────────────────────────────────────────── */
-/* Inkl callouts are light-background with coloured left border */
+/* Default: light grey-blue background, grey-blue left border */
 .callout,
 .callout[data-kind] {
-  background: var(--accent-soft);
-  border-left: 3px solid var(--accent);
-  padding: 12px 16px;
-  margin: 14px 0;
-  font-size: 9.5pt;
-  border-radius: 0 4px 4px 0;
+  background: var(--callout-bg);
+  border-left: 3px solid var(--callout-border);
+  padding: 14px 18px;
+  margin: 5mm 0;
+  font-size: 10pt;
+  border-radius: 0;
   page-break-inside: avoid;
 }
-.callout[data-kind="warning"] {
-  background: var(--orange-soft);
-  border-left-color: var(--orange);
+/* Callout title label — orange, Inconsolata uppercase */
+.callout .callout-title {
+  font-family: var(--font-mono);
+  font-size: 8pt;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--orange);
+  margin-bottom: 3mm;
 }
+.callout p { margin: 0; }
+.callout p + p { margin-top: 2.5mm; }
+.callout strong { font-weight: 600; }
+
+/* Warning / priority callouts: orange border */
+.callout[data-kind="warning"] {
+  background: var(--callout-accent-bg);
+  border-left-color: var(--callout-accent-border);
+}
+/* Success: green accent */
 .callout[data-kind="success"] {
   background: var(--green-soft);
   border-left-color: var(--green);
 }
+/* Risk: deeper orange/red */
 .callout[data-kind="risk"] {
-  background: #FDECEC;
+  background: #FFF5F5;
   border-left-color: #CC3333;
 }
+/* Info: blue-tinted */
 .callout[data-kind="info"] {
-  background: var(--sky-soft);
-  border-left-color: var(--sky);
+  background: var(--callout-info-bg);
+  border-left-color: var(--callout-info-border);
 }
-.callout p { margin: 0; }
-.callout p + p { margin-top: 6px; }
+/* Note: default styling (grey-blue) */
 
-/* ─── DATA CARD (Inkl's signature metric display) ───────────────────────── */
-/* Not in the vocabulary yet — these are rendered via keyfigure blocks.
- * The styling maps to keyfigure's output structure. */
+/* ─── KEY FIGURE (data cards) ───────────────────────────────────────────── */
+/* Row of cards with thin grey borders, white background */
 .keyfigure {
-  background: var(--accent-soft);
-  border-radius: 6px;
+  background: var(--paper);
+  border: 1px solid var(--gray-card-border);
+  border-radius: 0;
   padding: 14px 18px;
-  margin: 14px 0;
+  margin: 4mm 0;
   page-break-inside: avoid;
 }
 .keyfigure .keyfigure-label {
   font-family: var(--font-mono);
-  font-size: 8.5pt;
+  font-size: 7.5pt;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--gray-mid);
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 .keyfigure .keyfigure-value {
-  font-family: var(--font-serif);
-  font-size: 20pt;
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-size: 22pt;
+  font-weight: 700;
   color: var(--ink);
+  line-height: 1.2;
+}
+.keyfigure .keyfigure-detail {
+  font-size: 8.5pt;
+  color: var(--gray-mid);
+  margin-top: 2px;
 }
 /* Trend indicators */
 .keyfigure[data-trend="up"] .keyfigure-value::after {
   content: " ↑";
   color: var(--green);
-  font-size: 14pt;
+  font-size: 16pt;
 }
 .keyfigure[data-trend="down"] .keyfigure-value::after {
   content: " ↓";
   color: #CC3333;
-  font-size: 14pt;
+  font-size: 16pt;
 }
 
-/* ─── PULLQUOTE ─────────────────────────────────────────────────────────── */
+/* ─── PULLQUOTE / BLOCKQUOTE ────────────────────────────────────────────── */
 blockquote,
 .pullquote {
   margin: 6mm 0;
   padding: 5mm 8mm 5mm 10mm;
-  background: var(--accent-soft);
-  border-left: 3px solid var(--accent);
+  background: var(--callout-bg);
+  border-left: 3px solid var(--callout-border);
   page-break-inside: avoid;
 }
 blockquote p,
 .pullquote p {
   font-family: var(--font-serif);
-  font-size: 13pt;
+  font-size: 12pt;
   font-weight: 400;
-  line-height: 1.45;
+  line-height: 1.5;
   color: var(--ink);
   margin: 0;
 }
 blockquote p + p,
 .pullquote p + p { margin-top: 3mm; }
 
-/* ─── EXECUTIVE SUMMARY INTRO BAND ─────────────────────────────────────── */
+/* ─── EXEC INTRO BAND (dark) ───────────────────────────────────────────── */
 .exec-intro {
   page-break-before: always;
-  background: var(--band, #141E28);
-  margin: -20mm -20mm 12mm -20mm;
+  background: var(--ink-cover);
+  margin: -20mm -20mm 8mm -20mm;
   padding: 13mm 20mm 11mm 20mm;
   break-inside: avoid;
   page-break-inside: avoid;
-  color: var(--paper);
+  color: var(--ink-cover-text);
 }
 .exec-intro * { color: inherit; }
 .exec-intro .exec-intro-eyebrow {
   font-family: var(--font-mono);
-  font-size: 9pt;
+  font-size: 8pt;
   font-weight: 500;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--orange);
   margin-bottom: 4mm;
 }
 .exec-intro-pull {
-  font-family: var(--font-serif);
-  font-size: 19pt;
+  font-family: var(--font-sans);
+  font-size: 18pt;
   font-weight: 400;
-  line-height: 1.28;
-  color: var(--paper);
+  line-height: 1.35;
+  color: var(--ink-cover-text);
   max-width: 158mm;
 }
 .exec-intro-pull em { font-style: italic; color: var(--orange); }
 
-/* ─── PRIORITY BLOCK ────────────────────────────────────────────────────── */
-/* Recommendation blocks styled as Inkl priority cards */
+/* ─── RECOMMENDATION / PRIORITY BLOCK ───────────────────────────────────── */
 .recommendation {
   border-left: 4px solid var(--orange);
-  padding: 16px 20px;
-  margin: 20px 0;
+  padding: 14px 18px;
+  margin: 5mm 0;
   background: #FAFAFA;
-  border-radius: 0 6px 6px 0;
+  border-radius: 0;
   page-break-inside: avoid;
 }
 .recommendation .recommendation-ref {
   font-family: var(--font-mono);
-  font-size: 9pt;
+  font-size: 8pt;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--orange);
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 .recommendation .recommendation-title {
-  font-family: var(--font-serif);
-  font-size: 13pt;
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-size: 12pt;
+  font-weight: 600;
   color: var(--ink);
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 /* ─── FUNNEL ────────────────────────────────────────────────────────────── */
@@ -467,8 +509,8 @@ blockquote p + p,
 }
 .funnel-step {
   flex: 1;
-  background: var(--accent-text);
-  color: var(--paper);
+  background: var(--ink-cover);
+  color: var(--ink-cover-text);
   padding: 4mm 3mm;
   text-align: center;
   font-family: var(--font-sans);
@@ -477,11 +519,11 @@ blockquote p + p,
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.funnel-step:nth-child(odd) { background: var(--band, #141E28); }
+.funnel-step:nth-child(odd) { background: #2A2E38; }
 .funnel-sublabel {
   font-size: 6pt;
   font-weight: 400;
-  color: #BBBBCC;
+  color: var(--ink-cover-muted);
   text-transform: none;
   letter-spacing: 0;
   display: block;
@@ -491,10 +533,10 @@ blockquote p + p,
   width: 0; height: 0;
   border-top: 7mm solid transparent;
   border-bottom: 7mm solid transparent;
-  border-left: 4mm solid var(--accent-text);
+  border-left: 4mm solid var(--ink-cover);
   flex-shrink: 0;
 }
-.funnel-arrow.even { border-left-color: var(--band, #141E28); }
+.funnel-arrow.even { border-left-color: #2A2E38; }
 
 /* ─── MILESTONE GRID ────────────────────────────────────────────────────── */
 .milestone-grid {
@@ -504,7 +546,7 @@ blockquote p + p,
   margin: 5mm 0 7mm 0;
 }
 .milestone-box {
-  border: 1px solid var(--rule);
+  border: 1px solid var(--gray-card-border);
   padding: 5mm;
   page-break-inside: avoid;
 }
@@ -518,7 +560,7 @@ blockquote p + p,
   margin-bottom: 3mm;
 }
 .milestone-box ul { margin: 0; padding-left: 4mm; }
-.milestone-box li { font-size: 8.5pt; margin-bottom: 1mm; }
+.milestone-box li { font-size: 9pt; margin-bottom: 1mm; }
 
 /* ─── ALLOCATION BARS ───────────────────────────────────────────────────── */
 .allocation .funds-row {
@@ -530,26 +572,26 @@ blockquote p + p,
 }
 .allocation .funds-label {
   font-family: var(--font-sans);
-  font-size: 8.5pt;
-  color: var(--ink-soft);
+  font-size: 9pt;
+  color: var(--gray-dark);
   min-width: 52mm;
 }
 .allocation .funds-bar-wrap {
   flex: 1;
   height: 4mm;
-  background: var(--accent-soft);
+  background: #F0F0F0;
   position: relative;
 }
 .allocation .funds-bar {
   position: absolute;
   left: 0; top: 0; bottom: 0;
-  background: var(--accent);
+  background: var(--orange);
 }
 .allocation .funds-pct {
   font-family: var(--font-sans);
   font-size: 8pt;
   font-weight: 600;
-  color: var(--accent-text);
+  color: var(--ink);
   min-width: 10mm;
   text-align: right;
 }
@@ -557,52 +599,53 @@ blockquote p + p,
 /* ─── SIGNATURE ─────────────────────────────────────────────────────────── */
 .signature {
   margin-top: 8mm;
-  padding-top: 6mm;
-  border-top: 1px solid var(--rule);
+  padding-top: 0;
 }
 .signature .signature-name {
-  font-family: var(--font-serif);
-  font-size: 12pt;
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-size: 13pt;
+  font-weight: 700;
   color: var(--ink);
 }
 .signature .signature-role {
-  font-size: 9pt;
+  font-family: var(--font-mono);
+  font-size: 8pt;
   color: var(--gray-mid);
   margin-top: 1mm;
+  letter-spacing: 0.04em;
 }
 .signature .signature-date {
   font-family: var(--font-mono);
   font-size: 8pt;
   color: var(--gray-light);
-  margin-top: 2mm;
+  margin-top: 1mm;
 }
 
 /* ─── CONTENTS ──────────────────────────────────────────────────────────── */
 .toc li {
   font-family: var(--font-sans);
-  font-size: 9pt;
-  border-bottom: 1px solid var(--rule);
+  font-size: 9.5pt;
+  border-bottom: 1px solid var(--gray-rule);
   padding-bottom: 2mm;
   margin-bottom: 2mm;
 }
 .toc a { color: var(--ink); text-decoration: none; }
 
 /* ─── HORIZONTAL RULE ───────────────────────────────────────────────────── */
-hr { border: none; border-top: 1px solid var(--rule); margin: 7mm 0; }
+hr { border: none; border-top: 1px solid var(--gray-rule); margin: 7mm 0; }
 
 /* ─── DISCLAIMER / FOOTER NOTE ──────────────────────────────────────────── */
 .disclaimer {
-  font-size: 7pt;
+  font-size: 7.5pt;
   color: var(--gray-light);
   line-height: 1.5;
   margin-top: 8mm;
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--gray-rule);
   padding-top: 4mm;
   page-break-inside: avoid;
 }
 
 /* ─── CORE OVERRIDES ────────────────────────────────────────────────────── */
-/* Suppress core's auto-numbering if section eyebrows handle numbering */
+/* Suppress core auto-numbering — brand uses its own section eyebrows */
 h1.numbered::before,
 h2.numbered::before { content: none; }

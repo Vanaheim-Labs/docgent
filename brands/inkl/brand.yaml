@@ -10,48 +10,30 @@ typography:
   sans: "Manrope, -apple-system, Helvetica Neue, Arial, sans-serif"
   mono: "Inconsolata, Menlo, monospace"
   body_family: sans
-  heading_family: serif
-  base_size: 10pt
+  heading_family: sans
+  base_size: 10.5pt
   line_height: 1.6
   scale: 1.2
 
 palette:
-  ink: "#000000"
+  ink: "#1C2028"
   ink_soft: "#333333"
   ink_faint: "#999999"
-  rule: "#E8E8E8"
+  rule: "#E0E0E0"
   paper: "#FFFFFF"
-  paper_alt: "#FAFAFA"
-  # Inkl brand purple — used for h2 headings, callout borders, data cards
-  accent: "#8787ED"
-  accent_soft: "#EDEDF8"
-  # Deep purple for text emphasis (h2 text, cover subtitle)
-  accent_text: "#4E3C80"
-  # Inkl brand orange — used for section eyebrows, divider bars, priority accents
-  orange: "#FF5E17"
-  orange_soft: "#FBEBE2"
-  # Extended semantic palette
-  green: "#61BE88"
-  green_soft: "#ECF8F3"
-  sun: "#FDB84B"
-  sun_soft: "#FAF0D5"
-  sky: "#82A9F7"
-  sky_soft: "#E7F0FC"
-  rose: "#FF95C8"
-  rose_soft: "#FAE7F0"
-  aqua: "#7DE0DB"
-  aqua_soft: "#E3F7F6"
-  lilac: "#C199E8"
-  lilac_soft: "#F0E5F7"
-  # Standard semantic tones
+  paper_alt: "#F5F7FA"
+  # Inkl brand orange — primary accent throughout
+  accent: "#FF5E17"
+  accent_soft: "#FBEBE2"
+  # Semantic tones
   warning: "#FF5E17"
   warning_soft: "#FBEBE2"
   risk: "#CC3333"
-  risk_soft: "#FDECEC"
+  risk_soft: "#FFF5F5"
   success: "#61BE88"
   success_soft: "#ECF8F3"
-  # Executive band / dark ground
-  band: "#141E28"
+  # Dark ground (cover, exec band)
+  band: "#1C2028"
 
 page:
   size: A4
@@ -64,18 +46,18 @@ numbering:
   sections: true
 
 cover:
-  style: center-light
+  style: full-bleed-dark
   show_client: false
   show_classification: true
 
 footer:
-  left: "inkl"
-  center: "{{classification_label}}"
-  right: "Page {{page}}"
+  left: "Inkl Pty Ltd · ABN 62 167 159 819"
+  center: "{{page}}"
+  right: "Confidential — not for distribution"
 
 header:
-  left: ""
-  right: "{{classification_label}}"
+  left: "{{section}}"
+  right: "Inkl Pty Ltd · Confidential"
 
 classification_labels:
   public: "PUBLIC"
