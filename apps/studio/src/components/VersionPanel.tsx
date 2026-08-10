@@ -72,6 +72,9 @@ export function VersionPanel({
   const [transitioning, setTransitioning] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
 
+  const [restoring, setRestoring] = useState<string | null>(null);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+
   useEffect(() => {
     fetch(`/api/status/${brand}/${slug}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -105,6 +108,39 @@ export function VersionPanel({
       setDiffing(false);
     }
   }, [brand, slug, viewingSha]);
+
+  /**
+   * Forward revert: writes the chosen revision back as a new commit.
+   * Confirmation is warranted because this lands on the timeline immediately
+   * rather than opening in the editor first.
+   */
+  const restore = useCallback(async (sha: string, version: number) => {
+    if (!window.confirm(
+      `Restore v${version} (${sha.slice(0, 7)})?\n\n` +
+      "This writes its content back as a new version on top of the current one. " +
+      "Nothing in the history is rewritten."
+    )) return;
+
+    setRestoring(sha);
+    setRestoreError(null);
+    try {
+      const res = await fetch(`/api/restore/${brand}/${slug}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ref: sha }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setRestoreError(data.message || data.error || `Restore failed (${res.status})`);
+        return;
+      }
+      window.location.href = `/${brand}/${slug}`;
+    } catch (e) {
+      setRestoreError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRestoring(null);
+    }
+  }, [brand, slug]);
 
   const transition = useCallback(async (to: string) => {
     setTransitioning(true);
@@ -175,6 +211,12 @@ export function VersionPanel({
           <span style={{ textTransform: "none", letterSpacing: 0 }}>{timeline.length}</span>
         </div>
 
+        {restoreError && (
+          <div className="panel-body" style={{ paddingBottom: 0 }}>
+            <div className="banner" data-kind="error">{restoreError}</div>
+          </div>
+        )}
+
         {timeline.length === 0 && (
           <div className="panel-body" style={{ color: "var(--ink-faint)", fontSize: 13 }}>
             No commits found for this path.
@@ -214,6 +256,15 @@ export function VersionPanel({
                   {!t.isCurrent && (
                     <button className="version-action" onClick={() => runDiff(t.sha)}>
                       Compare
+                    </button>
+                  )}
+                  {!t.isCurrent && (
+                    <button
+                      className="version-action"
+                      disabled={restoring !== null}
+                      onClick={() => restore(t.sha, t.version)}
+                    >
+                      {restoring === t.sha ? "Restoring…" : "Restore"}
                     </button>
                   )}
                 </div>
