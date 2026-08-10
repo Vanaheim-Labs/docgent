@@ -2,6 +2,8 @@ import { auth } from "@/auth";
 import { storesFor } from "@/lib/store";
 import { loadVocabulary } from "@/lib/vocabulary";
 import { validateMarkdown } from "@/lib/validate-client";
+// Untyped ESM package in the monorepo; allowJs resolves it without types.
+import { nextVersion, setFrontmatterVersion } from "../../../../../../../../packages/core/src/version.mjs";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -17,6 +19,24 @@ export const maxDuration = 60;
  * restored revision. Restoring content is an editorial act, not an approval
  * one - reinstating an old body should not silently drag a stale 'approved'
  * back with it, or demote a released document to whatever it was at v6.
+ *
+ * The frontmatter version is bumped rather than restored, for the same class
+ * of reason. Copying an old blob forward verbatim copies its old version with
+ * it, so the newest commit ends up carrying a lower version than an earlier
+ * one - which is exactly how this document reached a state where v13 preceded
+ * v12. Readers and agents resolve "the current version" by taking the highest
+ * number, so that number has to keep rising.
+ *
+ * The bump is past the high-water mark across all history, not past HEAD. A
+ * document that reached 14.0 and was restored to 12.0 must go to 15.0, never
+ * back to 13.0: that number was already spent on different content, and
+ * reissuing it would make a cited version ambiguous. Gaps are the price of
+ * never reusing a number, and are harmless.
+ *
+ * Consequence worth knowing: a restore can no longer produce a byte-identical
+ * file, since the frontmatter always differs. The no-op check below therefore
+ * compares bodies with the version line normalised away, so restoring content
+ * that is already current is still correctly rejected.
  */
 export async function POST(
   req: Request,
@@ -40,9 +60,14 @@ export async function POST(
   try {
     const { docs } = storesFor(brand);
 
-    const [source, head] = await Promise.all([
+    const [source, head, timeline] = await Promise.all([
       docs.readAt(brand, slug, ref),
       docs.readDocument(brand, slug),
+      // Every issued version, so the bump clears the high-water mark rather
+      // than HEAD. Failure here must not block the restore: falling back to
+      // HEAD's version alone still yields a rising number, just a less
+      // well-informed one.
+      docs.timeline(brand, slug, { limit: 100 }).catch(() => []),
     ]);
 
     // Carry HEAD's status forward into the restored content.
@@ -59,7 +84,11 @@ export async function POST(
       }
     }
 
-    if (content === head.content) {
+    // Reject a restore that would change nothing. Compared before the version
+    // bump and with the version line normalised away, since the bump would
+    // otherwise make every restore look like a real change.
+    const stripVersion = (s: string) => setFrontmatterVersion(s, "0");
+    if (stripVersion(content) === stripVersion(head.content)) {
       return Response.json(
         {
           error: "no-op",
@@ -68,6 +97,28 @@ export async function POST(
         { status: 409 }
       );
     }
+
+    // Bump past every version this document has ever carried.
+    const issued: string[] = await Promise.all(
+      (timeline as { sha: string }[]).map(async (t) => {
+        try {
+          const at = await docs.readAt(brand, slug, t.sha);
+          return at.frontmatter?.version ?? null;
+        } catch {
+          return null;
+        }
+      })
+    ).then((vs) => vs.filter((v): v is string => Boolean(v)));
+
+    // HEAD and the restored revision are included even if the timeline read
+    // failed, so the result still clears both known versions.
+    const bumped = nextVersion([
+      ...issued,
+      head.frontmatter?.version,
+      source.frontmatter?.version,
+    ]);
+    const restoredVersion = source.frontmatter?.version ?? null;
+    content = setFrontmatterVersion(content, bumped);
 
     // Same contract as an ordinary save: an invalid document never lands,
     // even when the invalid content came from our own history.
@@ -90,12 +141,16 @@ export async function POST(
 
     const trailers = [
       `Restored-From: ${ref}`,
+      // The version the restored content originally carried. Provenance lives
+      // here rather than in the frontmatter, so 'version:' keeps meaning
+      // "which issue is this" rather than doubling as lineage.
+      ...(restoredVersion ? [`Restored-Version: ${restoredVersion}`] : []),
       `Restored-By: ${who} <${email}>`,
       `Restored-At: ${new Date().toISOString()}`,
     ];
 
     const message =
-      `docs(${brand}/${slug}): restore ${short}\n\n` +
+      `docs(${brand}/${slug}): restore ${short} as v${bumped}\n\n` +
       (body.note ? `${body.note}\n\n` : "") +
       trailers.join("\n");
 
@@ -107,6 +162,8 @@ export async function POST(
 
     return Response.json({
       restoredFrom: ref,
+      restoredVersion,
+      version: bumped,
       changed: result.changed,
       sha: result.sha,
       commit: result.commit,
