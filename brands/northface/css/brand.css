@@ -265,8 +265,17 @@ p { text-align: left; hyphens: none; -weasy-hyphens: none; }
   margin-bottom: 2mm;
   display: flex; align-items: baseline; gap: 2mm;
   break-after: avoid; page-break-after: avoid;
+  /* Each numbered section opens a new page. The eyebrow carries the break
+   * rather than the h1, so it stays glued to the heading it introduces. */
+  break-before: page; page-break-before: always;
   /* Republished into the running head on continuation pages. */
   string-set: sectioneyebrow content();
+}
+
+/* Section 01 follows the cover/TOC, which already end with a break of their
+ * own; breaking again would emit a blank page. Mirrors base.css h1:first-of-type. */
+.content > .section-number:first-of-type {
+  break-before: avoid; page-break-before: avoid;
 }
 .section-number::before { content: "●"; font-size: 5pt; }
 .section-number-sep { opacity: 0.55; }
@@ -366,8 +375,16 @@ tfoot td { padding: 2.5mm 4mm; font-weight: 700; color: var(--ink); }
 tfoot td:not(:first-child) { text-align: right; }
 
 /* ─── CALLOUT (dark) ─────────────────────────────────────────────────────── */
-.callout {
+/* core/base.css styles .callout as a LIGHT box and tints it per kind via
+ * .callout[data-kind="note"] — an attribute selector (0,2,0) that outranks a
+ * bare .callout (0,1,0) here. This brand inverts the treatment to a dark band
+ * and sets near-white body text, so a bare .callout lost the background while
+ * the light text stayed: white-on-white, an apparently empty box.
+ * Match core's specificity so the dark ground wins for every kind. */
+.callout,
+.callout[data-kind] {
   background: var(--ink);
+  border-left: none;
   padding: 7mm 9mm;
   margin: 7mm 0;
   page-break-inside: avoid;
@@ -525,6 +542,18 @@ tfoot td:not(:first-child) { text-align: right; }
   margin-bottom: 1.6mm;
 }
 .toc a { color: var(--ink); }
+/* Appendices are supporting material, not narrative sections. Without a weight
+ * distinction the contents page reads as equal-rank sections and the shape of
+ * the argument is lost. Pandoc slugs come from heading text, so the appendix
+ * anchors carry no common prefix and are matched individually. Keep this list
+ * in step with the appendix headings in doc.md. */
+.toc li > a[href="#competitive-context"],
+.toc li > a[href="#production-architecture"],
+.toc li > a[href="#permissioned-data"],
+.toc li > a[href="#inkl-proof-of-concept"] {
+  color: var(--ink-faint);
+  font-weight: 400;
+}
 
 /* ─── HORIZONTAL RULE ───────────────────────────────────────────────────── */
 hr { border: none; border-top: 1px solid var(--rule); margin: 7mm 0; }
@@ -536,6 +565,9 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 7mm 0; }
   border-top: 1px solid var(--rule); padding-top: 4mm;
   page-break-inside: avoid;
 }
+/* #11: the cover status chip sat at roughly 2:1 against the dark ground.
+ * Lift to a legible warm grey rather than removing the marking outright. */
+.cover-status-chip { color: #AAA6A0; border-color: #8A8680; }
 
 
 /* ─── CORE OVERRIDES ────────────────────────────────────────────────────── */
