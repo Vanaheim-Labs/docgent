@@ -31,16 +31,9 @@ function parseAttrBrace(rest) {
   return { attrs, classes };
 }
 
-export function parseFrontmatter(src) {
-  const m = String(src).match(/^---\n([\s\S]*?)\n---\n/);
-  if (!m) return {};
-  const out = {};
-  for (const line of m[1].split("\n")) {
-    const kv = line.match(/^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/);
-    if (kv) out[kv[1]] = kv[2].replace(/^["']|["']$/g, "").trim();
-  }
-  return out;
-}
+// Imported (not just re-exported) so this module can use it locally too.
+import { parseFrontmatter } from "@docforge/core/yaml";
+export { parseFrontmatter };
 
 /**
  * Produces a flat list of structural nodes with a stable-ish identity, so the

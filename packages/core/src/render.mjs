@@ -10,6 +10,7 @@ import path from "node:path";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { parseYaml, parseFrontmatter } from "./yaml.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, "..", "..", "..");
@@ -19,47 +20,15 @@ const TEMPLATE = path.join(CORE, "templates", "document.html");
 const FILTER = path.join(CORE, "filters", "vocabulary.lua");
 const BASE_CSS = path.join(CORE, "css", "base.css");
 
-/* ---------------- YAML (small, dependency-free subset) ---------------- */
-function parseSimpleYaml(text) {
-  const root = {};
-  const stack = [{ indent: -1, node: root }];
-  for (const rawLine of text.split("\n")) {
-    if (!rawLine.trim() || /^\s*#/.test(rawLine)) continue;
-    const indent = rawLine.match(/^\s*/)[0].length;
-    const line = rawLine.trim();
-    while (stack.length > 1 && indent <= stack[stack.length - 1].indent) stack.pop();
-    const parent = stack[stack.length - 1].node;
-    const m = line.match(/^([A-Za-z0-9_.-]+):\s*(.*)$/);
-    if (!m) continue;
-    const [, key, rest] = m;
-    if (rest === "") {
-      const node = {};
-      parent[key] = node;
-      stack.push({ indent, node });
-    } else {
-      parent[key] = coerce(rest);
-    }
-  }
-  return root;
-}
-function coerce(v) {
-  v = v.trim().replace(/^["']|["']$/g, "");
-  if (/^(true|false)$/i.test(v)) return v.toLowerCase() === "true";
-  if (/^-?\d+(\.\d+)?$/.test(v)) return Number(v);
-  return v;
-}
-
 export function readFrontmatter(mdPath) {
-  const src = fs.readFileSync(mdPath, "utf8");
-  const m = src.match(/^---\n([\s\S]*?)\n---\n/);
-  return m ? parseSimpleYaml(m[1]) : {};
+  return parseFrontmatter(fs.readFileSync(mdPath, "utf8"));
 }
 
 export function loadBrand(brandId) {
   const dir = path.join(ROOT, "brands", brandId);
   const yml = path.join(dir, "brand.yaml");
   if (!fs.existsSync(yml)) throw new Error(`Unknown brand '${brandId}' (no ${yml})`);
-  return { id: brandId, dir, ...parseSimpleYaml(fs.readFileSync(yml, "utf8")) };
+  return { id: brandId, dir, ...parseYaml(fs.readFileSync(yml, "utf8")) };
 }
 
 /* ---------------- brand -> document repo ---------------- */

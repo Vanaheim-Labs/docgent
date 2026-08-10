@@ -6,6 +6,7 @@
  * commit an edit with proper attribution and a useful message.
  */
 import { GitStore, NotFoundError } from "./index.mjs";
+import { parseFrontmatter } from "@docforge/core/yaml";
 
 const DOC_ROOT = "documents";
 const BRAND_ROOT = "brands";
@@ -177,14 +178,5 @@ function truncate(s, n) {
   return t.length <= n ? t : t.slice(0, n - 1) + "…";
 }
 
-/** Same frontmatter subset the validator and renderer use. */
-export function parseFrontmatter(src) {
-  const m = String(src).match(/^---\n([\s\S]*?)\n---\n/);
-  if (!m) return {};
-  const out = {};
-  for (const line of m[1].split("\n")) {
-    const kv = line.match(/^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/);
-    if (kv) out[kv[1]] = kv[2].replace(/^["']|["']$/g, "").trim();
-  }
-  return out;
-}
+/** Re-exported so the validator, renderer and git-store agree exactly. */
+export { parseFrontmatter };

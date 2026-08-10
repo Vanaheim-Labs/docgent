@@ -5,6 +5,7 @@
   "main": "./src/render.mjs",
   "exports": {
     ".": "./src/render.mjs",
+    "./yaml": "./src/yaml.mjs",
     "./client": "./src/client.mjs",
     "./batch": "./src/batch.mjs"
   },
@@ -16,5 +17,8 @@
   ],
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0"
   }
 }

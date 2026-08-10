@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseYaml, splitFrontmatter } from "@docforge/core/yaml";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const VOCAB_PATH = path.join(__dirname, "..", "vocabulary.yaml");
@@ -116,14 +117,8 @@ function loadVocab() {
  * ------------------------------------------------------------------ */
 
 function parseFrontmatter(src) {
-  const m = src.match(/^---\n([\s\S]*?)\n---\n/);
-  if (!m) return null;
-  const out = {};
-  for (const line of m[1].split("\n")) {
-    const kv = line.match(/^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/);
-    if (kv) out[kv[1]] = kv[2].replace(/^["']|["']$/g, "").trim();
-  }
-  return out;
+  const { data, found } = splitFrontmatter(src);
+  return found ? data : null;
 }
 
 /**
