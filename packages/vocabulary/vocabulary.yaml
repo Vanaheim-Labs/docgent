@@ -155,6 +155,11 @@ inlines:
   - id: footnoteref
     syntax: "^[footnote text]"
     description: Inline footnote (pandoc native).
+  - id: accent
+    syntax: "[text]{.accent}"
+    description: Accent-coloured word inside a heading. Emphasis is positional —
+      reserve it for the two or three headings where the accented word carries
+      argumentative weight. Applied to every heading it stops reading as emphasis.
 
 frontmatter:
   required: [title, brand, doctype, version, date]

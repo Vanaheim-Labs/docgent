@@ -39,7 +39,7 @@ $else$
   </dl>
   <div class="cover-footer">
     <div class="cover-footer-left">$if(brandname)$$brandname$$endif$$if(contact)$<br>$contact$$endif$</div>
-    <div class="cover-footer-right">$if(classification)$$if(classification_label)$$classification_label$$else$$classification$$endif$$endif$$if(status)$<br>$status$$endif$</div>
+    <div class="cover-footer-right">$if(classification)$$if(classification_label)$$classification_label$$else$$classification$$endif$$endif$$if(status)$$if(suppress_status_chip)$$else$<br><span class="cover-status-chip">$status$</span>$endif$$endif$</div>
   </div>
   </div>
 </section>

@@ -201,6 +201,18 @@ p { text-align: left; hyphens: none; -weasy-hyphens: none; }
   font-size: 7pt; color: #666660; line-height: 1.7;
 }
 .cover-footer-right { text-align: right; }
+/* Working-status chip. Suppressed entirely on restricted covers (see
+ * document.html): a raw "draft" token floating under STRICTLY CONFIDENTIAL on
+ * an investor copy reads as an artefact rather than a deliberate marking. */
+.cover-status-chip {
+  display: inline-block;
+  margin-top: 1.5mm;
+  padding: 0.8mm 2.2mm;
+  border: 1px solid #666660;
+  border-radius: 1mm;
+  font-size: 5.8pt; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase;
+}
 
 /* ─── EXECUTIVE SUMMARY INTRO BAND ─────────────────────────────────────── */
 /*
@@ -367,6 +379,24 @@ tfoot td:not(:first-child) { text-align: right; }
 }
 .callout p + p { margin-top: 3.5mm; }
 .callout p strong { color: var(--accent-bright); font-weight: 600; }
+/* Ordered/unordered lists inside a callout inherit the dark band's colour and
+ * need explicit marker handling: WeasyPrint drops the counter when the list
+ * sits inside a padded dark block, leaving literal "1." text prefixes. */
+.callout ol, .callout ul {
+  margin: 3.5mm 0 0 0;
+  padding-left: 6mm;
+  color: var(--paper);
+}
+.callout ol { list-style: decimal outside; }
+.callout ul { list-style: disc outside; }
+.callout li {
+  font-family: var(--font-serif);
+  font-size: 12pt; line-height: 1.42;
+  color: var(--paper);
+  margin-bottom: 1.5mm;
+}
+.callout li::marker { color: var(--accent-bright); font-weight: 600; }
+.callout li strong { color: var(--accent-bright); font-weight: 600; }
 
 /* ─── INSIGHT BOX (warm accent) ─────────────────────────────────────────── */
 .insight {

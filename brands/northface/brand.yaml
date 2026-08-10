@@ -47,7 +47,7 @@ palette:
 page:
   size: A4
   margin_top: 18mm
-  margin_bottom: 22mm
+  margin_bottom: 25mm
   margin_inner: 20mm
   margin_outer: 20mm
 
