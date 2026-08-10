@@ -71,6 +71,9 @@ RUN fc-cache -f > /dev/null 2>&1 || true; \
     fc-match "Inter" | grep -qi "inter" || (echo "FONT ALIAS FAILED: Inter" >&2; exit 1); \
     fc-match "Source Serif 4" | grep -qi "sourceserif" || (echo "FONT ALIAS FAILED: Source Serif 4" >&2; exit 1); \
     fc-match "Cormorant Garamond" | grep -qi "cormorant" || (echo "FONT MISSING: Cormorant Garamond (North Face)" >&2; exit 1); \
+    fc-match "Lora" | grep -qi "lora" || (echo "FONT MISSING: Lora (inkl)" >&2; exit 1); \
+    fc-match "Manrope" | grep -qi "manrope" || (echo "FONT MISSING: Manrope (inkl)" >&2; exit 1); \
+    fc-match "Inconsolata" | grep -qi "inconsolata" || (echo "FONT MISSING: Inconsolata (inkl)" >&2; exit 1); \
     echo "font aliases verified"
 
 # --- python deps -----------------------------------------------------------
