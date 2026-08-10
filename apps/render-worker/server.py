@@ -169,6 +169,11 @@ def brand_tokens_css(brand: dict) -> str:
   --paper-alt: {pal('paper_alt', '#f6f8fa')};
   --accent: {pal('accent', '#1f4b6e')};
   --accent-soft: {pal('accent_soft', '#e8f0f6')};
+  --accent-bright: {pal('accent_bright', pal('accent', '#1f4b6e'))};
+  --band: {pal('band', pal('ink', '#12161c'))};
+  --surface-quote: {pal('surface_quote', pal('paper_alt', '#f6f8fa'))};
+  --surface-mute: {pal('surface_mute', pal('rule', '#dfe4ea'))};
+  --surface-track: {pal('surface_track', pal('paper_alt', '#f6f8fa'))};
   --warning: {pal('warning', '#a35b12')};
   --warning-soft: {pal('warning_soft', '#fdf3e6')};
   --risk: {pal('risk', '#9b2c2c')};

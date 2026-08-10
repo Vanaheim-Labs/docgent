@@ -16,11 +16,16 @@ $endfor$
 $if(nocover)$
 $else$
 <section class="cover">
+  <div class="cover-band"></div>
+  <div class="cover-body">
+  <div class="cover-head">
   $if(brandlogo)$<img class="cover-logo" src="$brandlogo$" alt="">$endif$
   <div class="cover-doctype">$doctype$</div>
+  $if(brandname)$<div class="cover-wordmark">$brandname$</div>$endif$
   <h1 class="cover-title">$title$</h1>
   $if(subtitle)$<p class="cover-subtitle">$subtitle$</p>$endif$
   <div class="cover-rule"></div>
+  </div>
   <dl class="cover-meta cover-meta-grid">
     $if(client)$<div class="cover-meta-item"><dt class="cover-meta-label">Prepared for</dt><dd class="cover-meta-value">$client$</dd></div>$endif$
     $if(author)$<div class="cover-meta-item"><dt class="cover-meta-label">Prepared by</dt><dd class="cover-meta-value">$author$</dd></div>$endif$
@@ -32,7 +37,11 @@ $else$
     $if(target_close)$<div class="cover-meta-item"><dt class="cover-meta-label">Target close</dt><dd class="cover-meta-value">$target_close$</dd></div>$endif$
     $if(contact)$<div class="cover-meta-item"><dt class="cover-meta-label">Contact</dt><dd class="cover-meta-value">$contact$</dd></div>$endif$
   </dl>
-  $if(classification)$<div class="cover-classification">$if(classification_label)$$classification_label$$else$$classification$$endif$$if(status)$ · $status$$endif$</div>$endif$
+  <div class="cover-footer">
+    <div class="cover-footer-left">$if(brandname)$$brandname$$endif$$if(contact)$<br>$contact$$endif$</div>
+    <div class="cover-footer-right">$if(classification)$$if(classification_label)$$classification_label$$else$$classification$$endif$$endif$$if(status)$<br>$status$$endif$</div>
+  </div>
+  </div>
 </section>
 $endif$
 

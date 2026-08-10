@@ -76,10 +76,10 @@ body {
   line-height: var(--line-height, 1.55);
   color: var(--ink);
   background: var(--paper);
-  hyphens: auto;
+  hyphens: var(--body-hyphens, auto);
   orphans: 3;
   widows: 3;
-  -weasy-hyphens: auto;
+  -weasy-hyphens: var(--body-hyphens, auto);
 }
 
 /* ---------- Headings ---------- */
@@ -125,7 +125,7 @@ h1.numbered::before { content: counter(h1counter) ".  "; color: var(--accent); }
 h2.numbered { counter-increment: h2counter; }
 h2.numbered::before { content: counter(h1counter) "." counter(h2counter) "  "; color: var(--accent); font-weight: 500; }
 
-p { margin: 0 0 0.7rem; text-align: justify; }
+p { margin: 0 0 0.7rem; text-align: var(--body-align, justify); }
 p.lead { font-size: 1.12rem; line-height: 1.45; color: var(--ink-soft); text-align: left; }
 
 a { color: var(--accent); text-decoration: none; border-bottom: 0.4pt solid var(--accent-soft); }

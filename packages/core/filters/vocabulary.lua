@@ -318,17 +318,63 @@ function Div(el)
   return el
 end
 
--- Auto-number top-level headings unless explicitly opted out
+-- Auto-number top-level headings unless explicitly opted out.
+--
+-- Also emits the section eyebrow ('● 01 · SECTION LABEL') ahead of each h1.
+-- The eyebrow is a separate block rather than an ::before on the heading so
+-- that its label can differ from the heading text: brands set short display
+-- headings while the eyebrow (and TOC) carry the long navigational label.
+--
+-- Precedence for the eyebrow label:
+--   1. explicit  {eyebrow="..."}  attribute
+--   2. explicit  {nav-title="..."} attribute
+--   3. the heading text itself
+-- Suppress on a given heading with .no-eyebrow, or document-wide by not
+-- styling .section-number in the brand.
+local H1_SEEN = 0
+
 function Header(el)
   if el.level <= 2 and not el.classes:includes('unnumbered') then
     el.classes:insert('numbered')
   end
-  return el
+
+  if el.level ~= 1 or el.classes:includes('no-eyebrow') then
+    return el
+  end
+
+  H1_SEEN = H1_SEEN + 1
+
+  -- nav-title carries the long label for the TOC; the heading keeps the short
+  -- display form. Defaults to the heading text so authors write one heading.
+  local nav = el.attributes['nav-title']
+  if nav then
+    el.attributes['data-nav-title'] = nav
+  end
+
+  local label = el.attributes['eyebrow'] or nav or inlines_to_text(el.content)
+  local num = string.format('%02d', H1_SEEN)
+
+  local eyebrow = raw(
+    '<div class="section-number" data-index="' .. num .. '">' ..
+    '<span class="section-number-num">' .. num .. '</span>' ..
+    '<span class="section-number-sep">·</span>' ..
+    '<span class="section-number-label">' .. esc(label) .. '</span>' ..
+    '</div>')
+
+  return { eyebrow, el }
 end
 
 
--- Inline claim classification chip.
+-- Inline accent span: the orange italic tail on a heading.
+--   ## Why owners [will pay]{.accent}
+-- Rendered as <em class="accent">, which brands already style via 'h1 em'.
 function Span(el)
+  if el.classes:includes('accent') then
+    local out = { pandoc.RawInline('html', '<em class="accent">') }
+    for _, i in ipairs(el.content) do table.insert(out, i) end
+    table.insert(out, pandoc.RawInline('html', '</em>'))
+    return out
+  end
   if el.classes:includes('claim') then
     local kind = el.attributes['kind'] or 'gated'
     local out = { pandoc.RawInline('html', '<span class="class-label ' .. esc(kind) .. '">') }

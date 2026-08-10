@@ -42,6 +42,14 @@
     font-size: 7pt; font-weight: 400; letter-spacing: 0.1em;
     color: #999; vertical-align: middle;
   }
+  /* Continuation pages otherwise lose all section identity: the eyebrow only
+   * prints once, at the top of the section. Republish it centre-top. */
+  @top-center {
+    content: string(sectioneyebrow);
+    font-family: var(--font-sans);
+    font-size: 6.5pt; font-weight: 500; letter-spacing: 0.12em;
+    color: #B8B4AC; vertical-align: middle;
+  }
   @bottom-left {
     /* Override per document: set content via @page { @bottom-left { content: "..." } } */
     content: "";
@@ -81,6 +89,17 @@ body {
   color: var(--ink);
   background: transparent; /* page background set at @page level */
 }
+
+/* Ragged-right, unhyphenated. Core defaults to justified text with automatic
+ * hyphenation; at this measure that produces rivers and mid-word breaks
+ * ("pro-fession", "val-uation") which read as cheap. The authored v8 original
+ * is ragged-right throughout. Core exposes these as custom properties so the
+ * opt-out is a brand decision rather than a core behaviour change. */
+:root {
+  --body-align: left;
+  --body-hyphens: none;
+}
+p { text-align: left; hyphens: none; -weasy-hyphens: none; }
 
 /* ─── COVER ─────────────────────────────────────────────────────────────── */
 .cover {
@@ -192,9 +211,17 @@ body {
 .exec-intro {
   page-break-before: always;
   background: var(--band);
+  /* Full-bleed band. Values are tied to the @page margins above (18mm top,
+   * 20mm sides); previously these drifted and the band failed to paint,
+   * leaving near-white text on near-white paper. Keep in sync with @page. */
   margin: -18mm -20mm 12mm -20mm;
   padding: 13mm 20mm 11mm 20mm;
+  break-inside: avoid; page-break-inside: avoid;
+  /* Guarantees legibility even if the background fails to paint. */
+  color: var(--paper);
 }
+.exec-intro * { color: inherit; }
+.exec-intro .exec-intro-eyebrow { color: var(--accent); }
 .exec-intro-eyebrow {
   font-family: var(--font-sans);
   font-size: 6.5pt; font-weight: 600; letter-spacing: 0.2em;
@@ -217,15 +244,24 @@ body {
 /* Force page break before each major section */
 .section-break { page-break-before: always; }
 
-/* Section eyebrow label — appears above h1 */
+/* Section eyebrow label — emitted by vocabulary.lua ahead of each h1.
+ * Carries the long navigational label so the h1 itself can stay short. */
 .section-number {
   font-family: var(--font-sans);
   font-size: 6.5pt; font-weight: 600; letter-spacing: 0.2em;
   color: var(--accent); text-transform: uppercase;
   margin-bottom: 2mm;
-  display: flex; align-items: center; gap: 2mm;
+  display: flex; align-items: baseline; gap: 2mm;
+  break-after: avoid; page-break-after: avoid;
+  /* Republished into the running head on continuation pages. */
+  string-set: sectioneyebrow content();
 }
 .section-number::before { content: "●"; font-size: 5pt; }
+.section-number-sep { opacity: 0.55; }
+.section-number-label { hyphens: none; }
+
+/* The eyebrow owns the page break, so the h1 that follows must not add one. */
+.section-number + h1 { break-before: avoid; page-break-before: avoid; }
 
 /* ─── HEADINGS ──────────────────────────────────────────────────────────── */
 h1 {
@@ -296,7 +332,8 @@ thead th {
   font-family: var(--font-sans);
   font-size: 7pt; font-weight: 600; letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 3mm 4mm; text-align: left; border: none;
+  padding: 3.4mm 4.5mm; text-align: left; border: none;
+  vertical-align: middle; line-height: 1.35;
 }
 thead th:not(:first-child) { text-align: right; }
 
@@ -307,7 +344,8 @@ table.wide-table tbody td { text-align: left; }
 tbody tr { border-bottom: 1px solid var(--surface-mute); }
 tbody tr:nth-child(even) { background: var(--paper-alt); }
 tbody td {
-  padding: 2.5mm 4mm; color: var(--ink-soft); vertical-align: top;
+  padding: 3.2mm 4.5mm; color: var(--ink-soft); vertical-align: top;
+  line-height: 1.5; hyphens: none;
 }
 tbody td:not(:first-child) { text-align: right; font-feature-settings: "tnum"; }
 
@@ -440,6 +478,23 @@ tfoot td:not(:first-child) { text-align: right; }
 .class-label.fact     { background: var(--ink); color: var(--paper); }
 .class-label.drafting { background: var(--accent); color: var(--paper); }
 .class-label.gated    { background: var(--surface-mute); color: #555;    }
+
+/* ─── CONTENTS ──────────────────────────────────────────────────────────── */
+/*
+ * Single level. The authored original lists 19 top-level sections on one page;
+ * nesting h2s under them doubles the length and reads as less confident.
+ * Sub-entries are suppressed here rather than at pandoc level so the HTML
+ * preview keeps full structure.
+ */
+.toc li li { display: none; }
+.toc li {
+  font-family: var(--font-sans);
+  font-size: 8.5pt;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 1.6mm;
+  margin-bottom: 1.6mm;
+}
+.toc a { color: var(--ink); }
 
 /* ─── HORIZONTAL RULE ───────────────────────────────────────────────────── */
 hr { border: none; border-top: 1px solid var(--rule); margin: 7mm 0; }
