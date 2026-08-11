@@ -17,14 +17,65 @@ import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+/** Frontmatter fields the listing presents. Every one is optional: a
+ *  document is still listable when its author has not filled these in. */
+export type DocFrontmatter = {
+  title?: string;
+  subtitle?: string;
+  doctype?: string;
+  status?: string;
+  classification?: string;
+  version?: string;
+  date?: string;
+  author?: string;
+};
+
 export type DocSummary = {
   brand: string;
+  brandName: string;
   slug: string;
   path: string;
   dir: string;
   blobSha: string;
   assets: string[];
+  frontmatter: DocFrontmatter;
+  /** Frontmatter title when present, else a humanised slug. Never a raw path. */
+  title: string;
+  /** Epoch ms parsed from frontmatter `date`, or null when absent/unparseable. */
+  dateMs: number | null;
 };
+
+/**
+ * Turns a slug into something readable for a document with no title.
+ * A fallback, not a substitute: the point is that the index never shows a
+ * bare identifier where a human expects a name.
+ */
+function titleFromSlug(slug: string): string {
+  return slug
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Frontmatter `date` is free text ("August 2026", "2026-08-11", "7 Jul 2026").
+ * Parse what Date understands and give up quietly otherwise, because a date we
+ * cannot read should sort last rather than throw or fabricate an ordering.
+ */
+function parseDocDate(value: unknown): number | null {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const t = Date.parse(raw);
+  if (!Number.isNaN(t)) return t;
+  const m = raw.match(/^(\w+)\s+(\d{4})$/);
+  if (m) {
+    const t2 = Date.parse(`1 ${m[1]} ${m[2]}`);
+    if (!Number.isNaN(t2)) return t2;
+  }
+  return null;
+}
 
 export type TimelineEntry = {
   sha: string;
@@ -188,11 +239,21 @@ export async function listAllDocuments(): Promise<{
     brands().map(async (b) => {
       try {
         const { docs } = storesFor(b.id);
-        const res = await docs.listDocuments({ brand: b.id });
+        // Frontmatter is what makes the index readable — titles, status and
+        // dates instead of slugs and repo paths.
+        const res = await docs.listDocuments({ brand: b.id, withFrontmatter: true });
         for (const d of res.documents) {
+          const fm: DocFrontmatter = d.frontmatter || {};
           // Flat per-brand stores carry no brand path segment; the repo is
           // the brand, so stamp it here for routing.
-          documents.push({ ...d, brand: d.brand || b.id });
+          documents.push({
+            ...d,
+            brand: d.brand || b.id,
+            brandName: b.name,
+            frontmatter: fm,
+            title: (fm.title && String(fm.title).trim()) || titleFromSlug(d.slug),
+            dateMs: parseDocDate(fm.date),
+          });
         }
       } catch (e) {
         errors.push({
@@ -203,8 +264,14 @@ export async function listAllDocuments(): Promise<{
     })
   );
 
+  // Most recent first within a brand: the document someone wants is nearly
+  // always the one most recently dated, not the one earliest in the alphabet.
+  // Undated documents sort after dated ones rather than jumping to the top.
   documents.sort(
-    (a, b) => a.brand.localeCompare(b.brand) || a.slug.localeCompare(b.slug)
+    (a, b) =>
+      a.brand.localeCompare(b.brand) ||
+      (b.dateMs ?? -Infinity) - (a.dateMs ?? -Infinity) ||
+      a.title.localeCompare(b.title)
   );
   return { documents, errors };
 }

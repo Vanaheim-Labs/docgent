@@ -8,6 +8,10 @@ import type { DocSummary } from "@/lib/store";
  * it is the boundary that decides which store a document came from. The
  * sidebar spans every brand so switching between them never requires
  * going back to the index.
+ *
+ * Entries are labelled with the document's frontmatter title. The slug is the
+ * address, not the name, and showing an address where a name belongs is what
+ * made this list hard to scan.
  */
 export function Sidebar({
   documents,
@@ -45,7 +49,7 @@ export function Sidebar({
       {[...byBrand.entries()].map(([brand, docs]) => (
         <div className="brand-group" key={brand}>
           <div className="brand-label" data-active={brand === activeBrand}>
-            {brand}
+            {docs[0]?.brandName || brand}
           </div>
           {docs.map((d) => (
             <Link
@@ -53,11 +57,19 @@ export function Sidebar({
               href={`/${d.brand}/${d.slug}`}
               className="doc-link"
               data-active={d.brand === activeBrand && d.slug === activeSlug}
+              title={d.title}
             >
-              <span className="doc-link-title">{d.slug}</span>
-              {d.assets.length > 0 && (
+              <span className="doc-link-title">{d.title}</span>
+              {(d.frontmatter?.date || d.assets.length > 0) && (
                 <span className="doc-link-meta">
-                  {d.assets.length} asset{d.assets.length > 1 ? "s" : ""}
+                  {[
+                    d.frontmatter?.date ? String(d.frontmatter.date) : null,
+                    d.assets.length > 0
+                      ? `${d.assets.length} asset${d.assets.length > 1 ? "s" : ""}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </span>
               )}
             </Link>

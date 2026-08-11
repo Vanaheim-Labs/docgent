@@ -131,6 +131,19 @@ export class GitStore {
     return { path, content, sha: data.sha, size: data.size };
   }
 
+  /**
+   * Reads a blob by SHA. Returns its decoded text.
+   *
+   * A tree listing already carries every blob SHA, so fetching content this
+   * way costs one request and no path resolution. It is also immutable: the
+   * SHA names that exact content, so the read cannot race a concurrent commit
+   * the way a path-and-ref read can.
+   */
+  async readBlob(sha) {
+    const blob = await this.#request(`/git/blobs/${sha}`);
+    return b64decode(String(blob.content || "").replace(/\n/g, ""));
+  }
+
   /** Lists a directory. Returns [{ name, path, type, sha, size }]. */
   async listDir(path = "", { ref } = {}) {
     const q = ref ? `?ref=${encodeURIComponent(ref)}` : "";

@@ -60,8 +60,13 @@ export class DocumentStore {
   /**
    * Every document, optionally filtered by brand.
    * One tree call rather than a directory walk per brand.
+   *
+   * `withFrontmatter` additionally fetches each doc.md blob so callers get the
+   * document's own title, status and date rather than having to present a
+   * slug and a repo path. That costs one blob read per document, so it is
+   * opt-in: bulk callers that only need paths keep the single-call behaviour.
    */
-  async listDocuments({ brand, ref } = {}) {
+  async listDocuments({ brand, ref, withFrontmatter = false } = {}) {
     // Per-brand stores are flat (documents/<slug>/), so the brand is not a
     // path segment to filter on — it identifies the repo, not the directory.
     // Scan the whole document root and let parseDocPath sort out the layout.
@@ -86,7 +91,25 @@ export class DocumentStore {
           .map((a) => a.path.slice(dir.length + 1)),
       });
     }
-    return { treeSha: sha, documents: docs.sort((a, b) => a.path.localeCompare(b.path)) };
+    docs.sort((a, b) => a.path.localeCompare(b.path));
+
+    if (withFrontmatter) {
+      // In parallel: the listing is a page load, not a batch job. A document
+      // whose blob fails to read still lists, with empty frontmatter, because
+      // one unreadable file should not blank the index.
+      await Promise.all(
+        docs.map(async (d) => {
+          try {
+            const blob = await this.git.readBlob(d.blobSha);
+            d.frontmatter = parseFrontmatter(blob);
+          } catch {
+            d.frontmatter = {};
+          }
+        })
+      );
+    }
+
+    return { treeSha: sha, documents: docs };
   }
 
   /** Reads a document plus its parsed frontmatter. */

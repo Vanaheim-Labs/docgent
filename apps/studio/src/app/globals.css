@@ -800,3 +800,94 @@ kbd {
 }
 /* The preview iframe is same-origin so the editor can read its anchors. */
 .pane-preview .preview-frame { background: #edeef1; }
+
+/* ---------- document index ---------- */
+/* The index is a browsing surface, not a file listing: documents are grouped
+   under the brand that owns them and identified by their frontmatter title. */
+.brand-section { margin-bottom: 32px; }
+.brand-section:last-child { margin-bottom: 0; }
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 8px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--rule);
+}
+.section-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.section-count { font-size: 12px; color: var(--ink-faint); }
+
+.doc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.doc-card {
+  display: block;
+  padding: 16px 18px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  color: var(--ink);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.doc-card:hover {
+  text-decoration: none;
+  color: var(--ink);
+  border-color: #cfd8e2;
+  box-shadow: 0 1px 3px rgba(18, 22, 28, 0.06);
+}
+
+.doc-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.doc-card-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 620;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+.doc-card-badges { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+
+/* Two lines of subtitle is enough to disambiguate two similar documents;
+   beyond that it competes with the title it is meant to support. */
+.doc-card-sub {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.doc-card-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 12px;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+.doc-card-fact { display: inline-flex; align-items: center; }
+.doc-card-fact + .doc-card-fact::before {
+  content: "";
+  width: 3px; height: 3px;
+  border-radius: 50%;
+  background: var(--rule);
+  margin-right: 10px;
+}
