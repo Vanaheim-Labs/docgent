@@ -99,7 +99,29 @@ a:hover { text-decoration: underline; }
   color: var(--accent);
   font-weight: 550;
 }
-.doc-link-title { display: block; }
+.doc-link-title { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.doc-link-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Lifecycle state in the library.
+ *
+ * A dot rather than a badge: the sidebar is a scanning surface, and eight
+ * uppercase pills down the rail compete with the titles they are meant to
+ * annotate. Colour carries the state, the meta line spells it out in words,
+ * and the link title attribute states it for anyone who cannot resolve the
+ * colour. The palette is the same one .badge[data-status] uses, so a colour
+ * does not change meaning between the rail and the document header. */
+.doc-link-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  box-shadow: 0 0 0 2px var(--paper);
+}
+.doc-link-dot[data-status="draft"] { background: var(--warning); }
+.doc-link-dot[data-status="review"] { background: var(--accent); }
+.doc-link-dot[data-status="approved"],
+.doc-link-dot[data-status="released"] { background: var(--success); }
 .doc-link-meta {
   display: block;
   font-size: 11px;

@@ -57,12 +57,31 @@ export function Sidebar({
               href={`/${d.brand}/${d.slug}`}
               className="doc-link"
               data-active={d.brand === activeBrand && d.slug === activeSlug}
-              title={d.title}
+              title={
+                d.frontmatter?.status
+                  ? `${d.title} — ${d.frontmatter.status}`
+                  : d.title
+              }
             >
-              <span className="doc-link-title">{d.title}</span>
-              {(d.frontmatter?.date || d.assets.length > 0) && (
+              <span className="doc-link-title">
+                {/* Lifecycle state, carried by the same data-status contract the
+                    badges elsewhere use, so a colour means one thing across the
+                    whole app. Documents with no status get no dot rather than a
+                    neutral one: absence of a state and a state called "none"
+                    are different claims, and only one of them is true. */}
+                {d.frontmatter?.status && (
+                  <span
+                    className="doc-link-dot"
+                    data-status={d.frontmatter.status}
+                    aria-hidden="true"
+                  />
+                )}
+                <span className="doc-link-name">{d.title}</span>
+              </span>
+              {(d.frontmatter?.status || d.frontmatter?.date || d.assets.length > 0) && (
                 <span className="doc-link-meta">
                   {[
+                    d.frontmatter?.status ? String(d.frontmatter.status) : null,
                     d.frontmatter?.date ? String(d.frontmatter.date) : null,
                     d.assets.length > 0
                       ? `${d.assets.length} asset${d.assets.length > 1 ? "s" : ""}`
