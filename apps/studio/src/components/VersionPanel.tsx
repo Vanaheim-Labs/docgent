@@ -3,6 +3,23 @@
 import { useCallback, useEffect, useState } from "react";
 import type { TimelineEntry } from "@/lib/store";
 
+/**
+ * Conventional-commit boilerplate stripped for display.
+ *
+ * Every revision subject reads `docs(inkl/shareholder-update-fy26): Shareholder
+ * Update FY26` — the type and scope repeat the brand and slug already shown by
+ * the surrounding page, leaving the meaningful part buried at the end of a long
+ * monospace line.
+ *
+ * The full subject stays on the element's `title`, and the commit hash remains
+ * on the row, because HANDOVER.md makes git the audit record: this trims what
+ * is displayed, never what is recoverable.
+ */
+function displaySubject(subject: string): string {
+  const m = subject.match(/^[a-z]+(?:\([^)]*\))?!?:\s*(.+)$/);
+  return (m ? m[1] : subject).trim() || subject;
+}
+
 export function VersionPanel({
   brand,
   slug,
@@ -200,7 +217,9 @@ export function VersionPanel({
                     <span className="badge" style={{ marginLeft: "auto" }}>current</span>
                   )}
                 </div>
-                <div className="version-subject">{t.subject}</div>
+                <div className="version-subject" title={t.subject}>
+                  {displaySubject(t.subject)}
+                </div>
                 <div className="version-meta">
                   {t.author.name || t.author.login || "unknown"}
                   {t.author.date &&

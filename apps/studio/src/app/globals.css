@@ -716,6 +716,46 @@ kbd {
   line-height: 1.55;
 }
 
+/* Heading depth change, stated rather than implied by hash marks. */
+.diff-level {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  margin-bottom: 6px;
+  border-radius: 4px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  color: var(--ink-faint);
+  font-family: var(--mono);
+}
+
+/* Discrete before/after values, for metadata and one-sided changes.
+   Prose uses inline word runs instead; this is for values that replace
+   wholesale rather than being edited in place. */
+.diff-side {
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 13px;
+}
+.diff-side[data-op="remove"] {
+  background: #fdecec;
+  color: #7f1d1d;
+  text-decoration: line-through;
+  text-decoration-color: rgba(127, 29, 29, 0.45);
+}
+.diff-side[data-op="add"] { background: #e9f5ef; color: #14532d; }
+.diff-arrow { color: var(--ink-faint); }
+
+/* Full prose is kept in the data layer; height is bounded here rather than by
+   cutting the text mid-clause, which hid the very words that changed. */
+.diff-change .word-diff,
+.diff-change .diff-detail {
+  max-height: 18em;
+  overflow-y: auto;
+}
+
 /* Word-level prose diff. Measure capped so long paragraphs stay readable. */
 .word-diff {
   margin: 0;

@@ -124,6 +124,18 @@ export default async function DocumentPage({ params, searchParams }: Props) {
 }
 
 /** Compact inline metadata, freeing the rail for history and the pane for content. */
+/**
+ * One document property in the header strip.
+ *
+ * The label is set in small caps and the value in normal text weight, so a
+ * property reads as a document attribute rather than as escaped CMS data.
+ *
+ * The value itself is deliberately left verbatim. `doctype: strategic-report`
+ * is a vocabulary identifier that selects a template, and it is the string an
+ * author edits in frontmatter — prettifying it to "Strategic Report" in the
+ * chrome would show a value that exists nowhere in the source, which is the
+ * one thing this system is built not to do.
+ */
 function MetaChip({ k, v }: { k: string; v?: string }) {
   if (!v) return null;
   return (

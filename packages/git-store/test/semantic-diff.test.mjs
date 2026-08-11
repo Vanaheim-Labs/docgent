@@ -148,3 +148,84 @@ test("summarise renders a readable one-liner", () => {
   assert.match(s, /value changed/);
   assert.equal(summarise(semanticDiff(a, a)), "No structural changes");
 });
+
+/* ---------------- orphan reconciliation ---------------- */
+
+/**
+ * The failure that made Compare unusable.
+ *
+ * Node identity is section-keyed, so renaming a heading re-keys every node
+ * beneath it. A toc:true rebuild renames every heading at once, which reported
+ * a document where nothing left or arrived as wholesale removal and re-addition
+ * — and the one-sided "added" path carries no before state, so the UI rendered
+ * green blocks truncated at 90 chars with nothing to compare against.
+ */
+test("renaming a heading does not report its prose as removed and re-added", () => {
+  const a = doc("## 01 · Sponsored Posts\n\nSponsored posts became a concrete account level revenue engine this year.");
+  const b = doc("# Sponsored Posts\n\nSponsored posts became a concrete account level revenue engine this financial year.");
+  const d = semanticDiff(a, b);
+
+  assert.equal(d.changes.filter((c) => c.type === "prose_removed").length, 0, JSON.stringify(d.changes));
+  assert.equal(d.changes.filter((c) => c.type === "prose_added").length, 0, JSON.stringify(d.changes));
+
+  const edit = d.changes.find((c) => c.type === "prose_edited");
+  assert.ok(edit, "prose should pair as one edit");
+  assert.ok(edit.words?.some((w) => w.op === "add" && /financial/.test(w.text)));
+});
+
+test("a renamed and re-levelled heading is one change carrying both sides", () => {
+  const a = doc("## 02 · Sponsored Posts\n\nBody copy that stays put entirely unchanged here.");
+  const b = doc("# Sponsored Posts\n\nBody copy that stays put entirely unchanged here.");
+  const d = semanticDiff(a, b);
+
+  assert.equal(d.changes.filter((c) => c.type === "section_added").length, 0);
+  assert.equal(d.changes.filter((c) => c.type === "section_removed").length, 0);
+
+  const renamed = d.changes.find((c) => c.type === "section_renamed");
+  assert.ok(renamed, JSON.stringify(d.changes));
+  assert.equal(renamed.beforeLevel, 2);
+  assert.equal(renamed.afterLevel, 1);
+});
+
+test("a genuinely new section is still reported as added", () => {
+  const a = doc("# One\n\nBody one here with enough words to count as prose.");
+  const b = doc([
+    "# One",
+    "",
+    "Body one here with enough words to count as prose.",
+    "",
+    "# Entirely Unrelated Appendix",
+    "",
+    "Wholly different subject matter bearing no resemblance whatsoever to anything.",
+  ].join("\n"));
+  const d = semanticDiff(a, b);
+  assert.ok(d.changes.some((c) => c.type === "section_added" && c.section === "Entirely Unrelated Appendix"), JSON.stringify(d.changes));
+});
+
+test("a genuinely deleted section is still reported as removed", () => {
+  const a = doc("# Keep\n\nRetained body copy here.\n\n# Delete Me\n\nUnique disposable content about submarines and pineapples.");
+  const b = doc("# Keep\n\nRetained body copy here.");
+  const d = semanticDiff(a, b);
+  assert.ok(d.changes.some((c) => c.type === "section_removed" && c.section === "Delete Me"), JSON.stringify(d.changes));
+});
+
+test("changes carry full text, not a truncated snippet", () => {
+  const long = "Sentence number one is here. " .repeat(12).trim();
+  const longer = long + " And a further clause appended at the very end.";
+  const a = doc(`# S\n\n${long}`);
+  const b = doc(`# S\n\n${longer}`);
+  const d = semanticDiff(a, b);
+  const edit = d.changes.find((c) => c.type === "prose_edited");
+  assert.ok(edit);
+  assert.equal(edit.after, longer, "full text should survive to the UI");
+  assert.ok(!/…/.test(edit.after), "no ellipsis in the data layer");
+});
+
+test("removed metadata retains its previous value", () => {
+  const a = doc("# X", { summary: "The old summary text" });
+  const b = doc("# X");
+  const d = semanticDiff(a, b);
+  const removed = d.changes.find((c) => c.type === "metadata_removed" && c.key === "summary");
+  assert.ok(removed);
+  assert.equal(removed.before, "The old summary text");
+});

@@ -1094,7 +1094,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                       <button
                         className="outline-link"
                         onClick={() => jumpToLine(h.line)}
-                        title={`Line ${h.line}`}
+                        title={`${h.text} — line ${h.line}`}
                       >
                         {h.text}
                       </button>
@@ -1163,6 +1163,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           ) : (
             <div className="empty">
               {previewing ? "Rendering PDF…" : "Render the PDF to see paginated output."}
+            </div>
+          )}
+          {previewUrl && previewing && (
+            <div className="preview-rendering-note" aria-live="polite">
+              Rendering PDF…
             </div>
           )}
           {errors.length > 0 && (

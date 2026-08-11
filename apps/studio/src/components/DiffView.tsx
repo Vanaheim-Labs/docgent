@@ -13,6 +13,9 @@ export type Change = {
   before?: string;
   after?: string;
   words?: WordRun[];
+  /** Heading depth either side of a re-level or rename. */
+  beforeLevel?: number;
+  afterLevel?: number;
 };
 
 export type DiffResult = {
@@ -42,6 +45,7 @@ const SEVERITY: Record<string, "add" | "remove" | "edit" | "meta"> = {
   attribute_changed: "meta",
   metadata_changed: "meta",
   section_relevelled: "meta",
+  section_renamed: "edit",
 };
 
 const LABEL: Record<string, string> = {
@@ -58,6 +62,7 @@ const LABEL: Record<string, string> = {
   metadata_removed: "meta",
   metadata_changed: "meta",
   section_relevelled: "re-level",
+  section_renamed: "heading",
 };
 
 /** Word-level prose diff, removals struck through. */
@@ -74,6 +79,83 @@ function WordDiff({ runs }: { runs: WordRun[] }) {
         )
       )}
     </p>
+  );
+}
+
+/** Heading depth change stated in words, not hash marks. */
+function LevelShift({ from, to }: { from?: number; to?: number }) {
+  if (!from || !to || from === to) return null;
+  return (
+    <span className="diff-level">
+      H{from} → H{to}
+    </span>
+  );
+}
+
+/**
+ * The body of a single change.
+ *
+ * Every edit shows both sides. The differ pairs a removal with its matching
+ * addition and attaches word runs, so a reworded sentence renders as inline
+ * strike/insert rather than as a wholesale replacement. One-sided events are
+ * genuine additions or deletions and render as a single tinted block.
+ *
+ * Prose is not truncated here. A reviewer deciding whether to sign off needs
+ * the sentence, and long bodies are capped by CSS with a scroll rather than by
+ * cutting the text mid-clause.
+ */
+function ChangeBody({ change: c }: { change: Change }) {
+  const kind = SEVERITY[c.type] || "edit";
+
+  // Paired edit: inline word-level marking.
+  if (c.words?.length) {
+    return (
+      <>
+        <LevelShift from={c.beforeLevel} to={c.afterLevel} />
+        <WordDiff runs={c.words} />
+      </>
+    );
+  }
+
+  // Metadata and attribute changes carry discrete values either side.
+  if (c.before !== undefined && c.after !== undefined) {
+    return (
+      <p className="diff-detail">
+        <span className="diff-side" data-op="remove">{String(c.before)}</span>
+        <span className="diff-arrow"> → </span>
+        <span className="diff-side" data-op="add">{String(c.after)}</span>
+      </p>
+    );
+  }
+
+  // A removal retains its old value so the reviewer sees what was lost.
+  if (c.before !== undefined && c.after === undefined) {
+    return (
+      <>
+        <LevelShift from={c.beforeLevel} to={c.afterLevel} />
+        <p className="diff-detail">
+          <span className="diff-side" data-op="remove">{String(c.before)}</span>
+        </p>
+      </>
+    );
+  }
+
+  if (c.after !== undefined && c.before === undefined) {
+    return (
+      <>
+        <LevelShift from={c.beforeLevel} to={c.afterLevel} />
+        <p className="diff-detail">
+          <span className="diff-side" data-op="add">{String(c.after)}</span>
+        </p>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <LevelShift from={c.beforeLevel} to={c.afterLevel} />
+      <p className="diff-detail" data-kind={kind}>{c.detail}</p>
+    </>
   );
 }
 
@@ -201,11 +283,7 @@ export function DiffView({
                       <span className="diff-tag">{LABEL[c.type] || c.type}</span>
                       {c.block && <span className="diff-where">{c.block}</span>}
                     </div>
-                    {c.words?.length ? (
-                      <WordDiff runs={c.words} />
-                    ) : (
-                      <p className="diff-detail">{c.detail}</p>
-                    )}
+                    <ChangeBody change={c} />
                   </div>
                 ))}
               </section>

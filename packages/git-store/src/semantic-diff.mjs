@@ -216,6 +216,208 @@ function describeWordDiff(runs) {
 }
 
 /**
+ * Similarity of two strings, 0..1, over their word multisets.
+ *
+ * Cheap and order-insensitive on purpose: a paragraph that was reflowed or had
+ * a clause moved should still read as "the same paragraph, edited" rather than
+ * a wholesale replacement. Order-sensitive LCS is applied afterwards by
+ * wordDiff() to render the actual runs.
+ */
+function similarity(a, b) {
+  const wa = String(a || "").toLowerCase().split(/\s+/).filter(Boolean);
+  const wb = String(b || "").toLowerCase().split(/\s+/).filter(Boolean);
+  if (!wa.length && !wb.length) return 1;
+  if (!wa.length || !wb.length) return 0;
+
+  const counts = new Map();
+  for (const w of wa) counts.set(w, (counts.get(w) || 0) + 1);
+  let shared = 0;
+  for (const w of wb) {
+    const c = counts.get(w);
+    if (c) { shared++; counts.set(w, c - 1); }
+  }
+  return (2 * shared) / (wa.length + wb.length);
+}
+
+/** Nodes only pair if they are the same kind, and blocks the same vocabulary id. */
+function pairable(x, y) {
+  if (x.kind !== y.kind) return false;
+  if (x.kind === "block") return x.id === y.id;
+  return true;
+}
+
+const PAIR_THRESHOLD = 0.5;
+
+/**
+ * Reconciles unmatched removals against unmatched additions.
+ *
+ * Identity is section-keyed, so renaming a heading re-keys every node beneath
+ * it. Without this pass a toc:true rebuild — which renames every heading at
+ * once — reports the entire document as removed and re-added, and the one-sided
+ * "added" path renders a truncated green block with no before state. That is
+ * the failure Compare was showing.
+ *
+ * Greedy best-match by similarity: each removal takes its closest surviving
+ * addition above the threshold. Genuine adds and removes fall through and are
+ * emitted as before.
+ */
+function reconcileOrphans(removes, adds, changes) {
+  const takenAdds = new Set();
+
+  for (const rem of removes) {
+    let best = null;
+    let bestScore = 0;
+
+    for (const add of adds) {
+      if (takenAdds.has(add.index)) continue;
+      if (!pairable(rem.node, add.node)) continue;
+
+      const score =
+        rem.node.kind === "heading"
+          ? similarity(rem.node.text, add.node.text)
+          : rem.node.kind === "block"
+            ? similarity(rem.node.bodyText, add.node.bodyText)
+            : similarity(rem.node.text, add.node.text);
+
+      if (score > bestScore) { bestScore = score; best = add; }
+    }
+
+    if (!best || bestScore < PAIR_THRESHOLD) {
+      emitRemoval(rem.node, changes);
+      continue;
+    }
+
+    takenAdds.add(best.index);
+    emitPaired(rem.node, best.node, changes);
+  }
+
+  for (const add of adds) {
+    if (takenAdds.has(add.index)) continue;
+    emitAddition(add.node, changes);
+  }
+}
+
+/** A removal paired with an addition: one edit, carrying both sides. */
+function emitPaired(b, n, changes) {
+  if (n.kind === "heading") {
+    // A heading that moved section and changed depth is still one heading.
+    if (b.text !== n.text || b.level !== n.level) {
+      changes.push({
+        type: b.level !== n.level && b.text === n.text ? "section_relevelled" : "section_renamed",
+        section: n.text,
+        before: b.level !== n.level && b.text === n.text ? b.level : b.text,
+        after: b.level !== n.level && b.text === n.text ? n.level : n.text,
+        beforeLevel: b.level,
+        afterLevel: n.level,
+        words: b.text !== n.text ? wordDiff(b.text, n.text) : undefined,
+        detail:
+          b.text === n.text
+            ? `${n.text}: heading level ${b.level} → ${n.level}`
+            : `${b.text} → ${n.text}${b.level !== n.level ? ` (H${b.level} → H${n.level})` : ""}`,
+      });
+    }
+    return;
+  }
+
+  if (n.kind === "block") {
+    const keys = new Set([...Object.keys(b.attrs), ...Object.keys(n.attrs)]);
+    for (const key of [...keys].sort()) {
+      if (b.attrs[key] !== n.attrs[key]) {
+        changes.push({
+          type: "attribute_changed",
+          block: n.id,
+          section: n.section,
+          key,
+          before: b.attrs[key],
+          after: n.attrs[key],
+          detail: `${n.id}.${key}: ${b.attrs[key] ?? "—"} → ${n.attrs[key] ?? "—"}`,
+        });
+      }
+    }
+    if (b.bodyText !== n.bodyText) {
+      changes.push({
+        type: "block_edited",
+        block: n.id,
+        section: n.section,
+        words: wordDiff(b.bodyText, n.bodyText),
+        before: b.bodyText,
+        after: n.bodyText,
+        detail: describeBlock(n),
+      });
+    }
+    return;
+  }
+
+  if (b.text !== n.text) {
+    const words = wordDiff(b.text, n.text);
+    changes.push({
+      type: "prose_edited",
+      section: n.section,
+      wordDelta: n.words - b.words,
+      words,
+      before: b.text,
+      after: n.text,
+      detail: describeWordDiff(words) || shortText(n.text),
+    });
+  }
+}
+
+/** Full text is retained; the UI decides how much to show. */
+function emitAddition(n, changes) {
+  if (n.kind === "block") {
+    changes.push({
+      type: "block_added",
+      block: n.id,
+      section: n.section,
+      after: n.bodyText,
+      detail: describeBlock(n),
+    });
+  } else if (n.kind === "heading") {
+    changes.push({
+      type: "section_added",
+      section: n.text,
+      afterLevel: n.level,
+      detail: `${"#".repeat(n.level)} ${n.text}`,
+    });
+  } else if (n.words > 8) {
+    changes.push({
+      type: "prose_added",
+      section: n.section,
+      words: n.words,
+      after: n.text,
+      detail: shortText(n.text),
+    });
+  }
+}
+
+function emitRemoval(n, changes) {
+  if (n.kind === "block") {
+    changes.push({
+      type: "block_removed",
+      block: n.id,
+      section: n.section,
+      before: n.bodyText,
+      detail: describeBlock(n),
+    });
+  } else if (n.kind === "heading") {
+    changes.push({
+      type: "section_removed",
+      section: n.text,
+      beforeLevel: n.level,
+      detail: `${"#".repeat(n.level)} ${n.text}`,
+    });
+  } else if (n.words > 8) {
+    changes.push({
+      type: "prose_removed",
+      section: n.section,
+      words: n.words,
+      before: n.text,
+      detail: shortText(n.text),
+    });
+  }
+}
+
+/**
  * Diffs two document revisions structurally.
  * Returns { changes: [...], summary: {...} }.
  */
@@ -258,33 +460,29 @@ export function semanticDiff(beforeSrc, afterSrc) {
 
   const matchedBefore = new Set();
 
+  /**
+   * Deferred emissions.
+   *
+   * Nothing is pushed straight to `changes` on the unmatched path any more.
+   * Section-keyed identity means a renamed heading (a toc:true rebuild turning
+   * "## 02 · Sponsored Posts" into "# Sponsored Posts") re-keys every child
+   * node, so a document where nothing left or arrived reported eight sections
+   * removed and seven added. That phantom churn is what made Compare unusable:
+   * the paired `prose_edited` path — which carries word runs — never ran, so
+   * every change rendered as a one-sided green block truncated at 90 chars.
+   *
+   * Orphans are collected here and reconciled by similarity below.
+   */
+  const orphanAdds = [];
+  const orphanRemoves = [];
+
   after.forEach((n, i) => {
     const k = identity(n);
     const candidates = beforeByKey.get(k);
     const match = candidates?.find((c) => !matchedBefore.has(c.index));
 
     if (!match) {
-      if (n.kind === "block") {
-        changes.push({
-          type: "block_added",
-          block: n.id,
-          section: n.section,
-          detail: describeBlock(n),
-        });
-      } else if (n.kind === "heading") {
-        changes.push({
-          type: "section_added",
-          section: n.text,
-          detail: `${"#".repeat(n.level)} ${n.text}`,
-        });
-      } else if (n.words > 8) {
-        changes.push({
-          type: "prose_added",
-          section: n.section,
-          words: n.words,
-          detail: shortText(n.text),
-        });
-      }
+      orphanAdds.push({ node: n, index: i });
       return;
     }
 
@@ -314,6 +512,9 @@ export function semanticDiff(beforeSrc, afterSrc) {
           type: "block_edited",
           block: n.id,
           section: n.section,
+          words: wordDiff(b.bodyText, n.bodyText),
+          before: b.bodyText,
+          after: n.bodyText,
           detail: describeBlock(n),
         });
       }
@@ -335,8 +536,8 @@ export function semanticDiff(beforeSrc, afterSrc) {
         section: n.section,
         wordDelta: delta,
         words,
-        before: shortText(b.text),
-        after: shortText(n.text),
+        before: b.text,
+        after: n.text,
         detail: describeWordDiff(words) || shortText(n.text),
       });
     }
@@ -344,28 +545,10 @@ export function semanticDiff(beforeSrc, afterSrc) {
 
   before.forEach((n, i) => {
     if (matchedBefore.has(i)) return;
-    if (n.kind === "block") {
-      changes.push({
-        type: "block_removed",
-        block: n.id,
-        section: n.section,
-        detail: describeBlock(n),
-      });
-    } else if (n.kind === "heading") {
-      changes.push({
-        type: "section_removed",
-        section: n.text,
-        detail: `${"#".repeat(n.level)} ${n.text}`,
-      });
-    } else if (n.words > 8) {
-      changes.push({
-        type: "prose_removed",
-        section: n.section,
-        words: n.words,
-        detail: shortText(n.text),
-      });
-    }
+    orphanRemoves.push({ node: n, index: i });
   });
+
+  reconcileOrphans(orphanRemoves, orphanAdds, changes);
 
   const summary = changes.reduce((acc, c) => {
     acc[c.type] = (acc[c.type] || 0) + 1;
