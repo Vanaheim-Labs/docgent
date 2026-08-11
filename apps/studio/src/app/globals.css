@@ -1212,3 +1212,29 @@ kbd {
   box-shadow: 0 1px 2px rgba(16, 22, 26, 0.08);
 }
 
+
+
+/* Revision summary, beside Save.
+ *
+ * Sized to the 72 characters git treats as a subject line, so the field
+ * itself teaches the limit rather than truncating a sentence after the fact.
+ * Quiet until focused: this sits in the document-level toolbar and should not
+ * pull attention away from the Save control it annotates. */
+.commit-summary {
+  flex: 1 1 260px;
+  min-width: 140px;
+  max-width: 380px;
+  padding: 5px 9px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+}
+.commit-summary::placeholder { color: var(--ink-faint); }
+.commit-summary:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}

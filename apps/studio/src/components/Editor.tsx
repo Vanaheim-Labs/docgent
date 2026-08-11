@@ -38,6 +38,20 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [content, setContent] = useState(initialContent);
   const [baseSha, setBaseSha] = useState(initialSha);
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
+
+  /**
+   * What changed, in the author's words.
+   *
+   * Left empty the store falls back to `docs(brand/slug): <title>`, which
+   * stamps the document's name onto every revision — so a history of ten
+   * edits reads as the same sentence ten times and Compare is the only way
+   * to learn anything. Agents committing through the CLI already pass a real
+   * message; this is the human path catching up.
+   *
+   * Not mandatory. A blocked save is worse than a vague one, and an author
+   * fixing a typo should not owe anyone a sentence.
+   */
+  const [summary, setSummary] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [mode, setMode] = useState<PreviewMode>("html");
@@ -166,7 +180,16 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       const res = await fetch(`/api/doc/${brand}/${slug}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content, baseSha }),
+        body: JSON.stringify({
+          content,
+          baseSha,
+          // Prefixed here rather than in the field so the author writes prose,
+          // not conventional-commit syntax. VersionPanel strips this same
+          // prefix back off for display.
+          message: summary.trim()
+            ? `docs(${brand}/${slug}): ${summary.trim()}`
+            : undefined,
+        }),
       });
       const data = await res.json();
 
@@ -191,11 +214,14 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       }
 
       setBaseSha(data.sha);
+      // Cleared on success so the next edit does not silently reuse the last
+      // edit's description, which would be worse than no description at all.
+      setSummary("");
       setSave({ kind: "saved", sha: data.sha, commit: data.commit });
     } catch (e) {
       setSave({ kind: "error", message: e instanceof Error ? e.message : String(e) });
     }
-  }, [brand, slug, content, baseSha, errors.length]);
+  }, [brand, slug, content, baseSha, errors.length, summary]);
 
   // Cmd/Ctrl+S saves. Authors expect it; without it they will use the browser
   // save dialog and lose work.
@@ -897,6 +923,26 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           )}
           {errors.length === 0 && warnings.length === 0 && (
             <span className="diag-pill" data-severity="ok">valid</span>
+          )}
+          {/* Shown only once there is something to describe. An empty field
+              sitting beside an unmodified document is a demand for input the
+              author does not owe yet. */}
+          {dirty && (
+            <input
+              className="commit-summary"
+              type="text"
+              value={summary}
+              onChange={(e) => setSummary(e.target.value)}
+              placeholder="What changed? (optional)"
+              aria-label="Describe this revision"
+              maxLength={72}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void doSave();
+                }
+              }}
+            />
           )}
           <button
             className="btn"
