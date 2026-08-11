@@ -457,6 +457,64 @@ kbd {
   color: var(--accent, #2563eb);
 }
 
+/* ---- markdown formatting bar ----
+   A quieter second rail beneath the main toolbar. Buttons are square and
+   monochrome so the eye still lands on Save and the validity pill first;
+   formatting is frequent but never the most important thing on screen. */
+.format-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 20px;
+  background: var(--paper-alt);
+  border-bottom: 1px solid var(--rule);
+  position: sticky;
+  top: 45px;
+  z-index: 7;
+}
+.format-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.format-group + .format-group {
+  margin-left: 6px;
+  padding-left: 8px;
+  border-left: 1px solid var(--rule);
+}
+.format-btn {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 5px;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 7px;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1;
+  color: var(--ink-soft);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.format-btn:hover:not(:disabled) {
+  background: var(--paper);
+  border-color: var(--rule);
+  color: var(--ink);
+}
+.format-btn:active:not(:disabled) { background: var(--rule); }
+.format-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.format-btn-mono { font-family: var(--mono); font-size: 11.5px; }
+.format-note {
+  margin-left: 10px;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
 .editor-panes {
   display: grid;
   grid-template-columns: 1fr 1fr;

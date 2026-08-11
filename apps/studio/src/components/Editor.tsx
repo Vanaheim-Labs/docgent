@@ -568,6 +568,206 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     });
   }, [headings, sectionEnd, lineOffsets, content, syncEditorToPreview]);
 
+  /* ---------------- markdown formatting ---------------- */
+
+  // All formatting rewrites the buffer through a single primitive: replace a
+  // range and restore a selection. Going through one path means undo history,
+  // fold-guarding and preview invalidation behave identically for every
+  // button, rather than each action inventing its own edge cases.
+  const applyEdit = useCallback(
+    (next: string, selStart: number, selEnd: number) => {
+      setContent(next);
+      setSave((s) => (s.kind === "saved" ? { kind: "idle" } : s));
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(selStart, selEnd);
+      });
+    },
+    []
+  );
+
+  // Inline marks (bold, italic, code, strikethrough) toggle. If the selection
+  // is already wrapped — or sits immediately inside the marks — the marks are
+  // removed instead of nested, because "**\*\*bold\*\***" is the classic way a
+  // toolbar silently corrupts a document.
+  const toggleInline = useCallback(
+    (mark: string, placeholder: string) => {
+      const el = textareaRef.current;
+      if (!el || isFolded) return;
+      const start = el.selectionStart;
+      const end = el.selectionEnd;
+      const selected = content.slice(start, end);
+      const len = mark.length;
+
+      // Marks inside the selection.
+      if (
+        selected.length >= len * 2 &&
+        selected.startsWith(mark) &&
+        selected.endsWith(mark)
+      ) {
+        const inner = selected.slice(len, -len);
+        applyEdit(
+          content.slice(0, start) + inner + content.slice(end),
+          start,
+          start + inner.length
+        );
+        return;
+      }
+
+      // Marks just outside the selection.
+      const before = content.slice(Math.max(0, start - len), start);
+      const after = content.slice(end, end + len);
+      if (before === mark && after === mark) {
+        applyEdit(
+          content.slice(0, start - len) + selected + content.slice(end + len),
+          start - len,
+          start - len + selected.length
+        );
+        return;
+      }
+
+      const body = selected || placeholder;
+      const text = mark + body + mark;
+      applyEdit(
+        content.slice(0, start) + text + content.slice(end),
+        start + len,
+        start + len + body.length
+      );
+    },
+    [content, isFolded, applyEdit]
+  );
+
+  // Line-level transforms operate on whole lines, so the selection is first
+  // expanded to line boundaries. Without that, applying a heading to a
+  // mid-line cursor would inject '#' into the middle of a sentence.
+  const transformLines = useCallback(
+    (fn: (lines: string[]) => string[]) => {
+      const el = textareaRef.current;
+      if (!el || isFolded) return;
+      const start = el.selectionStart;
+      const end = el.selectionEnd;
+      const from = content.lastIndexOf("\n", start - 1) + 1;
+      let to = content.indexOf("\n", end);
+      if (to === -1) to = content.length;
+      // A selection ending exactly at a line start should not pull in the
+      // following line.
+      const effectiveTo = end > from && content[end - 1] === "\n" && end - 1 >= from ? end - 1 : to;
+
+      const block = content.slice(from, effectiveTo);
+      const next = fn(block.split("\n")).join("\n");
+      applyEdit(
+        content.slice(0, from) + next + content.slice(effectiveTo),
+        from,
+        from + next.length
+      );
+    },
+    [content, isFolded, applyEdit]
+  );
+
+  // Headings cycle: applying the level already present removes it, so the
+  // same button both promotes and clears.
+  const applyHeading = useCallback(
+    (level: number) => {
+      const hashes = "#".repeat(level);
+      transformLines((lines) => {
+        const allAt = lines.every((l) => l.trim() === "" || l.startsWith(hashes + " "));
+        return lines.map((l) => {
+          if (l.trim() === "") return l;
+          const bare = l.replace(/^#{1,6}\s+/, "");
+          return allAt ? bare : `${hashes} ${bare}`;
+        });
+      });
+    },
+    [transformLines]
+  );
+
+  const applyBullets = useCallback(() => {
+    transformLines((lines) => {
+      const allBul = lines.every((l) => l.trim() === "" || /^\s*[-*+]\s+/.test(l));
+      return lines.map((l) => {
+        if (l.trim() === "") return l;
+        return allBul ? l.replace(/^(\s*)[-*+]\s+/, "$1") : `- ${l.replace(/^\s*/, "")}`;
+      });
+    });
+  }, [transformLines]);
+
+  const applyNumbered = useCallback(() => {
+    transformLines((lines) => {
+      const allNum = lines.every((l) => l.trim() === "" || /^\s*\d+\.\s+/.test(l));
+      let n = 0;
+      return lines.map((l) => {
+        if (l.trim() === "") return l;
+        if (allNum) return l.replace(/^(\s*)\d+\.\s+/, "$1");
+        n += 1;
+        return `${n}. ${l.replace(/^\s*/, "")}`;
+      });
+    });
+  }, [transformLines]);
+
+  const applyQuote = useCallback(() => {
+    transformLines((lines) => {
+      const allQ = lines.every((l) => l.trim() === "" || /^\s*>\s?/.test(l));
+      return lines.map((l) => {
+        if (l.trim() === "") return l;
+        return allQ ? l.replace(/^(\s*)>\s?/, "$1") : `> ${l}`;
+      });
+    });
+  }, [transformLines]);
+
+  // A link keeps whatever the author selected as the visible text and puts the
+  // cursor on the URL, which is the part they still have to supply.
+  const insertLink = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el || isFolded) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const selected = content.slice(start, end);
+    const label = selected || "link text";
+    const text = `[${label}](url)`;
+    const urlAt = start + label.length + 3;
+    applyEdit(content.slice(0, start) + text + content.slice(end), urlAt, urlAt + 3);
+  }, [content, isFolded, applyEdit]);
+
+  const insertRule = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el || isFolded) return;
+    const start = el.selectionStart;
+    const atLineStart = start === 0 || content[start - 1] === "\n";
+    const text = `${atLineStart ? "" : "\n"}\n---\n\n`;
+    const pos = start + text.length;
+    applyEdit(content.slice(0, start) + text + content.slice(start), pos, pos);
+  }, [content, isFolded, applyEdit]);
+
+  const insertCodeBlock = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el || isFolded) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const selected = content.slice(start, end);
+    const body = selected || "code";
+    const atLineStart = start === 0 || content[start - 1] === "\n";
+    const lead = atLineStart ? "" : "\n";
+    const text = `${lead}\`\`\`\n${body}\n\`\`\`\n`;
+    const bodyAt = start + lead.length + 4;
+    applyEdit(content.slice(0, start) + text + content.slice(end), bodyAt, bodyAt + body.length);
+  }, [content, isFolded, applyEdit]);
+
+  // Keyboard shortcuts for the marks authors reach for most. Registered on the
+  // textarea rather than the window so they cannot hijack typing elsewhere.
+  const onSourceKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === "b") { e.preventDefault(); toggleInline("**", "bold text"); }
+      else if (k === "i") { e.preventDefault(); toggleInline("*", "italic text"); }
+      else if (k === "e") { e.preventDefault(); toggleInline("\`", "code"); }
+      else if (k === "k") { e.preventDefault(); insertLink(); }
+    },
+    [toggleInline, insertLink]
+  );
+
   /* ---------------- snippet insertion ---------------- */
 
   const insertSnippet = useCallback((snippet: string) => {
@@ -708,6 +908,130 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
       </div>
 
+      {/* Formatting bar. Deliberately a second row rather than crammed into the
+          toolbar: these are per-selection text actions, whereas the row above
+          holds document-level state (posture, preview, save). Mixing them
+          makes the destructive actions harder to find in a hurry. */}
+      <div className="format-bar" role="toolbar" aria-label="Markdown formatting">
+        <div className="format-group">
+          {([1, 2, 3] as const).map((lvl) => (
+            <button
+              key={lvl}
+              className="format-btn"
+              onClick={() => applyHeading(lvl)}
+              disabled={isFolded}
+              title={`Heading ${lvl}`}
+              aria-label={`Heading ${lvl}`}
+            >
+              H{lvl}
+            </button>
+          ))}
+        </div>
+
+        <div className="format-group">
+          <button
+            className="format-btn"
+            onClick={() => toggleInline("**", "bold text")}
+            disabled={isFolded}
+            title="Bold — ⌘B"
+            aria-label="Bold"
+          >
+            <strong>B</strong>
+          </button>
+          <button
+            className="format-btn"
+            onClick={() => toggleInline("*", "italic text")}
+            disabled={isFolded}
+            title="Italic — ⌘I"
+            aria-label="Italic"
+          >
+            <em>I</em>
+          </button>
+          <button
+            className="format-btn"
+            onClick={() => toggleInline("~~", "struck text")}
+            disabled={isFolded}
+            title="Strikethrough"
+            aria-label="Strikethrough"
+          >
+            <s>S</s>
+          </button>
+          <button
+            className="format-btn format-btn-mono"
+            onClick={() => toggleInline("`", "code")}
+            disabled={isFolded}
+            title="Inline code — ⌘E"
+            aria-label="Inline code"
+          >
+            {"<>"}
+          </button>
+        </div>
+
+        <div className="format-group">
+          <button
+            className="format-btn"
+            onClick={applyBullets}
+            disabled={isFolded}
+            title="Bulleted list"
+            aria-label="Bulleted list"
+          >
+            ••
+          </button>
+          <button
+            className="format-btn"
+            onClick={applyNumbered}
+            disabled={isFolded}
+            title="Numbered list"
+            aria-label="Numbered list"
+          >
+            1.
+          </button>
+          <button
+            className="format-btn"
+            onClick={applyQuote}
+            disabled={isFolded}
+            title="Blockquote"
+            aria-label="Blockquote"
+          >
+            &rdquo;
+          </button>
+        </div>
+
+        <div className="format-group">
+          <button
+            className="format-btn"
+            onClick={insertLink}
+            disabled={isFolded}
+            title="Link — ⌘K"
+            aria-label="Insert link"
+          >
+            Link
+          </button>
+          <button
+            className="format-btn format-btn-mono"
+            onClick={insertCodeBlock}
+            disabled={isFolded}
+            title="Code block"
+            aria-label="Insert code block"
+          >
+            {"{ }"}
+          </button>
+          <button
+            className="format-btn"
+            onClick={insertRule}
+            disabled={isFolded}
+            title="Horizontal rule"
+            aria-label="Insert horizontal rule"
+          >
+            —
+          </button>
+        </div>
+
+        {isFolded && (
+          <span className="format-note">unfold a section to edit</span>
+        )}
+      </div>
+
       {showPalette && (
         <div className="palette">
           <div className="palette-head">
@@ -794,6 +1118,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             data-gramm_editor="true"
             data-enable-grammarly="true"
             onScroll={syncEditorToPreview}
+            onKeyDown={onSourceKeyDown}
             onChange={(e) => {
               // Guarded rather than remapped: while folded the visible string
               // is a projection, so an offset-based write would corrupt the
