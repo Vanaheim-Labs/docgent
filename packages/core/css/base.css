@@ -82,6 +82,71 @@ body {
   -weasy-hyphens: var(--body-hyphens, auto);
 }
 
+/* ---------- Microtypography ----------
+   The refinements a typesetter applies by hand. Non-breaking ties live in
+   filters/microtype.lua; everything here is presentation-layer and therefore
+   overridable by a brand.
+
+   Numerals: body prose reads better with proportional oldstyle figures, but
+   any column of numbers must align, so tabular lining figures are forced back
+   on wherever figures are compared vertically. */
+body {
+  font-variant-numeric: proportional-nums;
+  font-kerning: normal;
+  font-variant-ligatures: common-ligatures contextual;
+}
+
+/* Anywhere numbers stack, they must align on the digit. */
+table, .datatable, .keyfigure, .kpicard, .kpigrid, .daygrid,
+.allocation, .metric, time, .figure-source {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Numeric cells align on the decimal point rather than ragging left. */
+.datatable td[data-align="r"],
+.datatable th[data-align="r"],
+.datatable .num,
+td.num, th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Hanging punctuation pulls opening quotes into the margin so the text edge
+   stays optically straight. Supported by WeasyPrint; ignored elsewhere. */
+p, blockquote, .pullquote {
+  hanging-punctuation: first last;
+}
+
+/* Widow and orphan control. The body rule sets 3; these are the places where
+   a single stranded line is most visible. */
+p, li, blockquote, .callout, .pullquote {
+  orphans: 3;
+  widows: 3;
+}
+
+/* Headings must never hyphenate, and should wrap on sense rather than at the
+   measure. text-wrap: balance evens the rag across a multi-line heading. */
+h1, h2, h3, h4, h5, h6 {
+  hyphens: none;
+  -weasy-hyphens: none;
+  text-wrap: balance;
+}
+
+/* A heading is a display object: tighten its tracking as it gets larger. */
+h1 { font-variant-numeric: lining-nums; }
+
+/* Captions and source notes are secondary matter — never hyphenate them. */
+.figure-caption, .figure-source, .datatable caption, figcaption {
+  hyphens: none;
+  -weasy-hyphens: none;
+  text-wrap: pretty;
+}
+
+/* Abbreviations and units set in caps sit better with a touch of tracking. */
+abbr, .unit {
+  letter-spacing: 0.02em;
+}
+
 /* ---------- Headings ---------- */
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading);

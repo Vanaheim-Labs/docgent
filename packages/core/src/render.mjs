@@ -18,6 +18,10 @@ export const ROOT = path.resolve(__dirname, "..", "..", "..");
 const CORE = path.join(ROOT, "packages", "core");
 const TEMPLATE = path.join(CORE, "templates", "document.html");
 const FILTER = path.join(CORE, "filters", "vocabulary.lua");
+// Microtypography runs after the vocabulary filter: it refines prose that the
+// vocabulary filter may itself have emitted, and it must never see raw HTML
+// before that HTML has been formed.
+const MICROTYPE_FILTER = path.join(CORE, "filters", "microtype.lua");
 const BASE_CSS = path.join(CORE, "css", "base.css");
 
 export function readFrontmatter(mdPath) {
@@ -144,10 +148,19 @@ export function mdToHtml(mdPath, { brand, frontmatter, outHtml, cssHrefs }) {
     "--standalone",
     "--template", TEMPLATE,
     "--lua-filter", FILTER,
+    "--lua-filter", MICROTYPE_FILTER,
     "--section-divs",
     "--metadata", `brandname=${brand.name || brand.id}`,
     "-o", outHtml,
   ];
+
+  // Brand cover logo — pass as a path relative to the brand assets dir so
+  // WeasyPrint can resolve it via the baseUrl. The template uses $brandlogo$.
+  const coverLogo = brand.cover && brand.cover.logo;
+  if (coverLogo) {
+    const logoPath = path.join(brand.dir, coverLogo);
+    if (fs.existsSync(logoPath)) args.push("--metadata", `brandlogo=${logoPath}`);
+  }
 
   // Deal/offer fields and the brand's display wording for the classification
   // level. Frontmatter carries the registry enum ('restricted'); the brand
