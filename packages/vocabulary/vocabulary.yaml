@@ -169,12 +169,6 @@ blocks:
       title: { type: string, required: true }
     breakInside: avoid
 
-  - id: claimclass
-    syntax: "[text]{.claim kind=fact|drafting|gated}"
-    description: Inline chip classifying a claim's evidential status.
-    attrs:
-      kind: { type: enum, values: [fact, drafting, gated], default: gated }
-
   - id: toc
     syntax: "::: toc"
     description: Table of contents placeholder — populated at render time.
@@ -204,6 +198,11 @@ inlines:
     description: Accent-coloured word inside a heading. Emphasis is positional —
       reserve it for the two or three headings where the accented word carries
       argumentative weight. Applied to every heading it stops reading as emphasis.
+  - id: claim
+    syntax: "[text]{.claim kind=fact|drafting|gated}"
+    description: Inline chip classifying a claim's evidential status.
+    attrs:
+      kind: { type: enum, values: [fact, drafting, gated], default: gated }
 
 frontmatter:
   required: [title, brand, doctype, version, date]

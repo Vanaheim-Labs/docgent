@@ -582,3 +582,263 @@ table:not(.datatable table) td {
 /* The back-reference glyph (↩) is frequently missing from embedded print
    fonts and renders as tofu. Suppress it — a backlink is meaningless in PDF. */
 .footnote-back { display: none; }
+
+/* ---------- exec-intro ---------- */
+.exec-intro {
+  break-inside: avoid;
+  margin: 0 0 1.5rem;
+  padding: 1.4rem 1.6rem;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 2px;
+}
+.exec-intro-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-soft);
+  margin-bottom: 0.5rem;
+}
+.exec-intro-pull {
+  font-family: var(--font-heading, var(--font-sans));
+  font-size: 1.05rem;
+  line-height: 1.4;
+}
+.exec-intro-pull p { color: var(--paper); text-align: left; margin: 0; }
+.exec-intro-pull h1 { color: var(--paper); margin: 0 0 0.5rem; }
+
+/* ---------- tensionbox ---------- */
+.tension-box {
+  break-inside: avoid;
+  margin: 1.2rem 0;
+  padding: 1.1rem 1.4rem;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 2px;
+}
+.tension-title {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-soft);
+  margin-bottom: 0.5rem;
+}
+.tension-box p { color: var(--paper); text-align: left; margin: 0; }
+.tension-box strong { color: var(--accent-soft); }
+
+/* ---------- note (editorial, hidden in print) ---------- */
+.note { display: none; }
+
+/* ---------- claim inline ---------- */
+.class-label {
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 0.05rem 0.35rem;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.class-label.fact { background: var(--success-soft); color: var(--success); }
+.class-label.drafting { background: var(--warning-soft); color: var(--warning); }
+.class-label.gated { background: var(--risk-soft); color: var(--risk); }
+
+/* ---------- accent inline ---------- */
+em.accent { font-style: normal; color: var(--accent); }
+
+/* ---------- funnel ---------- */
+.funnel {
+  display: flex;
+  align-items: center;
+  break-inside: avoid;
+  margin: 1.2rem 0;
+  font-family: var(--font-sans);
+}
+.funnel-step {
+  flex: 1;
+  text-align: center;
+  padding: 0.8rem 0.5rem;
+  background: var(--paper-alt);
+  border-radius: 2px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.funnel-sublabel {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--ink-faint);
+}
+.funnel-arrow {
+  flex: 0 0 1.4rem;
+  height: 1pt;
+  background: var(--rule);
+  position: relative;
+}
+.funnel-arrow::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-top: 1pt solid var(--ink-faint);
+  border-right: 1pt solid var(--ink-faint);
+  transform: translateY(-50%) rotate(45deg);
+}
+
+/* ---------- milestones ---------- */
+.milestone-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+  margin: 1.2rem 0;
+}
+.milestone-box {
+  break-inside: avoid;
+  padding: 0.9rem 1.1rem;
+  background: var(--paper-alt);
+  border-left: 2pt solid var(--accent);
+  border-radius: 0 2px 2px 0;
+}
+.milestone-label {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.86rem;
+  color: var(--ink);
+  margin-bottom: 0.4rem;
+}
+.milestone-box ul { margin: 0; padding-left: 1rem; }
+.milestone-box li { font-size: 0.84rem; color: var(--ink-soft); margin-bottom: 0.15rem; }
+
+/* ---------- allocation ---------- */
+.funds-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+  break-inside: avoid;
+}
+.funds-label {
+  flex: 0 0 32%;
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  color: var(--ink);
+}
+.funds-bar-wrap {
+  flex: 1;
+  height: 0.6rem;
+  background: var(--paper-alt);
+  border-radius: 1px;
+  overflow: hidden;
+}
+.funds-bar { height: 100%; background: var(--accent); }
+.funds-pct {
+  flex: 0 0 3rem;
+  text-align: right;
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+/* ---------- kpigrid / kpicard ---------- */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.7rem;
+  margin: 1.2rem 0;
+}
+.kpi-grid-2 { grid-template-columns: repeat(2, 1fr); }
+.kpi-grid-3 { grid-template-columns: repeat(3, 1fr); }
+.kpi-card {
+  break-inside: avoid;
+  padding: 0.8rem 0.9rem;
+  background: var(--paper-alt);
+  border-radius: 2px;
+  border-top: 2pt solid var(--accent);
+}
+.kpi-card.sky { border-top-color: #1f6ea8; }
+.kpi-card.rose { border-top-color: #b83c6b; }
+.kpi-card.amber { border-top-color: var(--warning); }
+.kpi-card.red { border-top-color: var(--risk); }
+.kpi-card.green { border-top-color: var(--success); }
+.kpi-card.purple { border-top-color: #6b46a8; }
+.kpi-card.orange { border-top-color: #c15a1f; }
+.kpi-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 0.3rem;
+}
+.source-tag {
+  font-size: 0.6rem;
+  padding: 0.02rem 0.28rem;
+  border-radius: 2px;
+  background: var(--rule);
+  color: var(--ink-soft);
+  letter-spacing: 0.02em;
+}
+.kpi-value {
+  font-family: var(--font-sans);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.kpi-change {
+  margin-top: 0.15rem;
+  font-family: var(--font-sans);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+.kpi-change.up { color: var(--success); }
+.kpi-change.down { color: var(--risk); }
+.kpi-change.warn { color: var(--warning); }
+.kpi-change.neutral { color: var(--ink-faint); }
+
+/* ---------- daygrid / daycell ---------- */
+.weekly-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.4rem;
+  margin: 1.2rem 0;
+}
+.day-cell {
+  break-inside: avoid;
+  text-align: center;
+  padding: 0.6rem 0.3rem;
+  background: var(--paper-alt);
+  border-radius: 2px;
+}
+.day-cell.highlight { background: var(--accent-soft); }
+.day-cell.anomaly { background: var(--warning-soft); }
+.day-cell.positive { background: var(--success-soft); }
+.day-cell.zero { opacity: 0.55; }
+.day-cell.partial { border: 1pt dashed var(--rule); background: var(--paper); }
+.day-label {
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 0.25rem;
+}
+.day-value {
+  font-family: var(--font-sans);
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
