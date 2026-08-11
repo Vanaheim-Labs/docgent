@@ -99,7 +99,9 @@ body {
 }
 p { text-align: left; hyphens: none; -weasy-hyphens: none; }
 
-/* ─── COVER (full-bleed dark, left-aligned) ────────────────────────────── */
+/* ─── COVER (full-bleed dark, centred) ─────────────────────────────────── */
+.cover-band { display: none; }
+
 .cover {
   page: cover;
   page-break-after: always;
@@ -108,17 +110,20 @@ p { text-align: left; hyphens: none; -weasy-hyphens: none; }
   background: var(--ink-cover);
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   overflow: hidden;
   padding: 22mm 24mm 18mm 24mm;
 }
 
 /* Logo row: inkl wordmark + orange dot */
 .cover-logo {
-  margin-bottom: auto;
+  margin-bottom: 14mm;
 }
 .cover-logo svg,
 .cover-logo img {
-  height: 22px;
+  height: 36px;
   width: auto;
 }
 
@@ -134,16 +139,17 @@ p { text-align: left; hyphens: none; -weasy-hyphens: none; }
   margin-bottom: 4mm;
 }
 
-/* Main title — Manrope bold, white, left-aligned */
+/* Main title — Manrope light, white, centred */
 .cover-title {
   font-family: var(--font-sans);
-  font-size: 38pt;
-  font-weight: 700;
-  line-height: 1.08;
+  font-size: 32pt;
+  font-weight: 300;
+  line-height: 1.15;
   color: var(--ink-cover-text);
   margin-bottom: 5mm;
   max-width: 160mm;
   border: none;
+  text-align: center;
 }
 /* Orange emphasis within title */
 .cover-title em {
@@ -151,27 +157,38 @@ p { text-align: left; hyphens: none; -weasy-hyphens: none; }
   color: var(--orange);
 }
 
-/* Orange bar below title */
+/* Orange bar below title — hide on B2C report style, show date in orange instead */
 .cover-rule {
-  width: 40mm;
-  height: 3px;
-  background: var(--orange);
-  margin-bottom: 8mm;
+  display: none;
 }
 
-/* Subtitle / tagline */
-.cover-subtitle {
-  font-family: var(--font-sans);
-  font-size: 11pt;
-  font-weight: 300;
+/* Date shown as orange period label */
+.cover-doctype {
+  font-family: var(--font-mono);
+  font-size: 8pt;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
   color: var(--ink-cover-muted);
-  line-height: 1.55;
-  max-width: 140mm;
-  margin-bottom: auto;
+  margin-bottom: 2mm;
+  text-align: center;
+}
+
+/* Subtitle — Inconsolata caps, muted */
+.cover-subtitle {
+  font-family: var(--font-mono);
+  font-size: 9pt;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--ink-cover-muted);
+  margin-bottom: 6mm;
+  text-align: center;
 }
 
 /* Cover footer: company details */
 .cover-footer {
+  margin-top: auto;
   border-top: 1px solid #3A3D44;
   padding-top: 5mm;
   font-family: var(--font-mono);
@@ -181,18 +198,22 @@ p { text-align: left; hyphens: none; -weasy-hyphens: none; }
   letter-spacing: 0.04em;
   display: flex;
   justify-content: space-between;
+  width: 100%;
 }
 .cover-footer-left,
 .cover-footer-right {
   color: var(--ink-cover-muted);
 }
 
-/* Cover meta grid (for documents that show prepared-by / version / date) */
+/* Cover meta grid */
 .cover-meta-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 6mm;
-  margin-bottom: 12mm;
+  margin-top: 14mm;
+  margin-bottom: 0;
+  text-align: left;
+  width: 100%;
 }
 .cover-meta-label {
   font-family: var(--font-mono);
@@ -229,7 +250,8 @@ p { text-align: left; hyphens: none; -weasy-hyphens: none; }
 /* ─── SECTION STRUCTURE ─────────────────────────────────────────────────── */
 .content { padding: 0; }
 
-/* Section eyebrow — orange label, pushed to running header */
+/* Section eyebrow — orange label, pushed to running header.
+   Page break only on sections 3+ (not first two) to keep density high. */
 .section-number {
   font-family: var(--font-mono);
   font-weight: 500;
@@ -238,15 +260,11 @@ p { text-align: left; hyphens: none; -weasy-hyphens: none; }
   letter-spacing: 0.1em;
   color: var(--orange);
   margin-bottom: 3mm;
-  break-before: page;
-  page-break-before: always;
+  break-before: avoid;
+  page-break-before: avoid;
   break-after: avoid;
   page-break-after: avoid;
   string-set: sectioneyebrow content();
-}
-.content > .section-number:first-of-type {
-  break-before: avoid;
-  page-break-before: avoid;
 }
 .section-number + h1 {
   break-before: avoid;

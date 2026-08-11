@@ -49,6 +49,7 @@ cover:
   style: full-bleed-dark
   show_client: false
   show_classification: true
+  logo: assets/logo-white.svg
 
 footer:
   left: "Inkl Pty Ltd · ABN 62 167 159 819"
