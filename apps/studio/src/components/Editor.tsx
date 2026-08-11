@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Vocabulary } from "@/lib/vocabulary";
 import { validateMarkdown, type Diagnostic } from "@/lib/validate-client";
+import { RewriteBar, type RewriteProposal } from "@/components/RewriteBar";
+import { ProposalReview } from "@/components/ProposalReview";
 
 type SaveState =
   | { kind: "idle" }
@@ -62,6 +64,21 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [posture, setPosture] = useState<Posture>("edit");
   const [showOutline, setShowOutline] = useState(true);
   const [folded, setFolded] = useState<number[]>([]);
+
+  /**
+   * Directed rewrite: bar open state plus the scope it was opened against.
+   * "scope" here is the UI's own record, not the API's Scope type — a
+   * heading name for a section trigger, or a selection range for a
+   * selection trigger — kept separate so getScope() below can compute the
+   * API payload lazily, at request time rather than at open time.
+   */
+  const [rewriteTarget, setRewriteTarget] = useState<
+    | { kind: "section"; heading: string; label: string; top: number }
+    | { kind: "range"; start: number; end: number; label: string; top: number }
+    | null
+  >(null);
+  const [proposal, setProposal] = useState<RewriteProposal | null>(null);
+  const [acceptedNote, setAcceptedNote] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -614,6 +631,72 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     []
   );
 
+  /* ---------------- directed rewrite ---------------- */
+
+  // Opens the bar against the current textarea selection. Refuses an empty
+  // selection rather than silently falling back to the whole document — a
+  // human who selected nothing almost certainly meant to select something,
+  // and "rewrite everything" from an empty selection is the kind of surprise
+  // that erodes trust in the feature on first use.
+  const openSelectionRewrite = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el || isFolded) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    if (end <= start) return;
+    const selected = content.slice(start, end);
+    const label =
+      selected.trim().length > 60 ? selected.trim().slice(0, 57) + "…" : selected.trim();
+    const top = Math.max(0, offsetForLine(content.slice(0, start).split("\n").length) - el.scrollTop);
+    setProposal(null);
+    setAcceptedNote(null);
+    setRewriteTarget({ kind: "range", start, end, label: label || "selection", top });
+  }, [content, isFolded, offsetForLine]);
+
+  // Opens the bar against a whole section, addressed by heading text so it
+  // survives a reorder between opening the bar and the request landing.
+  const openSectionRewrite = useCallback(
+    (h: Heading) => {
+      const top = Math.max(0, offsetForLine(h.line) - (textareaRef.current?.scrollTop ?? 0));
+      setProposal(null);
+      setAcceptedNote(null);
+      setRewriteTarget({ kind: "section", heading: h.text, label: h.text, top });
+    },
+    [offsetForLine]
+  );
+
+  const closeRewrite = useCallback(() => {
+    setRewriteTarget(null);
+    setProposal(null);
+  }, []);
+
+  // Resolved lazily inside RewriteBar, at request time — never at open time —
+  // so a proposal always reflects what is currently selected/scoped, not a
+  // stale snapshot from when the bar first appeared.
+  const getScope = useCallback(():
+    | { kind: "section"; heading: string }
+    | { kind: "range"; start: number; end: number } => {
+    if (!rewriteTarget) return { kind: "range", start: 0, end: 0 };
+    if (rewriteTarget.kind === "section") return { kind: "section", heading: rewriteTarget.heading };
+    return { kind: "range", start: rewriteTarget.start, end: rewriteTarget.end };
+  }, [rewriteTarget]);
+
+  // Accepting a proposal goes through the exact same primitive every
+  // formatting button uses, so undo, dirty-state and preview invalidation
+  // behave identically for an AI-authored change and a hand-typed one.
+  const acceptProposal = useCallback(
+    (finalContent: string, accepted: RewriteProposal) => {
+      applyEdit(finalContent, accepted.span.start, accepted.span.start + accepted.after.length);
+      setBaseSha((prev) => prev); // server already advanced baseSha via the accept commit
+      setAcceptedNote(`Accepted — ${accepted.model.label}: “${accepted.instruction}”`);
+      setProposal(null);
+      setRewriteTarget(null);
+      // The accept endpoint already committed, so the buffer and the repo
+      // agree the moment applyEdit lands — nothing further to save.
+    },
+    [applyEdit]
+  );
+
   // Inline marks (bold, italic, code, strikethrough) toggle. If the selection
   // is already wrapped — or sits immediately inside the marks — the marks are
   // removed instead of nested, because "**\*\*bold\*\***" is the classic way a
@@ -1073,6 +1156,18 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           </button>
         </div>
 
+        <div className="format-group">
+          <button
+            className="format-btn format-btn-wide"
+            onClick={openSelectionRewrite}
+            disabled={isFolded}
+            title="Select text first, then direct a rewrite"
+            aria-label="Rewrite selection"
+          >
+            ✨ Rewrite
+          </button>
+        </div>
+
         {isFolded && (
           <span className="format-note">unfold a section to edit</span>
         )}
@@ -1113,6 +1208,35 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           Saved{save.commit?.sha ? ` as ${save.commit.sha.slice(0, 7)}` : ""}.
         </div>
       )}
+      {acceptedNote && (
+        <div className="banner" data-kind="ok">
+          {acceptedNote} — committed. Save is not needed for this change.
+        </div>
+      )}
+
+      {rewriteTarget && !proposal && (
+        <RewriteBar
+          brand={brand}
+          slug={slug}
+          scopeLabel={rewriteTarget.label}
+          getScope={getScope}
+          onProposal={setProposal}
+          onClose={closeRewrite}
+          anchorTop={rewriteTarget.top}
+        />
+      )}
+
+      {proposal && (
+        <div className="proposal-overlay">
+          <ProposalReview
+            proposal={proposal}
+            brand={brand}
+            slug={slug}
+            onAccept={acceptProposal}
+            onReject={closeRewrite}
+          />
+        </div>
+      )}
 
       <div className="editor-panes" data-posture={posture}>
         <div className="pane pane-source" data-outline={showOutline && headings.length > 0}>
@@ -1143,6 +1267,14 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                         title={`${h.text} — line ${h.line}`}
                       >
                         {h.text}
+                      </button>
+                      <button
+                        className="outline-direct"
+                        onClick={() => openSectionRewrite(h)}
+                        title={`Direct a rewrite of "${h.text}"`}
+                        aria-label={`Direct a rewrite of ${h.text}`}
+                      >
+                        ✨
                       </button>
                     </div>
                   );
