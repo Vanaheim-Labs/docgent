@@ -38,6 +38,10 @@ RENDER_TIMEOUT = int(os.environ.get("DOCFORGE_RENDER_TIMEOUT", 90))
 
 TEMPLATE = PIPELINE_DIR / "core" / "templates" / "document.html"
 FILTER = PIPELINE_DIR / "core" / "filters" / "vocabulary.lua"
+# Microtypography runs after the vocabulary filter: it refines prose the
+# vocabulary filter may itself have emitted. Order matters, so this is a
+# separate constant applied second rather than a glob over the filters dir.
+MICROTYPE_FILTER = PIPELINE_DIR / "core" / "filters" / "microtype.lua"
 BASE_CSS = PIPELINE_DIR / "core" / "css" / "base.css"
 BRANDS_DIR = PIPELINE_DIR / "brands"
 
@@ -251,10 +255,34 @@ def _run_pandoc(md_path, html_path, brand, brand_id, fm, sheets, source_lines):
         "--standalone",
         "--template", str(TEMPLATE),
         "--lua-filter", str(FILTER),
+        "--lua-filter", str(MICROTYPE_FILTER),
         "--section-divs",
         "--metadata", f"brandname={brand.get('name', brand_id)}",
         "-o", str(html_path),
     ]
+
+    # Brand cover logo — inline as a base64 data URI so the remote render
+    # worker can resolve it without a local filesystem path.
+    cover_logo_rel = (brand.get("cover") or {}).get("logo")
+    if cover_logo_rel:
+        logo_path = Path(brand["_dir"]) / cover_logo_rel
+        if logo_path.exists():
+            mime = "image/svg+xml" if logo_path.suffix == ".svg" else "image/png"
+            b64 = base64.b64encode(logo_path.read_bytes()).decode("ascii")
+            data_uri = f"data:{mime};base64,{b64}"
+            cmd += ["--metadata", f"brandlogo={data_uri}"]
+
+    # Brand section autonumbering — if disabled in brand.yaml, tell the Lua
+    # filter to skip adding the .numbered class to headings. Without this flag
+    # the filter adds .numbered to every h1/h2, which causes the CSS counter
+    # to prepend a number that double-counts when the author already wrote
+    # an explicit "01 ·" prefix in the heading text.
+    no_autonumber = not (
+        (brand.get("numbering") or {}).get("sections", True)
+    )
+    if no_autonumber:
+        cmd += ["--metadata", "docforge_no_autonumber=1"]
+
     if fm.get("toc"):
         cmd += ["--toc", "--toc-depth=2"]
     # Only the preview needs source positions. The PDF path leaves them off so
@@ -434,6 +462,7 @@ def health():
         "weasyprint": shutil.which("weasyprint") is not None,
         "template": TEMPLATE.exists(),
         "filter": FILTER.exists(),
+        "microtype_filter": MICROTYPE_FILTER.exists(),
         "base_css": BASE_CSS.exists(),
         "brands_dir": BRANDS_DIR.exists(),
     }

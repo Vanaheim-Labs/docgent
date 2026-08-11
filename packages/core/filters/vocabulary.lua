@@ -410,9 +410,18 @@ end
 -- Suppress on a given heading with .no-eyebrow, or document-wide by not
 -- styling .section-number in the brand.
 local H1_SEEN = 0
+local NO_AUTONUMBER = false
+
+-- Called once before any Header; reads brand metadata set by the render pipeline.
+function Meta(meta)
+  if meta.docforge_no_autonumber then
+    NO_AUTONUMBER = true
+  end
+  return meta
+end
 
 function Header(el)
-  if el.level <= 2 and not el.classes:includes('unnumbered') then
+  if not NO_AUTONUMBER and el.level <= 2 and not el.classes:includes('unnumbered') then
     el.classes:insert('numbered')
   end
 

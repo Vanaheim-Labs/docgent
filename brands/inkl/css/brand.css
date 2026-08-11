@@ -169,11 +169,13 @@ em { font-style: italic; }
   display: block;
   align-self: flex-start;
 }
+/* Handles both <img src="data:..."> (remote render) and inline SVG */
 .cover-logo img,
 .cover-logo svg {
-  height: 38px;
+  height: 34px;
   width: auto;
   display: block;
+  max-width: 120px;
 }
 
 /* Push title block to lower third */
@@ -272,12 +274,27 @@ em { font-style: italic; }
   border-top: 1px solid var(--cover-border);
   display: flex;
   justify-content: space-between;
+  align-items: center;
   width: 100%;
   font-family: var(--font-mono);
   font-size: 6.5pt;
   color: var(--cover-muted);
   letter-spacing: 0.03em;
 }
+/* Left side: hide text brandname — logo already appears at top of cover */
+.cover-footer-left {
+  display: none;
+}
+/* Right side: classification label only — suppress status chip */
+.cover-footer-right {
+  font-family: var(--font-mono);
+  font-size: 6.5pt;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cover-muted);
+}
+.cover-status-chip { display: none; }
 
 /* Classification chip on cover */
 .cover-classification {
