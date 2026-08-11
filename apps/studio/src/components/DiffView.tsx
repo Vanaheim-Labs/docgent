@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { UnifiedDiff } from "@/components/UnifiedDiff";
+import type { UnifiedDiffResult } from "@/lib/diff";
 
 export type WordRun = { op: "same" | "add" | "remove"; text: string };
 
@@ -22,7 +24,20 @@ export type DiffResult = {
   headline: string;
   summary: Record<string, number>;
   changes: Change[];
+  /** Line-level view. Absent only if the API predates it. */
+  unified?: UnifiedDiffResult;
 };
+
+/**
+ * Which view opens first.
+ *
+ * Source is the default because it is the one people already know how to
+ * read: the same +/- gutters, line numbers and hunk headers as a pull
+ * request, with no DocForge-specific vocabulary to learn. The semantic
+ * summary is the more useful view once you trust it, so it stays one click
+ * away rather than buried.
+ */
+type Tab = "source" | "summary";
 
 /**
  * Re-levelling is structural bookkeeping, not editorial change. Enabling a
@@ -170,6 +185,7 @@ function ChangeBody({ change: c }: { change: Change }) {
 export function DiffView({
   baseLabel,
   headLabel,
+  fileLabel,
   diff,
   diffing,
   error,
@@ -177,12 +193,16 @@ export function DiffView({
 }: {
   baseLabel: string;
   headLabel: string;
+  /** Path shown in the file header, so the diff names what it is diffing. */
+  fileLabel: string;
   diff: DiffResult | null;
   diffing: boolean;
   error: string | null;
   onClose: () => void;
 }) {
   const [showNoise, setShowNoise] = useState(false);
+  const [tab, setTab] = useState<Tab>("source");
+  const [expandedAll, setExpandedAll] = useState(false);
 
   const significant = useMemo(
     () => (diff?.changes ?? []).filter((c) => !NOISE_TYPES.has(c.type)),
@@ -237,6 +257,34 @@ export function DiffView({
 
         {diff && !diffing && (
           <>
+            {/*
+              Two readings of the same change. Source is the GitHub-shaped line
+              diff people already know; Summary is the document-level reading
+              ("keyfigure 4.2M → 4.8M"). Neither subsumes the other, so both
+              stay one click apart rather than one being buried.
+            */}
+            {diff.unified && (
+              <div className="diff-tabs">
+                <button
+                  className="diff-tab"
+                  data-active={tab === "source"}
+                  onClick={() => setTab("source")}
+                >
+                  Source{" "}
+                  <span className="dl-add-count">+{diff.unified.additions}</span>{" "}
+                  <span className="dl-del-count">−{diff.unified.deletions}</span>
+                </button>
+                <button
+                  className="diff-tab"
+                  data-active={tab === "summary"}
+                  onClick={() => setTab("summary")}
+                >
+                  Summary
+                  {significant.length > 0 ? ` (${significant.length})` : ""}
+                </button>
+              </div>
+            )}
+
             <div className="diff-summary">
               <div className="diff-headline">{diff.headline}</div>
               <div className="diff-chips">
@@ -260,6 +308,18 @@ export function DiffView({
               </div>
             </div>
 
+            {/* Source view: the line diff, rendered as a pull request would. */}
+            {diff.unified && tab === "source" && (
+              <UnifiedDiff
+                unified={diff.unified}
+                fileLabel={fileLabel}
+                expandedAll={expandedAll}
+                onExpandAll={() => setExpandedAll((v) => !v)}
+              />
+            )}
+
+            {(!diff.unified || tab === "summary") && (
+            <>
             {diff.changes.length === 0 && (
               <div className="diff-empty">
                 <strong>No differences.</strong> These revisions are structurally
@@ -309,6 +369,8 @@ export function DiffView({
                   </div>
                 )}
               </div>
+            )}
+            </>
             )}
           </>
         )}

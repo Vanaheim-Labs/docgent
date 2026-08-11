@@ -80,6 +80,7 @@ export function DocumentWorkspace({
         <DiffView
           baseLabel={compareLabel}
           headLabel={headLabel}
+          fileLabel={`documents/${slug}/doc.md`}
           diff={diff}
           diffing={diffing}
           error={diffError}
