@@ -11,6 +11,7 @@ import os from "node:os";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parseYaml, parseFrontmatter } from "./yaml.mjs";
+import { lintHtml, lintPdf, summarise } from "./lint.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, "..", "..", "..");
@@ -230,5 +231,19 @@ export function renderDocument(mdPath, opts = {}) {
   const outPdf = path.join(buildDir, `${stem}.pdf`);
   renderer.render(outHtml, outPdf, { baseUrl: docDir + path.sep });
 
-  return { html: outHtml, pdf: outPdf, brand: brand.id, frontmatter: fm };
+  // Render-time lint. Advisory: a document that lints badly still renders,
+  // because a linter that blocks a draft is a linter people switch off.
+  // Callers decide what to do with the findings.
+  let lint = null;
+  if (opts.lint !== false) {
+    const findings = [
+      ...lintHtml(fs.readFileSync(outHtml, "utf8")),
+      ...lintPdf(fs.readFileSync(outPdf), {
+        requireEvenPages: Boolean(brand.print && brand.print.even_pages),
+      }),
+    ];
+    lint = summarise(findings);
+  }
+
+  return { html: outHtml, pdf: outPdf, brand: brand.id, frontmatter: fm, lint };
 }

@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/render.mjs",
     "./yaml": "./src/yaml.mjs",
+    "./lint": "./src/lint.mjs",
     "./client": "./src/client.mjs",
     "./batch": "./src/batch.mjs"
   },
