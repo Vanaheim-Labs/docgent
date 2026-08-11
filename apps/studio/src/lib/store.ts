@@ -43,6 +43,22 @@ export type DocSummary = {
   title: string;
   /** Epoch ms parsed from frontmatter `date`, or null when absent/unparseable. */
   dateMs: number | null;
+  /**
+   * Who and when the last commit touched this document, and epoch ms for
+   * sorting. Optional because it costs one extra API call per document — see
+   * withLastCommit on listAllDocuments.
+   */
+  lastCommit?: {
+    name: string;
+    email: string | null;
+    at: number | null;
+    subject: string;
+    /** True when the commit trailer names DocForge Studio as the author of
+     *  the change — i.e. an accepted AI rewrite rather than hand-typed
+     *  prose. Read from the commit message, not a database, so it survives
+     *  clone and mirror the same way the rest of the history does. */
+    isAgent: boolean;
+  };
 };
 
 /**
@@ -228,7 +244,9 @@ export function storesFor(brandId: string) {
  * reported rather than failing the whole listing, so one broken store does
  * not blank the index.
  */
-export async function listAllDocuments(): Promise<{
+export async function listAllDocuments(
+  { withLastCommit = false }: { withLastCommit?: boolean } = {}
+): Promise<{
   documents: DocSummary[];
   errors: { brand: string; message: string }[];
 }> {
@@ -273,6 +291,38 @@ export async function listAllDocuments(): Promise<{
       (b.dateMs ?? -Infinity) - (a.dateMs ?? -Infinity) ||
       a.title.localeCompare(b.title)
   );
+
+  // The work queue reads "who last touched this" from the commit, not from
+  // frontmatter — an accepted AI rewrite does not update `author:`, so
+  // frontmatter would keep crediting whoever wrote the document originally.
+  // One history call per document; opt-in because the library page needs it
+  // and nothing else does, and it is the one part of this listing that
+  // cannot be served from a single tree read.
+  if (withLastCommit) {
+    await Promise.all(
+      documents.map(async (d) => {
+        try {
+          const { docs } = storesFor(d.brand);
+          const [entry] = await docs.timeline(d.brand, d.slug, { limit: 1 });
+          if (!entry) return;
+          const subject = String(entry.subject || entry.message || "").trim();
+          d.lastCommit = {
+            name: entry.author?.name || entry.author?.login || "Unknown",
+            email: entry.author?.email ?? null,
+            at: entry.author?.date ? Date.parse(entry.author.date) : null,
+            subject,
+            // Every commit Studio makes on an author's behalf carries this
+            // trailer — see the rewrite accept route and the save route.
+            isAgent: /Generated-by:\s*DocForge Studio/i.test(entry.message || ""),
+          };
+        } catch {
+          // A history call failing for one document should not blank its row;
+          // the row just renders without last-touched detail.
+        }
+      })
+    );
+  }
+
   return { documents, errors };
 }
 
