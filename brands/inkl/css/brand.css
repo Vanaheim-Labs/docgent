@@ -566,25 +566,29 @@ caption {
 .keyfigure[data-trend="flat"] .keyfigure-value::after { content: " →"; color: var(--ink-faint); font-size: 0.5em; }
 
 /* ─── KPI GRID (kpigrid primitive) ──────────────────────────────────────── */
-.kpigrid {
+/* Class names match Lua filter output exactly:
+   container = .kpi-grid (.kpi-grid-2/3 variants), data-cols attr
+   card      = .kpi-card + colour class (e.g. .sky .rose .amber)
+   internals = .kpi-label .kpi-value .kpi-change
+   trend     = data-trend attr; change line gets .up/.down/.neutral class */
+.kpi-grid {
   display: grid;
-  grid-template-columns: repeat(var(--kpi-cols, 4), 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   margin: 5mm 0;
   page-break-inside: avoid;
 }
-.kpigrid[data-cols="2"] { --kpi-cols: 2; }
-.kpigrid[data-cols="3"] { --kpi-cols: 3; }
-.kpigrid[data-cols="4"] { --kpi-cols: 4; }
+.kpi-grid.kpi-grid-2 { grid-template-columns: repeat(2, 1fr); }
+.kpi-grid.kpi-grid-3 { grid-template-columns: repeat(3, 1fr); }
 
-.kpicard {
+.kpi-card {
   background: var(--paper);
   border: 1px solid var(--rule);
   border-radius: 4px;
   padding: 11px 13px;
   page-break-inside: avoid;
 }
-.kpicard-label {
+.kpi-label {
   font-family: var(--font-mono);
   font-size: 7pt;
   font-weight: 600;
@@ -594,24 +598,25 @@ caption {
   margin-bottom: 3px;
   display: block;
 }
-.kpicard-value {
+.kpi-value {
   font-family: var(--font-sans);
   font-size: 20pt;
   font-weight: 700;
   color: var(--ink);
   line-height: 1.15;
 }
-.kpicard-change {
+.kpi-change {
   font-size: 8pt;
   color: var(--ink-faint);
   margin-top: 2px;
   display: block;
 }
-.kpicard-change.up   { color: var(--green); }
-.kpicard-change.down { color: #CC3333; }
-.kpicard-change.warn { color: #B06000; }
+.kpi-change.up      { color: var(--green); }
+.kpi-change.down    { color: #CC3333; }
+.kpi-change.neutral { color: var(--ink-faint); }
+.kpi-change.warn    { color: #B06000; }
 
-/* Source tag badges on KPI cards */
+/* Source tag badges — emitted by Lua as .source-tag .source-db etc */
 .source-tag {
   display: inline-block;
   font-family: var(--font-mono);
@@ -628,17 +633,18 @@ caption {
 .source-db     { background: #FEF7E0; color: #B06000; }
 .source-stripe { background: #F0EBFE; color: #5B34C4; }
 
-/* KPI card colour variants */
-.kpicard[data-color="sky"]    { background: var(--kpi-sky-bg);    border-color: var(--kpi-sky-border);    }
-.kpicard[data-color="rose"]   { background: var(--kpi-rose-bg);   border-color: var(--kpi-rose-border);   }
-.kpicard[data-color="amber"]  { background: var(--kpi-amber-bg);  border-color: var(--kpi-amber-border);  }
-.kpicard[data-color="red"]    { background: var(--kpi-red-bg);    border-color: var(--kpi-red-border);    }
-.kpicard[data-color="green"]  { background: var(--kpi-green-bg);  border-color: var(--kpi-green-border);  }
-.kpicard[data-color="purple"] { background: var(--kpi-purple-bg); border-color: var(--kpi-purple-border); }
-.kpicard[data-color="orange"] { background: var(--kpi-orange-bg); border-color: var(--kpi-orange-border); }
+/* KPI card colour variants — applied as sibling class by Lua (e.g. .kpi-card.sky) */
+.kpi-card.sky    { background: var(--kpi-sky-bg);    border-color: var(--kpi-sky-border);    }
+.kpi-card.rose   { background: var(--kpi-rose-bg);   border-color: var(--kpi-rose-border);   }
+.kpi-card.amber  { background: var(--kpi-amber-bg);  border-color: var(--kpi-amber-border);  }
+.kpi-card.red    { background: var(--kpi-red-bg);    border-color: var(--kpi-red-border);    }
+.kpi-card.green  { background: var(--kpi-green-bg);  border-color: var(--kpi-green-border);  }
+.kpi-card.purple { background: var(--kpi-purple-bg); border-color: var(--kpi-purple-border); }
+.kpi-card.orange { background: var(--kpi-orange-bg); border-color: var(--kpi-orange-border); }
 
 /* ─── TENSION BOX ────────────────────────────────────────────────────────── */
-.tensionbox {
+/* Lua emits: .tension-box container, .tension-title heading */
+.tension-box {
   background: var(--ink);
   color: var(--cover-text);
   border-radius: 6px;
@@ -648,7 +654,7 @@ caption {
   line-height: 1.6;
   page-break-inside: avoid;
 }
-.tensionbox-title {
+.tension-title {
   font-family: var(--font-mono);
   font-size: 7.5pt;
   font-weight: 700;
@@ -658,37 +664,39 @@ caption {
   margin-bottom: 6px;
   display: block;
 }
-.tensionbox p { color: var(--cover-text); margin-bottom: 2.5mm; }
-.tensionbox p:last-child { margin-bottom: 0; }
-.tensionbox strong { color: var(--orange); }
+.tension-box p { color: var(--cover-text); margin-bottom: 2.5mm; }
+.tension-box p:last-child { margin-bottom: 0; }
+.tension-box strong { color: var(--orange); }
 
 /* ─── DAY GRID (daygrid primitive) ──────────────────────────────────────── */
-.daygrid {
+/* Lua emits: .weekly-grid container, .day-cell cards, .day-label, .day-value
+   State classes applied as siblings: .highlight .anomaly .positive .partial .zero */
+.weekly-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 5px;
   margin: 5mm 0;
   page-break-inside: avoid;
 }
-.daycell {
+.day-cell {
   background: var(--paper-alt);
   border: 1px solid var(--rule);
   border-radius: 4px;
   padding: 7px 4px;
   text-align: center;
 }
-.daycell-day   { font-family: var(--font-mono); font-size: 7pt; color: var(--ink-faint); display: block; }
-.daycell-value { font-family: var(--font-sans); font-size: 11pt; font-weight: 600; color: var(--ink); display: block; margin-top: 2px; }
-.daycell[data-state="highlight"] { background: var(--orange-soft); border-color: var(--orange); }
-.daycell[data-state="highlight"] .daycell-value { color: var(--orange); }
-.daycell[data-state="anomaly"]   { background: #FDEAEA; border-color: #CC3333; }
-.daycell[data-state="anomaly"]   .daycell-value { color: #CC3333; }
-.daycell[data-state="positive"]  { background: var(--green-soft); border-color: var(--green); }
-.daycell[data-state="positive"]  .daycell-value { color: #1A7A45; }
-.daycell[data-state="partial"]   { background: #FFF8E7; border-color: #FDB84B; }
-.daycell[data-state="partial"]   .daycell-value { color: #8A5700; }
-.daycell[data-state="zero"]      { background: #F0F0F0; border-color: #DDDDDD; }
-.daycell[data-state="zero"]      .daycell-value { color: var(--ink-faint); }
+.day-label { font-family: var(--font-mono); font-size: 7pt; color: var(--ink-faint); display: block; }
+.day-value { font-family: var(--font-sans); font-size: 11pt; font-weight: 600; color: var(--ink); display: block; margin-top: 2px; }
+.day-cell.highlight { background: var(--orange-soft); border-color: var(--orange); }
+.day-cell.highlight .day-value { color: var(--orange); }
+.day-cell.anomaly   { background: #FDEAEA; border-color: #CC3333; }
+.day-cell.anomaly   .day-value { color: #CC3333; }
+.day-cell.positive  { background: var(--green-soft); border-color: var(--green); }
+.day-cell.positive  .day-value { color: #1A7A45; }
+.day-cell.partial   { background: #FFF8E7; border-color: #FDB84B; }
+.day-cell.partial   .day-value { color: #8A5700; }
+.day-cell.zero      { background: #F0F0F0; border-color: #DDDDDD; }
+.day-cell.zero      .day-value { color: var(--ink-faint); }
 
 /* ─── COLUMNS LAYOUT ─────────────────────────────────────────────────────── */
 .columns {
