@@ -246,8 +246,12 @@ export function DiffView({
         <span>
           Comparing <strong>{baseLabel}</strong> → <strong>{headLabel}</strong>
         </span>
+        {/* The usual end of a review is going back to the document, not
+            dismissing a dialog. Naming the destination makes the diff feel
+            like a place you visited rather than something that interrupted
+            you — and it is the same pane the PDF returns to. */}
         <button className="btn btn-secondary" onClick={onClose}>
-          Close
+          ← Back to document
         </button>
       </div>
 
@@ -270,7 +274,7 @@ export function DiffView({
                   data-active={tab === "source"}
                   onClick={() => setTab("source")}
                 >
-                  Source{" "}
+                  Source diff{" "}
                   <span className="dl-add-count">+{diff.unified.additions}</span>{" "}
                   <span className="dl-del-count">−{diff.unified.deletions}</span>
                 </button>
@@ -279,7 +283,7 @@ export function DiffView({
                   data-active={tab === "summary"}
                   onClick={() => setTab("summary")}
                 >
-                  Summary
+                  Change summary
                   {significant.length > 0 ? ` (${significant.length})` : ""}
                 </button>
               </div>
