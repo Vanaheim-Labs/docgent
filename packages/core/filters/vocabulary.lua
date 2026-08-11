@@ -442,13 +442,16 @@ function Header(el)
   local num = string.format('%02d', H1_SEEN)
 
   local eyebrow = raw(
+    '<div class="section-header no-break">' ..
     '<div class="section-number" data-index="' .. num .. '">' ..
     '<span class="section-number-num">' .. num .. '</span>' ..
     '<span class="section-number-sep">·</span>' ..
     '<span class="section-number-label">' .. esc(label) .. '</span>' ..
     '</div>')
 
-  return { eyebrow, el }
+  local close = raw('</div>')
+
+  return { eyebrow, el, close }
 end
 
 
