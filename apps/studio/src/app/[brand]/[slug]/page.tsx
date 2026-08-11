@@ -3,7 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import { storesFor, repoSlug, listAllDocuments, type DocSummary, type TimelineEntry } from "@/lib/store";
 import { Sidebar } from "@/components/Sidebar";
 import { UserChip } from "@/components/UserChip";
-import { VersionPanel } from "@/components/VersionPanel";
+import { DocumentWorkspace } from "@/components/DocumentWorkspace";
 
 export const dynamic = "force-dynamic";
 
@@ -85,87 +85,51 @@ export default async function DocumentPage({ params, searchParams }: Props) {
             </div>
           )}
 
-          <div className="grid">
-            <div className="panel">
-              <div className="panel-head">
-                <span>Rendered PDF</span>
-                <span style={{ display: "flex", gap: 8 }}>
-                  {!commitSha && (
-                    <a className="btn btn-secondary" href={`/${brand}/${slug}/edit`}>
-                      Edit
-                    </a>
-                  )}
-                  <a className="btn btn-secondary" href={pdfUrl} target="_blank" rel="noreferrer">
-                    Open
-                  </a>
-                </span>
-              </div>
-              <iframe className="pdf-frame" src={pdfUrl} title="Document preview" />
-            </div>
-
-            <div style={{ display: "grid", gap: 16 }}>
-              <div className="panel">
-                <div className="panel-head">Metadata</div>
-                <div className="panel-body">
-                  <MetaRow k="Brand" v={brand} />
-                  <MetaRow k="Type" v={fm.doctype} />
-                  <MetaRow k="Version" v={fm.version} />
-                  <MetaRow k="Date" v={fm.date} />
-                  {fm.client && <MetaRow k="Client" v={fm.client} />}
-                  {fm.author && <MetaRow k="Author" v={fm.author} />}
-                  {fm.reference && <MetaRow k="Reference" v={fm.reference} />}
-                  <div className="meta-row">
-                    <span className="meta-key">Status</span>
-                    <span className="meta-val">
-                      <span className="badge" data-status={fm.status}>
-                        {fm.status || "—"}
-                      </span>
-                    </span>
-                  </div>
-                  <div className="meta-row">
-                    <span className="meta-key">Classification</span>
-                    <span className="meta-val">
-                      <span className="badge" data-class={fm.classification}>
-                        {fm.classification || "—"}
-                      </span>
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {timelineError ? (
-                <div className="panel">
-                  <div className="panel-head">Version history</div>
-                  <div className="panel-body">
-                    <div className="error-box">
-                      <code>{timelineError}</code>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <VersionPanel
-                  brand={brand}
-                  slug={slug}
-                  timeline={timeline}
-                  currentStatus={fm.status || "draft"}
-                  viewingSha={commitSha}
-                  docVersion={fm.version}
-                />
-              )}
-            </div>
+          <div className="doc-meta-strip">
+            <MetaChip k="Type" v={fm.doctype} />
+            <MetaChip k="Version" v={fm.version} />
+            <MetaChip k="Date" v={fm.date} />
+            {fm.client && <MetaChip k="Client" v={fm.client} />}
+            {fm.author && <MetaChip k="Author" v={fm.author} />}
+            {fm.reference && <MetaChip k="Ref" v={fm.reference} />}
+            <span className="badge" data-status={fm.status}>{fm.status || "—"}</span>
+            <span className="badge" data-class={fm.classification}>
+              {fm.classification || "—"}
+            </span>
           </div>
+
+          {timelineError ? (
+            <div className="panel">
+              <div className="panel-head">Version history</div>
+              <div className="panel-body">
+                <div className="error-box"><code>{timelineError}</code></div>
+              </div>
+            </div>
+          ) : (
+            <DocumentWorkspace
+              brand={brand}
+              slug={slug}
+              timeline={timeline}
+              currentStatus={fm.status || "draft"}
+              viewingSha={commitSha}
+              docVersion={fm.version}
+              pdfUrl={pdfUrl}
+              canEdit={!commitSha}
+            />
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function MetaRow({ k, v }: { k: string; v?: string }) {
+/** Compact inline metadata, freeing the rail for history and the pane for content. */
+function MetaChip({ k, v }: { k: string; v?: string }) {
   if (!v) return null;
   return (
-    <div className="meta-row">
-      <span className="meta-key">{k}</span>
-      <span className="meta-val">{v}</span>
-    </div>
+    <span className="meta-chip">
+      <span className="meta-chip-key">{k}</span>
+      <span className="meta-chip-val">{v}</span>
+    </span>
   );
 }

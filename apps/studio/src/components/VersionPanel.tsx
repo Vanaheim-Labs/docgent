@@ -1,82 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { TimelineEntry } from "@/lib/store";
-
-type WordRun = { op: "same" | "add" | "remove"; text: string };
-
-type Change = {
-  type: string;
-  detail: string;
-  section?: string;
-  block?: string;
-  key?: string;
-  before?: string;
-  after?: string;
-  words?: WordRun[];
-};
-
-/**
- * Re-levelling is structural bookkeeping, not editorial change. Enabling a
- * table of contents demotes every heading at once, which buried the two or
- * three edits that actually mattered. These are collapsed by default.
- */
-const NOISE_TYPES = new Set(["section_relevelled"]);
-
-type DiffResult = {
-  headline: string;
-  summary: Record<string, number>;
-  changes: Change[];
-};
-
-/** Renders a word-level prose diff inline, struck-through for removals. */
-function WordDiff({ runs }: { runs: WordRun[] }) {
-  return (
-    <span className="word-diff">
-      {runs.map((r, i) =>
-        r.op === "same" ? (
-          <span key={i}>{r.text} </span>
-        ) : (
-          <span key={i} className="word-run" data-op={r.op}>
-            {r.text}{" "}
-          </span>
-        )
-      )}
-    </span>
-  );
-}
-
-const SEVERITY: Record<string, "add" | "remove" | "edit" | "meta"> = {
-  block_added: "add",
-  section_added: "add",
-  prose_added: "add",
-  metadata_added: "add",
-  block_removed: "remove",
-  section_removed: "remove",
-  prose_removed: "remove",
-  metadata_removed: "remove",
-  block_edited: "edit",
-  prose_edited: "edit",
-  attribute_changed: "meta",
-  metadata_changed: "meta",
-  section_relevelled: "meta",
-};
-
-const LABEL: Record<string, string> = {
-  block_added: "added",
-  block_removed: "removed",
-  block_edited: "edited",
-  attribute_changed: "value",
-  section_added: "section",
-  section_removed: "section",
-  prose_added: "prose",
-  prose_removed: "prose",
-  prose_edited: "prose",
-  metadata_added: "meta",
-  metadata_removed: "meta",
-  metadata_changed: "meta",
-  section_relevelled: "re-level",
-};
 
 export function VersionPanel({
   brand,
@@ -85,12 +10,21 @@ export function VersionPanel({
   currentStatus,
   viewingSha,
   docVersion,
+  onCompare,
+  comparingSha,
 }: {
   brand: string;
   slug: string;
   timeline: TimelineEntry[];
   currentStatus: string;
   viewingSha?: string;
+  /**
+   * Comparison is owned by the parent so the diff can render in the main
+   * column. A document diff needs the wide pane: in this 340px rail a
+   * paragraph of prose collapsed into an unreadable ribbon.
+   */
+  onCompare: (baseSha: string, revision?: number) => void;
+  comparingSha?: string | null;
   /**
    * The `version:` value from the document's own frontmatter.
    *
@@ -103,20 +37,6 @@ export function VersionPanel({
    */
   docVersion?: string;
 }) {
-  const [compareBase, setCompareBase] = useState<string | null>(null);
-  const [compareLabel, setCompareLabel] = useState<string | null>(null);
-  const [diff, setDiff] = useState<DiffResult | null>(null);
-  const [diffing, setDiffing] = useState(false);
-  const [diffError, setDiffError] = useState<string | null>(null);
-  const [showNoise, setShowNoise] = useState(false);
-
-  /**
-   * The diff panel renders below the revision list inside a scrolling sidebar,
-   * so on any realistic history it lands off-screen. Clicking Compare then
-   * looked like it did nothing at all. Pull it into view once it exists.
-   */
-  const diffRef = useRef<HTMLDivElement | null>(null);
-
   const [status, setStatus] = useState(currentStatus);
   const [allowed, setAllowed] = useState<string[]>([]);
   const [transitioning, setTransitioning] = useState(false);
@@ -136,35 +56,6 @@ export function VersionPanel({
       })
       .catch(() => {});
   }, [brand, slug]);
-
-  useEffect(() => {
-    if (!compareBase) return;
-    diffRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [compareBase, diffing]);
-
-  const runDiff = useCallback(async (baseSha: string, revision?: number) => {
-    setCompareBase(baseSha);
-    setCompareLabel(revision ? `r${revision}` : baseSha.slice(0, 7));
-    setShowNoise(false);
-    setDiffing(true);
-    setDiff(null);
-    setDiffError(null);
-    try {
-      const qs = new URLSearchParams({ base: baseSha });
-      if (viewingSha) qs.set("head", viewingSha);
-      const res = await fetch(`/api/diff/${brand}/${slug}?${qs}`);
-      const data = await res.json();
-      if (!res.ok) {
-        setDiffError(data.error || `Diff failed (${res.status})`);
-        return;
-      }
-      setDiff(data);
-    } catch (e) {
-      setDiffError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setDiffing(false);
-    }
-  }, [brand, slug, viewingSha]);
 
   /**
    * Forward revert: writes the chosen revision back as a new commit.
@@ -222,30 +113,6 @@ export function VersionPanel({
       setTransitioning(false);
     }
   }, [brand, slug]);
-
-  const significant = useMemo(
-    () => (diff?.changes ?? []).filter((c) => !NOISE_TYPES.has(c.type)),
-    [diff]
-  );
-  const noise = useMemo(
-    () => (diff?.changes ?? []).filter((c) => NOISE_TYPES.has(c.type)),
-    [diff]
-  );
-
-  /**
-   * Grouped by section so a reviewer reads the document in its own order
-   * rather than scanning a flat list ordered by the diff algorithm's walk.
-   * Frontmatter changes carry no section and sort first under their own head.
-   */
-  const grouped = useMemo(() => {
-    const map = new Map<string, Change[]>();
-    for (const c of significant) {
-      const key = c.section ?? "";
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(c);
-    }
-    return [...map.entries()].sort(([a], [b]) => (a === "" ? -1 : b === "" ? 1 : 0));
-  }, [significant]);
 
   return (
     <>
@@ -352,8 +219,12 @@ export function VersionPanel({
                     PDF
                   </a>
                   {!t.isCurrent && (
-                    <button className="version-action" onClick={() => runDiff(t.sha, t.version)}>
-                      Compare
+                    <button
+                      className="version-action"
+                      data-active={comparingSha === t.sha}
+                      onClick={() => onCompare(t.sha, t.version)}
+                    >
+                      {comparingSha === t.sha ? "Comparing" : "Compare"}
                     </button>
                   )}
                   {!t.isCurrent && (
@@ -372,83 +243,6 @@ export function VersionPanel({
         </div>
       </div>
 
-      {compareBase && (
-        <div className="panel" ref={diffRef}>
-          <div className="panel-head">
-            <span>{compareLabel ?? compareBase.slice(0, 7)} → {viewingSha ? viewingSha.slice(0, 7) : "current"}</span>
-            <button
-              className="btn btn-secondary"
-              onClick={() => { setCompareBase(null); setCompareLabel(null); setDiff(null); setDiffError(null); }}
-            >
-              Close
-            </button>
-          </div>
-          <div className="panel-body">
-            {diffing && <div className="approval-note">Comparing…</div>}
-            {diffError && <div className="banner" data-kind="error">{diffError}</div>}
-            {diff && !diffing && (
-              <>
-                <div className="diff-headline">{diff.headline}</div>
-
-                {diff.changes.length === 0 && (
-                  <div className="approval-note">
-                    These revisions are structurally identical — no headings, blocks,
-                    values or prose differ.
-                  </div>
-                )}
-
-                {significant.length === 0 && noise.length > 0 && (
-                  <div className="approval-note" style={{ marginBottom: 10 }}>
-                    No editorial changes. The only differences are structural.
-                  </div>
-                )}
-
-                {grouped.map(([section, items]) => (
-                  <div key={section} className="diff-group">
-                    <div className="diff-group-head">{section || "Document metadata"}</div>
-                    <div className="diff-list">
-                      {items.map((c, i) => (
-                        <div key={i} className="diff-item" data-kind={SEVERITY[c.type] || "edit"}>
-                          <span className="diff-tag">{LABEL[c.type] || c.type}</span>
-                          <span className="diff-detail">
-                            {c.words?.length ? <WordDiff runs={c.words} /> : c.detail}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-
-                {noise.length > 0 && (
-                  <div className="diff-noise">
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => setShowNoise((v) => !v)}
-                    >
-                      {showNoise ? "Hide" : "Show"} {noise.length} structural change
-                      {noise.length === 1 ? "" : "s"}
-                    </button>
-                    <div className="approval-note" style={{ marginTop: 6 }}>
-                      Heading levels shifted by a table-of-contents or template change.
-                      No content was added or removed.
-                    </div>
-                    {showNoise && (
-                      <div className="diff-list" style={{ marginTop: 8 }}>
-                        {noise.map((c, i) => (
-                          <div key={i} className="diff-item" data-kind="meta">
-                            <span className="diff-tag">{LABEL[c.type] || c.type}</span>
-                            <span className="diff-detail">{c.detail}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
     </>
   );
 }
