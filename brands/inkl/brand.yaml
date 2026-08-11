@@ -43,7 +43,7 @@ page:
   margin_outer: 20mm
 
 numbering:
-  sections: true
+  sections: false
 
 cover:
   style: full-bleed-dark

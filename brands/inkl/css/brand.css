@@ -158,8 +158,10 @@ em { font-style: italic; }
   position: relative;
 }
 
-/* Suppress base orange top band */
+/* Suppress base orange top band and unwanted cover elements */
 .cover::before { display: none; content: none; }
+.cover-band { display: none; }
+.cover-wordmark { display: none; }
 
 /* Logo — top-left, no centering */
 .cover-logo {
@@ -224,18 +226,16 @@ em { font-style: italic; }
 
 /* Doctype label (repurposed as cover body description) */
 .cover-doctype {
-  font-family: var(--font-sans);
-  font-size: 11pt;
-  font-weight: 400;
-  color: var(--cover-text);
-  line-height: 1.4;
-  margin-bottom: 5mm;
-  max-width: 145mm;
+  display: none; /* DD Pack reference doesn't show doctype label on cover */
 }
 
-/* Eyebrow / super label */
+/* Eyebrow / super label — suppress on cover; logo IS the brand mark */
 .cover-eyebrow,
 .cover-super {
+  display: none;
+}
+.cover-eyebrow-show,
+.cover-super-show {
   font-family: var(--font-mono);
   font-size: 8pt;
   font-weight: 500;
@@ -309,8 +309,15 @@ em { font-style: italic; }
   string-set: sectionlabel content();
 }
 
-/* Section title (h1 sibling) sets right running header */
-h1 { string-set: sectiontitle content(); }
+/* h1 sets the right-side running header string.
+   Override base's "string-set: section content()" — we use sectiontitle instead.
+   This prevents the base string from leaking into our custom header slots. */
+h1 {
+  string-set: sectiontitle content();
+}
+/* Numbered h1: the ::before counter must not contribute to string-set content.
+   We suppress ::before display AND override with empty content for string capture. */
+h1.numbered { string-set: sectiontitle content(after); }
 
 /* Legal footer string — set by .footer-legal hidden element */
 .footer-legal {
@@ -838,3 +845,11 @@ hr { border: none; border-top: 1pt solid var(--rule); margin: 7mm 0; }
 
 /* ─── PRINT UTILITIES ────────────────────────────────────────────────────── */
 .no-break { page-break-inside: avoid; break-inside: avoid; }
+
+
+/* ─── NUMBERED HEADING COUNTER SUPPRESSION ─────────────────────────────── */
+/* Base adds counter prefixes via h1.numbered::before — suppress entirely.
+   Section numbering is already in the document text ("01 · SECTION NAME"). */
+h1.numbered::before,
+h2.numbered::before,
+h3.numbered::before { content: none !important; display: none; }
