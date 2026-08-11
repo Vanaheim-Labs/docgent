@@ -11,8 +11,8 @@ typography:
   mono: "Inconsolata, Menlo, monospace"
   body_family: sans
   heading_family: sans
-  base_size: 10.5pt
-  line_height: 1.6
+  base_size: 9.5pt
+  line_height: 1.55
   scale: 1.2
 
 palette:
