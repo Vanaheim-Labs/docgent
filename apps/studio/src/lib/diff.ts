@@ -13,6 +13,9 @@
 import { semanticDiff, summarise } from "../../../../packages/git-store/src/semantic-diff.mjs";
 import { unifiedDiff } from "../../../../packages/git-store/src/unified-diff.mjs";
 
+/** A word-level run inside a reworded change. */
+export type ChangeWordRun = { op: "same" | "add" | "remove"; text: string };
+
 export type Change = {
   type: string;
   detail: string;
@@ -21,6 +24,13 @@ export type Change = {
   key?: string;
   before?: string;
   after?: string;
+  /** Present when the differ paired a removal with its matching addition —
+   *  a reworded line, rendered as inline strike/insert rather than a
+   *  wholesale replacement. */
+  words?: ChangeWordRun[];
+  /** Heading depth either side of a re-level or rename. */
+  beforeLevel?: number;
+  afterLevel?: number;
 };
 
 export type DiffResult = {
