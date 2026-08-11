@@ -245,7 +245,7 @@ membership rather than whatever scopes an individual granted.
 
 ## 5. The vocabulary (the contract)
 
-Defined in `packages/vocabulary/vocabulary.yaml`. **14 block terms:**
+Defined in `packages/vocabulary/vocabulary.yaml`. **25 block terms:**
 
 | Block | Purpose | Key attributes |
 |---|---|---|
@@ -263,10 +263,36 @@ Defined in `packages/vocabulary/vocabulary.yaml`. **14 block terms:**
 | `appendix` | Appendix region | — |
 | `signature` | Sign-off block | `name`*, `role`, `date` |
 | `toc` | Table of contents | — |
+| `exec-intro` | Dark band opening a summary | `eyebrow` |
+| `funnel` | Horizontal stage diagram | — (list items are stages) |
+| `milestones` | Grid of labelled boxes | — (h3 starts a box) |
+| `allocation` | Proportional bar chart | — (list items are "Label — NN%") |
+| `note` | Editorial direction, hidden in print | `author`, `resolved` |
+| `kpigrid` | Row of 2–4 metric cards | `cols` (2/3/4) |
+| `kpicard` | Metric card inside a `kpigrid` | `value`*, `label`*, `change`, `trend` (up/down/flat/warn), `color`, `source` (db/gsc/ga4) |
+| `daygrid` | Seven-column Mon–Sun week strip | — |
+| `daycell` | One day inside a `daygrid` | `day`*, `value`*, `state` (highlight/anomaly/positive/partial/zero) |
+| `tensionbox` | Inverted dark key-story callout | `title`* |
 
 \* = required
 
-**3 inline terms:** `term`, `redact`, `footnoteref`.
+**4 inline terms:** `term`, `redact`, `footnoteref`, `accent`. Plus `claimclass`
+(`[text]{.claim kind=fact|drafting|gated}`).
+
+### Data-dense reporting blocks (added for inkl)
+
+`kpigrid`/`kpicard`, `daygrid`/`daycell` and `tensionbox` are container/child
+pairs built for weekly funnel reporting. Two conventions worth keeping:
+
+- A `daygrid` should always be seven cells wide. Use `value="—"` with
+  `state=zero` for a day with no data rather than dropping the cell, so the
+  week reads as a week.
+- `tensionbox` is deliberately heavier than `callout`. One per document. A
+  second one halves the weight of the first.
+
+The `source` pill on `kpicard` renders as generic `.source-tag.source-<id>`
+classes, not `kpicard`-scoped ones, so the same badge styling can be reused if
+`source` is later added to other blocks.
 
 **Frontmatter:** required `title, brand, doctype, version, date`; optional
 includes `subtitle, client, author, classification, status, reference,

@@ -125,6 +125,50 @@ blocks:
     description: Proportional bar chart. Each list item is "Label — NN%".
     breakInside: avoid
 
+  - id: kpigrid
+    syntax: "::: {.kpigrid cols=4}"
+    description: Row of 2-4 metric cards. Children must be kpicard blocks.
+    attrs:
+      cols: { type: enum, values: [2, 3, 4], default: 4 }
+    breakInside: avoid
+
+  - id: kpicard
+    syntax: "::: {.kpicard value=... label=...}"
+    description: Single metric card inside a kpigrid. Large value, label above,
+      optional change line with directional trend and a source pill.
+    attrs:
+      value: { type: string, required: true }
+      label: { type: string, required: true }
+      change: { type: string, required: false }
+      trend: { type: enum, values: [up, down, flat, warn], default: flat }
+      color: { type: enum, values: [sky, rose, amber, red, green, purple, orange], required: false }
+      source: { type: enum, values: [db, gsc, ga4], required: false }
+    breakInside: avoid
+
+  - id: daygrid
+    syntax: "::: daygrid"
+    description: Seven-column Mon-Sun week strip. Children must be daycell blocks.
+    breakInside: avoid
+
+  - id: daycell
+    syntax: "::: {.daycell day=... value=...}"
+    description: One day cell inside a daygrid. Use "—" as the value for a
+      pending day rather than omitting the cell, so the week stays seven wide.
+    attrs:
+      day: { type: string, required: true }
+      value: { type: string, required: true }
+      state: { type: enum, values: [highlight, anomaly, positive, partial, zero], required: false }
+    breakInside: avoid
+
+  - id: tensionbox
+    syntax: "::: {.tensionbox title=...}"
+    description: Inverted dark callout carrying the single most important
+      narrative of a section. Reserve it for one use per document — a second
+      one halves the weight of the first. Bold text renders in the accent.
+    attrs:
+      title: { type: string, required: true }
+    breakInside: avoid
+
   - id: claimclass
     syntax: "[text]{.claim kind=fact|drafting|gated}"
     description: Inline chip classifying a claim's evidential status.

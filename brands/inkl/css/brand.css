@@ -649,3 +649,196 @@ hr { border: none; border-top: 1px solid var(--gray-rule); margin: 7mm 0; }
 /* Suppress core auto-numbering — brand uses its own section eyebrows */
 h1.numbered::before,
 h2.numbered::before { content: none; }
+
+/* ─── COVER PAGE REDESIGN ───────────────────────────────────────────────── */
+/* Hide orange top band and restructure cover to centered flex */
+.cover-band { display: none; }
+.cover-rule { display: none; }
+.cover {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24mm;
+}
+.cover-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+.cover-head { text-align: center; }
+.cover-logo {
+  margin-bottom: 10mm;
+  display: flex;
+  justify-content: center;
+}
+.cover-doctype {
+  font-family: var(--font-mono);
+  font-size: 9pt;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: rgba(255,255,255,0.4);
+  margin-bottom: 8mm;
+}
+.cover-title {
+  font-weight: 300;
+  font-size: 32pt;
+  text-align: center;
+  color: var(--ink-cover-text);
+  border: none;
+  margin-bottom: 4mm;
+  margin-top: 0;
+}
+.cover-subtitle {
+  font-family: var(--font-mono);
+  font-size: 10pt;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: rgba(255,255,255,0.5);
+  text-align: center;
+  font-weight: 400;
+}
+.cover-meta {
+  margin-top: auto;
+  width: 100%;
+}
+
+/* ─── KPI GRID ──────────────────────────────────────────────────────────── */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 10px 0 14px 0;
+  page-break-inside: avoid;
+}
+.kpi-grid-2 { grid-template-columns: repeat(2, 1fr); }
+.kpi-grid-3 { grid-template-columns: repeat(3, 1fr); }
+
+.kpi-card {
+  background: #F8F9FA;
+  border: 1px solid #E0E0E0;
+  border-radius: 6px;
+  padding: 11px 13px;
+  text-align: center;
+  page-break-inside: avoid;
+}
+.kpi-card .kpi-label {
+  font-family: var(--font-mono);
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #666;
+  margin-bottom: 3px;
+}
+.kpi-card .kpi-value {
+  font-size: 20pt;
+  font-weight: 700;
+  color: #141e28;
+  line-height: 1.2;
+}
+.kpi-card .kpi-change {
+  font-size: 8.5pt;
+  margin-top: 2px;
+  color: #666;
+}
+.kpi-card .kpi-change.up { color: #61BE88; }
+.kpi-card .kpi-change.down { color: #E04040; }
+.kpi-card .kpi-change.neutral { color: #666; }
+.kpi-card .kpi-change.warn { color: #B06000; }
+
+/* Card colour variants */
+.kpi-card.sky   { background: #E8F0FE; border-color: #82A9F7; }
+.kpi-card.rose  { background: #FDE7F0; border-color: #FF95C8; }
+.kpi-card.amber { background: #FFF8E7; border-color: #FDB84B; }
+.kpi-card.red   { background: #FDEAEA; border-color: #E04040; }
+.kpi-card.green { background: #E6F4EA; border-color: #61BE88; }
+.kpi-card.purple{ background: #EDEDF8; border-color: #8787ED; }
+.kpi-card.orange{ background: #FBEBE2; border-color: #FF5E17; }
+
+/* ─── SOURCE TAGS ───────────────────────────────────────────────────────── */
+.source-tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 7pt;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 5px;
+  vertical-align: middle;
+  font-weight: 600;
+}
+.source-ga4 { background: #E8F0FE; color: #1A73E8; }
+.source-gsc { background: #E6F4EA; color: #137333; }
+.source-db  { background: #FEF7E0; color: #B06000; }
+
+/* ─── WEEKLY GRID ───────────────────────────────────────────────────────── */
+.weekly-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin: 8px 0 6px 0;
+  page-break-inside: avoid;
+}
+.day-cell {
+  background: #F8F9FA;
+  border: 1px solid #E0E0E0;
+  border-radius: 5px;
+  padding: 7px 3px;
+  text-align: center;
+}
+.day-cell .day-label { font-family: var(--font-mono); font-size: 7.5pt; color: #666; }
+.day-cell .day-value { font-size: 11pt; font-weight: 600; margin-top: 2px; }
+.day-cell.highlight { background: #FBEBE2; border-color: #FF5E17; }
+.day-cell.anomaly   { background: #FDEAEA; border-color: #E04040; }
+.day-cell.positive  { background: #E6F4EA; border-color: #61BE88; }
+.day-cell.partial   { background: #FEF7E0; border-color: #FDB84B; }
+.day-cell.zero      { background: #F0F0F0; border-color: #E0E0E0; }
+
+/* ─── TENSION BOX (dark key-story callout) ──────────────────────────────── */
+.tension-box {
+  background: #141e28;
+  color: #FFFFFF;
+  border-radius: 6px;
+  padding: 13px 16px;
+  margin: 12px 0;
+  font-size: 10pt;
+  line-height: 1.6;
+  page-break-inside: avoid;
+}
+.tension-box .tension-title {
+  font-family: var(--font-mono);
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #FF5E17;
+  margin-bottom: 7px;
+}
+.tension-box strong { color: #FF5E17; }
+.tension-box * { color: inherit; }
+
+/* ─── ALERT CALLOUT ─────────────────────────────────────────────────────── */
+.callout[data-kind="alert"] {
+  background: #FDEAEA;
+  border-left-color: #E04040;
+}
+.callout[data-kind="alert"] .callout-title { color: #E04040; }
+
+/* ─── TABLE ENHANCEMENTS ────────────────────────────────────────────────── */
+tbody tr:nth-child(even) td { background: #F8F9FA; }
+.table-note {
+  font-size: 8.5pt;
+  color: #666;
+  font-style: italic;
+  margin-top: -2mm;
+  margin-bottom: 4mm;
+}
+
+/* ─── SECTION BREAK SUPPRESSION ─────────────────────────────────────────── */
+/* Don't force a page break before every H1 section — let content flow */
+.section-number {
+  break-before: avoid;
+  page-break-before: avoid;
+}

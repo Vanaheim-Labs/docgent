@@ -302,6 +302,84 @@ function Div(el)
     end
     if #out == 0 then return el end
     return out
+  elseif has('kpigrid') then
+    -- Row of metric cards. Column count is a data-attribute AND a class so the
+    -- brand CSS (.kpi-grid-2/3) and any core CSS keyed on data-cols both work.
+    local cols = attrget(el, 'cols', '4')
+    if cols ~= '2' and cols ~= '3' and cols ~= '4' then cols = '4' end
+    local cls = 'kpi-grid'
+    if cols ~= '4' then cls = cls .. ' kpi-grid-' .. cols end
+    local out = { raw('<div class="' .. cls .. '" data-cols="' .. esc(cols) .. '">') }
+    for _, b in ipairs(el.content) do table.insert(out, b) end
+    table.insert(out, raw('</div>'))
+    return out
+
+  elseif has('kpicard') then
+    -- Label sits above the value; the source pill rides in the label line so a
+    -- reader can see provenance without a legend. Body content is optional and
+    -- rendered under the change line.
+    local value = attrget(el, 'value', '')
+    local label = attrget(el, 'label', '')
+    local change = el.attributes['change']
+    local trend = attrget(el, 'trend', 'flat')
+    local color = el.attributes['color']
+    local source = el.attributes['source']
+
+    local cls = 'kpi-card'
+    if color then cls = cls .. ' ' .. esc(color) end
+
+    local head = '<div class="' .. cls .. '" data-trend="' .. esc(trend) .. '">'
+    local lab = '<div class="kpi-label">' .. esc(label)
+    if source then
+      lab = lab .. '<span class="source-tag source-' .. esc(source) .. '">' ..
+            esc(source:upper()) .. '</span>'
+    end
+    lab = lab .. '</div>'
+
+    local out = {
+      raw(head),
+      raw(lab),
+      raw('<div class="kpi-value">' .. esc(value) .. '</div>')
+    }
+    if change then
+      -- 'flat' maps to the neutral colour class the brand already ships.
+      local tcls = trend
+      if trend == 'flat' or trend == 'none' then tcls = 'neutral' end
+      table.insert(out, raw('<div class="kpi-change ' .. esc(tcls) .. '">' .. esc(change) .. '</div>'))
+    end
+    for _, b in ipairs(el.content) do table.insert(out, b) end
+    table.insert(out, raw('</div>'))
+    return out
+
+  elseif has('daygrid') then
+    local out = { raw('<div class="weekly-grid">') }
+    for _, b in ipairs(el.content) do table.insert(out, b) end
+    table.insert(out, raw('</div>'))
+    return out
+
+  elseif has('daycell') then
+    local day = attrget(el, 'day', '')
+    local value = attrget(el, 'value', '')
+    local state = el.attributes['state']
+    local cls = 'day-cell'
+    if state then cls = cls .. ' ' .. esc(state) end
+    return {
+      raw('<div class="' .. cls .. '">' ..
+          '<div class="day-label">' .. esc(day) .. '</div>' ..
+          '<div class="day-value">' .. esc(value) .. '</div>' ..
+          '</div>')
+    }
+
+  elseif has('tensionbox') then
+    local title = attrget(el, 'title', '')
+    local out = { raw('<div class="tension-box">') }
+    if title ~= '' then
+      table.insert(out, raw('<div class="tension-title">' .. esc(title) .. '</div>'))
+    end
+    for _, b in ipairs(el.content) do table.insert(out, b) end
+    table.insert(out, raw('</div>'))
+    return out
+
   elseif has('signature') then
     local name = attrget(el, 'name', '')
     local role = el.attributes['role']
