@@ -117,7 +117,11 @@ export async function complete(opts: {
       body: JSON.stringify({
         model: model.id,
         max_tokens: maxTokens,
-        temperature: 0.2,
+        // No temperature: newer Claude models (5.x) reject it as a settable
+        // parameter (400 `temperature is deprecated for this model`), and
+        // older models are perfectly usable on their default. Editing under
+        // instruction does not need a knob here — low variance is what
+        // instruction-following already gives you.
         system,
         messages: [{ role: "user", content: user }],
       }),
@@ -145,7 +149,9 @@ export async function complete(opts: {
     body: JSON.stringify({
       model: model.id,
       max_completion_tokens: maxTokens,
-      temperature: 0.2,
+      // No temperature: reasoning models (o3, o4-mini) reject it outright,
+      // and the same reasoning as the Anthropic branch applies to the rest —
+      // this is instruction-following, not open-ended generation.
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
