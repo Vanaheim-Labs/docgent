@@ -595,6 +595,37 @@ kbd {
 }
 .diff-detail { color: var(--ink-soft); line-height: 1.4; }
 
+/* Grouping by section, so the diff reads in document order. */
+.diff-group { margin-bottom: 14px; }
+.diff-group:last-of-type { margin-bottom: 0; }
+.diff-group-head {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding-bottom: 5px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--rule);
+}
+
+/* Word-level prose diff. */
+.word-diff { line-height: 1.5; }
+.word-run { border-radius: 3px; padding: 0 2px; }
+.word-run[data-op="add"] { background: #d6efe1; color: #14532d; }
+.word-run[data-op="remove"] {
+  background: #fbdcdc;
+  color: #7f1d1d;
+  text-decoration: line-through;
+}
+
+/* Collapsed structural noise (heading re-levelling). */
+.diff-noise {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+}
+
 /* Preview mode toggle — fast HTML preview vs paginated PDF. */
 .mode-toggle {
   display: inline-flex;

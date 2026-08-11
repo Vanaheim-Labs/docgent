@@ -128,7 +128,13 @@ export function outline(src) {
 
 /** Identity used for matching nodes across revisions. */
 function identity(n) {
-  if (n.kind === "heading") return `h${n.level}:${n.text.toLowerCase()}`;
+  // Headings match on text alone, deliberately excluding level. Including the
+  // level made a demotion ("# X" -> "## X", as a toc:true rebuild produces for
+  // every heading) match nothing, so one re-levelled document reported 24
+  // sections removed and 24 added. A reviewer reads that as the document being
+  // gutted, when no section left or arrived. Level differences surface as
+  // section_relevelled below.
+  if (n.kind === "heading") return `h:${n.text.toLowerCase()}`;
   if (n.kind === "block") {
     // Prefer an explicit ref/term/label if the vocabulary provides one - those
     // are author-assigned and stable across edits.
@@ -141,6 +147,72 @@ function identity(n) {
 function shortText(s, n = 90) {
   const t = String(s || "").trim();
   return t.length <= n ? t : t.slice(0, n - 1) + "…";
+}
+
+/**
+ * Word-level diff of two prose runs, via a longest-common-subsequence walk.
+ *
+ * A truncated snippet of the new text ("Most businesses at Inkl's stage des…")
+ * tells a reviewer that prose changed but not what changed, which is the one
+ * thing they need. Prose runs here are paragraph-sized, so the O(n*m) table is
+ * cheap; runs beyond the cap fall back to a plain replacement rather than
+ * allocating a huge matrix.
+ */
+function wordDiff(beforeText, afterText) {
+  const a = String(beforeText || "").split(/\s+/).filter(Boolean);
+  const b = String(afterText || "").split(/\s+/).filter(Boolean);
+
+  const CAP = 400;
+  if (a.length > CAP || b.length > CAP) {
+    return [
+      { op: "remove", text: a.join(" ") },
+      { op: "add", text: b.join(" ") },
+    ];
+  }
+
+  // LCS table over word arrays.
+  const table = Array.from({ length: a.length + 1 }, () =>
+    new Uint32Array(b.length + 1)
+  );
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      table[i][j] =
+        a[i] === b[j]
+          ? table[i + 1][j + 1] + 1
+          : Math.max(table[i + 1][j], table[i][j + 1]);
+    }
+  }
+
+  const runs = [];
+  const push = (op, word) => {
+    const last = runs[runs.length - 1];
+    if (last && last.op === op) last.text += " " + word;
+    else runs.push({ op, text: word });
+  };
+
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { push("same", a[i]); i++; j++; }
+    else if (table[i + 1][j] >= table[i][j + 1]) { push("remove", a[i]); i++; }
+    else { push("add", b[j]); j++; }
+  }
+  while (i < a.length) push("remove", a[i++]);
+  while (j < b.length) push("add", b[j++]);
+
+  return runs;
+}
+
+/** Condenses a word diff into a one-line "x → y" description. */
+function describeWordDiff(runs) {
+  const removed = runs.filter((r) => r.op === "remove").map((r) => r.text);
+  const added = runs.filter((r) => r.op === "add").map((r) => r.text);
+  if (!removed.length && !added.length) return null;
+  if (removed.length && added.length) {
+    return `${shortText(removed.join(" … "), 60)} → ${shortText(added.join(" … "), 60)}`;
+  }
+  if (added.length) return `added: ${shortText(added.join(" … "), 110)}`;
+  return `removed: ${shortText(removed.join(" … "), 110)}`;
 }
 
 /**
@@ -245,13 +317,27 @@ export function semanticDiff(beforeSrc, afterSrc) {
           detail: describeBlock(n),
         });
       }
+    } else if (n.kind === "heading") {
+      if (b.level !== n.level) {
+        changes.push({
+          type: "section_relevelled",
+          section: n.text,
+          before: b.level,
+          after: n.level,
+          detail: `${n.text}: heading level ${b.level} → ${n.level}`,
+        });
+      }
     } else if (n.kind === "prose" && b.text !== n.text) {
       const delta = n.words - b.words;
+      const words = wordDiff(b.text, n.text);
       changes.push({
         type: "prose_edited",
         section: n.section,
         wordDelta: delta,
-        detail: shortText(n.text),
+        words,
+        before: shortText(b.text),
+        after: shortText(n.text),
+        detail: describeWordDiff(words) || shortText(n.text),
       });
     }
   });
@@ -316,6 +402,7 @@ export function summarise(diff) {
   add((s.attribute_changed || 0), "value changed", "values changed");
   add((s.section_added || 0), "section added", "sections added");
   add((s.section_removed || 0), "section removed", "sections removed");
+  add((s.section_relevelled || 0), "section re-levelled", "sections re-levelled");
   add((s.prose_edited || 0) + (s.prose_added || 0) + (s.prose_removed || 0), "prose edit", "prose edits");
   add(
     (s.metadata_changed || 0) + (s.metadata_added || 0) + (s.metadata_removed || 0),
