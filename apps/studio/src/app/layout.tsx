@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "DocForge Studio",
+  title: "Docgentic Studio",
   description: "Multi-brand document production",
 };
 

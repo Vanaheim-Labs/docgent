@@ -64,6 +64,11 @@ a:hover { text-decoration: underline; }
   width: 9px; height: 9px; border-radius: 2px;
   background: var(--accent);
 }
+.wordmark-logo {
+  height: 20px;
+  width: auto;
+  display: block;
+}
 .wordmark-sub {
   font-size: 11px;
   color: var(--ink-faint);

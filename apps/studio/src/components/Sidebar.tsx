@@ -34,8 +34,7 @@ export function Sidebar({
     <aside className="sidebar">
       <div className="sidebar-head">
         <Link href="/" className="wordmark" style={{ color: "inherit" }}>
-          <span className="wordmark-dot" />
-          DocForge
+          <img src="/docgentic-logo.svg" alt="Docgentic" className="wordmark-logo" />
         </Link>
         <div className="wordmark-sub">Studio</div>
       </div>

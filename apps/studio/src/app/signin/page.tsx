@@ -15,8 +15,7 @@ export default async function SignIn({
     <div className="signin-wrap">
       <div className="signin-card">
         <div className="wordmark" style={{ justifyContent: "center" }}>
-          <span className="wordmark-dot" />
-          DocForge Studio
+          <img src="/docgentic-logo.svg" alt="Docgentic" className="wordmark-logo" />
         </div>
         <h1 className="signin-title">Sign in</h1>
         <p className="signin-sub">Sign in with Google to continue.</p>

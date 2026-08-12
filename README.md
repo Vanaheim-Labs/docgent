@@ -1,6 +1,6 @@
-# DocForge
+# Docgentic
 
-Multi-brand document production: version-controlled Markdown → semantic HTML → WeasyPrint → PDF.
+(formerly DocForge) Multi-brand document production: version-controlled Markdown → semantic HTML → WeasyPrint → PDF.
 
 Agents produce at volume via CLI. Humans edit surgically via web UI. Both write to the same
 git-backed source of truth — git *is* the database, there is no separate CMS store and therefore
