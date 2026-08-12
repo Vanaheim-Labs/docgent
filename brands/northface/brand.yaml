@@ -6,6 +6,10 @@ tagline: Valuation Infrastructure
 # org so access control follows ownership, not convenience.
 repo: north-face-investments/docforge-documents
 
+# Studio access: any verified Google account on the company domain.
+access:
+  domains: [northface.vc]
+
 typography:
   serif: "Cormorant Garamond, Georgia, serif"
   sans: "Inter, Helvetica Neue, Arial, sans-serif"

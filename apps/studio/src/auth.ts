@@ -1,109 +1,61 @@
 import NextAuth from "next-auth";
-import GitHub from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
+import { headers } from "next/headers";
+import { resolveBrandForHost } from "@/lib/store";
 
 /**
  * Studio auth.
  *
- * Two ways in, deliberately gated differently:
+ * Each production domain is dedicated to exactly one brand (see
+ * DOCFORGE_HOST_BRANDS / resolveBrandForHost in lib/store.ts). Sign-in is
+ * Google only, and the rule that decides who gets in is read from that
+ * brand's brand.yaml `access:` block — not a shared environment-variable
+ * allowlist. Two brands can never be governed by the same list by accident,
+ * because there is no shared list.
  *
- *  - GitHub  -> must be a member of DOCFORGE_ALLOWED_ORG. This is the path for
- *               the team that also holds repo access.
- *  - Google  -> must appear in DOCFORGE_ALLOWED_EMAILS, optionally widened by
- *               DOCFORGE_ALLOWED_DOMAINS. This is the path for collaborators
- *               (clients, reviewers) who have no GitHub account and should not
- *               be given an org seat just to read a document.
+ * The check happens in the signIn callback, which runs server-side before a
+ * session is issued — not client-side after the fact. A client-side check
+ * only hides the UI; the session cookie would already be valid and every API
+ * route would still trust it. Google is asked for a *verified* email only;
+ * an unverified address proves nothing about who owns it.
  *
- * In both cases the identity token is used only to decide "may this person in",
- * then discarded. Repo reads and writes always run through DOCFORGE_GH_TOKEN,
- * so a Google guest never gains repository permissions of any kind.
+ * A host with no brand mapping (local dev without DOCFORGE_HOST_BRANDS set,
+ * or anyone hitting the raw Vercel URL) resolves to no brand and rejects
+ * every sign-in. Fail closed, not "pick a default brand".
  */
-const ALLOWED_ORG = process.env.DOCFORGE_ALLOWED_ORG || "";
-
-/** Comma-separated exact addresses, e.g. "scott@inkl.com,jane@example.com". */
-const ALLOWED_EMAILS = (process.env.DOCFORGE_ALLOWED_EMAILS || "")
-  .split(",")
-  .map((e) => e.trim().toLowerCase())
-  .filter(Boolean);
-
-/** Comma-separated bare domains, e.g. "inkl.com". Empty by default: a whole
- *  domain is a much larger grant than it looks, so it must be opted into. */
-const ALLOWED_DOMAINS = (process.env.DOCFORGE_ALLOWED_DOMAINS || "")
-  .split(",")
-  .map((d) => d.trim().toLowerCase().replace(/^@/, ""))
-  .filter(Boolean);
-
-function googleAllowed(email?: string | null, verified?: boolean): boolean {
-  if (!email) return false;
-  // An unverified Google address proves nothing about who owns it.
-  if (verified === false) return false;
-
-  const addr = email.toLowerCase();
-  if (ALLOWED_EMAILS.includes(addr)) return true;
-
-  const domain = addr.split("@")[1] || "";
-  return ALLOWED_DOMAINS.includes(domain);
-}
-
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
-    GitHub({
-      authorization: { params: { scope: "read:user user:email read:org" } },
-    }),
     Google({
-      // Always show the chooser: guests are frequently signed into a personal
-      // account already, and silently reusing it produces a confusing denial.
+      // Always show the chooser: guests are frequently signed into a
+      // personal account already, and silently reusing it produces a
+      // confusing denial.
       authorization: { params: { prompt: "select_account" } },
     }),
   ],
   callbacks: {
     async signIn({ account, profile }) {
-      if (account?.provider === "google") {
-        // Fail closed. If neither allowlist is configured, no Google guest
-        // gets in, rather than every Google account on earth.
-        if (ALLOWED_EMAILS.length === 0 && ALLOWED_DOMAINS.length === 0) {
-          return false;
-        }
-        const p = profile as { email?: string; email_verified?: boolean } | undefined;
-        return googleAllowed(p?.email, p?.email_verified);
-      }
+      if (account?.provider !== "google") return false;
 
-      if (account?.provider === "github") {
-        if (!ALLOWED_ORG) return true; // unrestricted only if explicitly unset
-        const token = account?.access_token;
-        if (!token) return false;
+      const p = profile as { email?: string; email_verified?: boolean } | undefined;
+      if (!p?.email || p.email_verified === false) return false;
 
-        try {
-          const res = await fetch(
-            `https://api.github.com/orgs/${ALLOWED_ORG}/members/${profile?.login}`,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-                Accept: "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-              },
-            }
-          );
-          // 204 = member, 302/404 = not a member or not visible
-          return res.status === 204;
-        } catch {
-          return false;
-        }
-      }
+      const host = (await headers()).get("host");
+      const brand = resolveBrandForHost(host);
+      if (!brand) return false; // unmapped host — fail closed
 
-      return false;
+      const addr = p.email.toLowerCase();
+      if (brand.access.emails.includes(addr)) return true;
+
+      const domain = addr.split("@")[1] || "";
+      return brand.access.domains.includes(domain);
     },
-    async jwt({ token, profile, account }) {
-      if (account?.provider === "github" && profile?.login) {
-        token.login = profile.login as string;
-      }
+    async jwt({ token, account }) {
       if (account?.provider) token.provider = account.provider;
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        const u = session.user as { login?: string; provider?: string };
-        if (token.login) u.login = token.login as string;
+        const u = session.user as { provider?: string };
         if (token.provider) u.provider = token.provider as string;
       }
       return session;

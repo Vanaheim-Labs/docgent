@@ -110,7 +110,9 @@ export type TimelineEntry = {
   url: string;
 };
 
-export type Brand = { id: string; name: string; repo: string };
+export type BrandAccess = { emails: string[]; domains: string[] };
+
+export type Brand = { id: string; name: string; repo: string; access: BrandAccess };
 
 /**
  * Locates the brands/ directory.
@@ -175,6 +177,33 @@ function scalar(src: string, key: string): string | null {
   return m[1].replace(/^["']|["']$/g, "").trim() || null;
 }
 
+/**
+ * Reads the `access:` block from a brand.yaml.
+ *
+ * ```yaml
+ * access:
+ *   emails: [andrew@dcr.vc]
+ *   domains: [inkl.com, influx.com]
+ * ```
+ *
+ * Deliberately not a YAML parser — same reasoning as scalar() above. This
+ * is the one nested block Studio needs, so a couple of targeted regexes
+ * beat a dependency. Each key may be a flow list (`[a, b]`) or absent;
+ * either produces an empty array rather than throwing.
+ */
+function accessBlock(src: string): BrandAccess {
+  const section = src.match(/^access:\s*\n((?:[ \t]+.+\n?)*)/m)?.[1] ?? "";
+  const list = (key: string): string[] => {
+    const m = section.match(new RegExp("^[ \\t]+" + key + ":\\s*\\[([^\\]]*)\\]", "m"));
+    if (!m) return [];
+    return m[1]
+      .split(",")
+      .map((s) => s.trim().replace(/^["']|["']$/g, "").toLowerCase())
+      .filter(Boolean);
+  };
+  return { emails: list("emails"), domains: list("domains") };
+}
+
 let brandCache: Brand[] | null = null;
 
 /** Every brand the pipeline defines, with the repo that holds its documents. */
@@ -203,7 +232,7 @@ export function brands(): Brand[] {
     // rather than falling back to a shared repo and reading someone else's
     // documents.
     if (!repo) continue;
-    out.push({ id, name: scalar(src, "name") || id, repo });
+    out.push({ id, name: scalar(src, "name") || id, repo, access: accessBlock(src) });
   }
 
   return (brandCache = out);
@@ -211,6 +240,39 @@ export function brands(): Brand[] {
 
 export function findBrand(id: string): Brand | null {
   return brands().find((b) => b.id === id) ?? null;
+}
+
+/**
+ * Maps a request hostname to the one brand that domain serves.
+ *
+ * Each production domain (docs.vanaheim.com.au, docs.northface.vc,
+ * docs.inkl.com) is dedicated to exactly one brand — Studio is not a
+ * cross-brand app on those hosts, it is that brand's app. Local dev and the
+ * raw Vercel URL have no brand mapping and deliberately resolve to null:
+ * see auth.ts, which rejects sign-in rather than falling back to any brand.
+ *
+ * Env-driven rather than inferred from the hostname string, because
+ * "docs.vanaheim.com.au" -> "vanaheim" is a coincidence of naming, not a
+ * rule Studio should rely on.
+ */
+const HOST_BRAND_MAP: Record<string, string> = Object.fromEntries(
+  (process.env.DOCFORGE_HOST_BRANDS || "")
+    .split(",")
+    .map((pair) => pair.trim())
+    .filter(Boolean)
+    .map((pair) => {
+      const [host, brand] = pair.split("=").map((s) => s.trim().toLowerCase());
+      return [host, brand];
+    })
+    .filter(([host, brand]) => host && brand)
+);
+
+export function resolveBrandForHost(host: string | null | undefined): Brand | null {
+  if (!host) return null;
+  const bare = host.toLowerCase().split(":")[0];
+  const brandId = HOST_BRAND_MAP[bare];
+  if (!brandId) return null;
+  return findBrand(brandId);
 }
 
 // Keyed by brand: a single shared instance would serve one brand's documents

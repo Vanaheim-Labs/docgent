@@ -5,6 +5,10 @@ tagline: News Worth Reading
 # Inkl's documents live in its own GitHub org.
 repo: inkldev/docforge-documents
 
+# Studio access: any verified Google account on either company domain.
+access:
+  domains: [inkl.com, influx.com]
+
 typography:
   serif: "Lora, Georgia, serif"
   sans: "Manrope, -apple-system, Helvetica Neue, Arial, sans-serif"

@@ -2,6 +2,12 @@ id: vanaheim
 name: Vanaheim Partners
 tagline: Strategy & Advisory
 
+# Studio access for this brand. Checked server-side against the verified
+# Google account email after OAuth completes — see apps/studio/src/auth.ts.
+# Exact addresses only: this brand has no shared company domain to trust.
+access:
+  emails: [andrew@dcr.vc]
+
 # Where this brand's documents are stored. One pipeline, many document repos:
 # a brand owned by a different org keeps its documents in that org, so access
 # control follows ownership rather than convenience.
