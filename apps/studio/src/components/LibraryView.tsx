@@ -19,9 +19,15 @@ import { UserChip } from "@/components/UserChip";
 export function LibraryView({
   documents,
   userChip,
+  lockedBrand,
 }: {
   documents: DocSummary[];
   userChip: React.ReactNode;
+  /** Set when this domain is dedicated to one brand — documents are already
+   *  filtered to it server-side; this only controls whether the UI still
+   *  offers a brand switcher that would be misleading (there is nothing to
+   *  switch to on this domain). */
+  lockedBrand?: { id: string; name: string } | null;
 }) {
   const [filters, setFilters] = useState<LibraryFilters>({
     brands: new Set(),
@@ -65,7 +71,12 @@ export function LibraryView({
 
   return (
     <div className="shell">
-      <LibraryFilterPanel documents={documents} filters={filters} onChange={setFilters} />
+      <LibraryFilterPanel
+        documents={documents}
+        filters={filters}
+        onChange={setFilters}
+        lockedBrandName={lockedBrand?.name}
+      />
       <div className="main">
         <div className="topbar">
           <div>
