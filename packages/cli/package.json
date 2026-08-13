@@ -10,9 +10,9 @@
     "src"
   ],
   "dependencies": {
-    "@docforge/core": "0.1.0",
-    "@docforge/vocabulary": "0.1.0",
-    "@docforge/git-store": "0.1.0"
+    "@docforge/core": "*",
+    "@docforge/vocabulary": "*",
+    "@docforge/git-store": "*"
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
