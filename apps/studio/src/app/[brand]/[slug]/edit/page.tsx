@@ -47,12 +47,17 @@ export default async function EditPage({ params }: Props) {
   return (
     <div className="editor-shell">
       <div className="topbar">
-        <div>
-          <div className="crumb">
-            {repoSlug(brand)} · <strong>{brand}</strong> ·{" "}
-            <Link href={`/${brand}/${slug}`}>{slug}</Link>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <Link href="/" className="wordmark" style={{ color: "inherit" }}>
+            <img src="/docgent-logo.svg" alt="Docgent" className="wordmark-logo" />
+          </Link>
+          <div>
+            <div className="crumb">
+              {repoSlug(brand)} · <strong>{brand}</strong> ·{" "}
+              <Link href={`/${brand}/${slug}`}>{slug}</Link>
+            </div>
+            <h1 className="doc-title">{fm.title || slug}</h1>
           </div>
-          <h1 className="doc-title">{fm.title || slug}</h1>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <Link className="btn btn-secondary" href={`/${brand}/${slug}`}>
