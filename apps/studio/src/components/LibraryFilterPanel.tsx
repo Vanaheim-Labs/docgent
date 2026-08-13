@@ -68,7 +68,7 @@ export function LibraryFilterPanel({
       <div className="sidebar-head">
         <Link href="/" className="wordmark" style={{ color: "inherit" }}>
           <span className="wordmark-dot" />
-          DocForge
+          Docgent
         </Link>
         <div className="wordmark-sub">Studio</div>
       </div>
