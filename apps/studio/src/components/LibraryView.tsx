@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import type { DocSummary } from "@/lib/store";
 import { LibraryFilterPanel, type LibraryFilters } from "@/components/LibraryFilterPanel";
 import { QueueRow, queueBucket, BUCKET_LABEL, type QueueBucket } from "@/components/QueueRow";
@@ -80,16 +79,11 @@ export function LibraryView({
       />
       <div className="main">
         <div className="topbar">
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <Link href="/" className="wordmark" style={{ color: "inherit" }}>
-              <img src="/docgent-logo.svg" alt="Docgent" className="wordmark-logo" />
-            </Link>
-            <div>
-              <div className="crumb">
-                {filtered.length} of {documents.length} document{documents.length === 1 ? "" : "s"}
-              </div>
-              <h1 className="doc-title">Documents</h1>
+          <div>
+            <div className="crumb">
+              {filtered.length} of {documents.length} document{documents.length === 1 ? "" : "s"}
             </div>
+            <h1 className="doc-title">Documents</h1>
           </div>
           {userChip}
         </div>
