@@ -1,4 +1,4 @@
-# Docgentic — Product Brief
+# Docgent — Product Brief
 
 ## One-liner
 
@@ -17,7 +17,7 @@ But production velocity creates a new problem: **version control, lost context, 
 
 Existing tools don't solve this. Google Docs has no concept of "agent-authored," no audit-grade diffing, no approval gates, no multi-brand design system. Git alone is illegible to non-technical reviewers. CMS platforms add a database and a sync layer — exactly the kind of state that breaks when agent and human edits happen concurrently.
 
-## What Docgentic is
+## What Docgent is
 
 A document production and collaboration system where **git is the database** — there is no separate CMS store, no sync layer, no reconciliation logic to get wrong.
 
@@ -55,7 +55,7 @@ The most distinctive part of the vision, and the part that makes this "collabora
 - **AI rewrites are proposals, never direct commits.** A rewrite request returns text held in memory; the human sees a diff, and only an *accepted* proposal commits. Rejected variants never touch git. This is what makes "show me three takes" — three different models rewriting the same section — produce a clean decision record instead of commit-log noise.
 - **Section-level control surface**: an outline view lets a human strike a section (undoable, commits only on save), reorder sections by drag, and leave inline annotations that the next AI pass reads as direction — without ever touching raw HTML or breaking the vocabulary contract.
 - **Inline dispatch from the editor**: select any text, request a rewrite/expand/cut, route to a specific model, with "taste chips" (shorter / more direct / raise the stakes) as editable seeds rather than a rigid menu.
-- **The OpenClaw connection**: the studio itself holds no AI credentials or routing logic — it's deliberately kept as a thin git client. Routing lives where agent orchestration already lives (OpenClaw), so "produce this document" can originate as a Slack prompt, run through whatever data sources and models are appropriate, and land back in Docgentic as a reviewable, versioned proposal.
+- **The OpenClaw connection**: the studio itself holds no AI credentials or routing logic — it's deliberately kept as a thin git client. Routing lives where agent orchestration already lives (OpenClaw), so "produce this document" can originate as a Slack prompt, run through whatever data sources and models are appropriate, and land back in Docgent as a reviewable, versioned proposal.
 
 ## Who it's for
 
@@ -75,4 +75,4 @@ Core production pipeline, git-backed versioning, and read/write Studio UI are bu
 
 ## Name rationale
 
-**Docgentic** = Doc + Agentic. Says exactly what it is on first hearing: documents, produced and shaped by agents, under human direction. No collisions found against existing trademarks, products, domains, or social handles at time of writing (Aug 2026) — a clean, ownable name in a category (`___Foundry`, `Doc + Gen/Genie/Genic`) that's otherwise heavily contested.
+**Docgent** = Doc + Agentic. Says exactly what it is on first hearing: documents, produced and shaped by agents, under human direction. No collisions found against existing trademarks, products, domains, or social handles at time of writing (Aug 2026) — a clean, ownable name in a category (`___Foundry`, `Doc + Gen/Genie/Genic`) that's otherwise heavily contested.

@@ -34,7 +34,7 @@ export function Sidebar({
     <aside className="sidebar">
       <div className="sidebar-head">
         <Link href="/" className="wordmark" style={{ color: "inherit" }}>
-          <img src="/docgentic-logo.svg" alt="Docgentic" className="wordmark-logo" />
+          <img src="/docgent-logo.svg" alt="Docgent" className="wordmark-logo" />
         </Link>
         <div className="wordmark-sub">Studio</div>
       </div>

@@ -1,4 +1,4 @@
-# Docgentic
+# Docgent
 
 (formerly DocForge) Multi-brand document production: version-controlled Markdown → semantic HTML → WeasyPrint → PDF.
 
