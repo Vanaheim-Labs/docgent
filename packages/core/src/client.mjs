@@ -1,5 +1,5 @@
 /**
- * DocForge render-worker client.
+ * Docgent render-worker client.
  *
  * Lets the CLI (and later Studio) render through the container rather than a
  * local WeasyPrint install, so output is identical everywhere.
@@ -40,10 +40,10 @@ export function collectAssets(docDir, { maxBytes = 15 * 1024 * 1024 } = {}) {
 
 export class RenderClient {
   constructor({ url, key, timeoutMs = 120000 } = {}) {
-    this.url = (url || process.env.DOCFORGE_RENDER_URL || "").replace(/\/$/, "");
-    this.key = key || process.env.DOCFORGE_API_KEY || "";
+    this.url = (url || process.env.DOCGENT_RENDER_URL || "").replace(/\/$/, "");
+    this.key = key || process.env.DOCGENT_API_KEY || "";
     this.timeoutMs = timeoutMs;
-    if (!this.url) throw new Error("No render worker URL (set DOCFORGE_RENDER_URL).");
+    if (!this.url) throw new Error("No render worker URL (set DOCGENT_RENDER_URL).");
   }
 
   async health() {
@@ -57,7 +57,7 @@ export class RenderClient {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-DocForge-Key": this.key,
+        "X-Docgent-Key": this.key,
       },
       body: JSON.stringify({ markdown, brand, assets, filename }),
       signal: AbortSignal.timeout(this.timeoutMs),
@@ -74,8 +74,8 @@ export class RenderClient {
 
     return {
       pdf: Buffer.from(await res.arrayBuffer()),
-      requestId: res.headers.get("x-docforge-request-id"),
-      renderMs: Number(res.headers.get("x-docforge-render-ms")) || null,
+      requestId: res.headers.get("x-docgent-request-id"),
+      renderMs: Number(res.headers.get("x-docgent-render-ms")) || null,
     };
   }
 

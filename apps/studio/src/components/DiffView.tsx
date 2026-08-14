@@ -33,7 +33,7 @@ export type DiffResult = {
  *
  * Source is the default because it is the one people already know how to
  * read: the same +/- gutters, line numbers and hunk headers as a pull
- * request, with no DocForge-specific vocabulary to learn. The semantic
+ * request, with no Docgent-specific vocabulary to learn. The semantic
  * summary is the more useful view once you trust it, so it stays one click
  * away rather than buried.
  */

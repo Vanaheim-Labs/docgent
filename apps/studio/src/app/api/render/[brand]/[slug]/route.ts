@@ -103,9 +103,9 @@ function pdfResponse(
       "Cache-Control": opts.ref
         ? "private, max-age=31536000, immutable"
         : "private, max-age=0, must-revalidate",
-      "X-DocForge-Render-Ms": String(opts.renderMs ?? ""),
-      "X-DocForge-Cache": opts.cached ? "hit" : "miss",
-      "X-DocForge-Cache-Driver": cacheDriver(),
+      "X-Docgent-Render-Ms": String(opts.renderMs ?? ""),
+      "X-Docgent-Cache": opts.cached ? "hit" : "miss",
+      "X-Docgent-Cache-Driver": cacheDriver(),
     },
   });
 }

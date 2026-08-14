@@ -1,18 +1,18 @@
 {
-  "name": "@docforge/cli",
+  "name": "@docgent/cli",
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "docforge": "./src/docforge.mjs"
+    "docgent": "./src/docgent.mjs"
   },
-  "main": "./src/docforge.mjs",
+  "main": "./src/docgent.mjs",
   "files": [
     "src"
   ],
   "dependencies": {
-    "@docforge/core": "*",
-    "@docforge/vocabulary": "*",
-    "@docforge/git-store": "*"
+    "@docgent/core": "*",
+    "@docgent/vocabulary": "*",
+    "@docgent/git-store": "*"
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"

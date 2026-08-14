@@ -1,4 +1,4 @@
-# DocForge render worker
+# Docgent render worker
 
 pandoc + WeasyPrint behind an HTTP API. This is the single source of render
 truth — Studio and the CLI both call it, so a document renders identically
@@ -9,7 +9,7 @@ this cannot run on Vercel.
 
 ## API
 
-\`POST /render\` — \`X-DocForge-Key: <secret>\`
+\`POST /render\` — \`X-Docgent-Key: <secret>\`
 
 \`\`\`json
 {
@@ -20,8 +20,8 @@ this cannot run on Vercel.
 }
 \`\`\`
 
-Returns \`application/pdf\`. Response headers carry \`X-DocForge-Request-Id\`
-and \`X-DocForge-Render-Ms\`.
+Returns \`application/pdf\`. Response headers carry \`X-Docgent-Request-Id\`
+and \`X-Docgent-Render-Ms\`.
 
 \`GET /health\` — unauthenticated. Reports binary/asset presence and known brands.
 \`GET /brands\` — authenticated. Lists brand ids and display names.
@@ -34,7 +34,7 @@ Errors: 400 bad request · 401 unauthorised · 404 unknown brand ·
 \`\`\`bash
 node apps/render-worker/stage.mjs          # copy pipeline assets into build context
 fly launch --no-deploy                     # first time only
-fly secrets set DOCFORGE_API_KEY=$(openssl rand -hex 32)
+fly secrets set DOCGENT_API_KEY=$(openssl rand -hex 32)
 fly deploy
 \`\`\`
 
@@ -53,5 +53,5 @@ embedding and server-side rendering before committing font binaries.
 \`\`\`bash
 cd apps/render-worker
 node stage.mjs
-DOCFORGE_PIPELINE_DIR=./pipeline DOCFORGE_API_KEY=dev python3 server.py
+DOCGENT_PIPELINE_DIR=./pipeline DOCGENT_API_KEY=dev python3 server.py
 \`\`\`

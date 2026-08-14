@@ -7,7 +7,7 @@ import { resolveBrandForHost } from "@/lib/store";
  * Studio auth.
  *
  * Each production domain is dedicated to exactly one brand (see
- * DOCFORGE_HOST_BRANDS / resolveBrandForHost in lib/store.ts). Sign-in is
+ * DOCGENT_HOST_BRANDS / resolveBrandForHost in lib/store.ts). Sign-in is
  * Google only, and the rule that decides who gets in is read from that
  * brand's brand.yaml `access:` block — not a shared environment-variable
  * allowlist. Two brands can never be governed by the same list by accident,
@@ -19,7 +19,7 @@ import { resolveBrandForHost } from "@/lib/store";
  * route would still trust it. Google is asked for a *verified* email only;
  * an unverified address proves nothing about who owns it.
  *
- * A host with no brand mapping (local dev without DOCFORGE_HOST_BRANDS set,
+ * A host with no brand mapping (local dev without DOCGENT_HOST_BRANDS set,
  * or anyone hitting the raw Vercel URL) resolves to no brand and rejects
  * every sign-in. Fail closed, not "pick a default brand".
  */

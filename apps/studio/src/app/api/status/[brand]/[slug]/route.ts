@@ -83,7 +83,7 @@ export async function POST(
     const newContent = open + newFm + close + content.slice(fmMatch[0].length);
 
     const who = session.user.name || (session.user as { login?: string }).login || "unknown";
-    const email = session.user.email || "studio@docforge.local";
+    const email = session.user.email || "studio@docgent.local";
 
     // Commit trailers keep the audit trail inside git itself.
     const trailers = [

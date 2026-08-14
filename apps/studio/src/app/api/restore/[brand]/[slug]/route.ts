@@ -135,8 +135,8 @@ export async function POST(
       );
     }
 
-    const who = session.user.name || (session.user as { login?: string }).login || "DocForge Studio";
-    const email = session.user.email || "studio@docforge.local";
+    const who = session.user.name || (session.user as { login?: string }).login || "Docgent Studio";
+    const email = session.user.email || "studio@docgent.local";
     const short = ref.slice(0, 7);
 
     const trailers = [

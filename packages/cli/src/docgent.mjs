@@ -37,32 +37,32 @@ function positional() {
   return out;
 }
 
-const HELP = `docforge — multi-brand document production
+const HELP = `docgent — multi-brand document production
 
-  docforge new --brand <id> --type <doctype> --title "..." [--slug <slug>]
-  docforge validate <file.md> [...]
-  docforge render <file.md> [--renderer weasyprint|chrome] [--out <dir>]
-  docforge render <file.md> --remote [--url <worker>] [--key <secret>]
-  docforge health [--url <worker>] [--key <secret>]
-  docforge brands
-  docforge docs
+  docgent new --brand <id> --type <doctype> --title "..." [--slug <slug>]
+  docgent validate <file.md> [...]
+  docgent render <file.md> [--renderer weasyprint|chrome] [--out <dir>]
+  docgent render <file.md> --remote [--url <worker>] [--key <secret>]
+  docgent health [--url <worker>] [--key <secret>]
+  docgent brands
+  docgent docs
 
 Bulk production (Phase 7 — for agents):
-  docforge doctypes --brand <id>
-  docforge batch --brand <id> --type <doctype> --records <file.json|csv>
+  docgent doctypes --brand <id>
+  docgent batch --brand <id> --type <doctype> --records <file.json|csv>
                  [--concurrency N] [--dry-run] [--no-render] [--json]
 
 Git-backed (reads the repo through the GitHub API, as Studio will):
-  docforge remote-docs [--brand <id>]
-  docforge timeline <brand>/<slug> [--limit N]
-  docforge git-check
+  docgent remote-docs [--brand <id>]
+  docgent timeline <brand>/<slug> [--limit N]
+  docgent git-check
 
 Remote rendering uses the render worker (see apps/render-worker), so output
 matches production regardless of what is installed locally.
-Env: DOCFORGE_RENDER_URL, DOCFORGE_API_KEY
-Git:  DOCFORGE_GH_TOKEN (or GITHUB_TOKEN)
+Env: DOCGENT_RENDER_URL, DOCGENT_API_KEY
+Git:  DOCGENT_GH_TOKEN (or GITHUB_TOKEN)
       Repo is resolved per brand from brand.yaml 'repo'; --repo or
-      DOCFORGE_REPO override it.
+      DOCGENT_REPO override it.
 `;
 
 /** Emits a machine-readable result when --json is set, human text otherwise. */
@@ -83,7 +83,7 @@ function report(payload, humanFn) {
 /**
  * Resolves the GitHub token for a brand's document store.
  *
- * Precedence: brand-specific env > ~/.docforge/tokens.env > generic env > gh CLI.
+ * Precedence: brand-specific env > ~/.docgent/tokens.env > generic env > gh CLI.
  *
  * Per-brand tokens matter here: each is a fine-grained PAT scoped to exactly
  * one document repo, so a leaked token cannot reach another brand's documents.
@@ -91,14 +91,14 @@ function report(payload, humanFn) {
  * and is fine for interactive engineering, not for agent-driven writes.
  */
 async function resolveToken(brandId) {
-  const key = brandId ? `DOCFORGE_GH_TOKEN_${brandId.toUpperCase()}` : null;
+  const key = brandId ? `DOCGENT_GH_TOKEN_${brandId.toUpperCase()}` : null;
   if (key && process.env[key]) return process.env[key];
 
   // Token file, kept outside the repo with 0600 perms.
   if (key) {
     try {
       const os = await import("node:os");
-      const file = path.join(os.homedir(), ".docforge", "tokens.env");
+      const file = path.join(os.homedir(), ".docgent", "tokens.env");
       if (fs.existsSync(file)) {
         for (const line of fs.readFileSync(file, "utf8").split("\n")) {
           const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.+?)\s*$/);
@@ -108,7 +108,7 @@ async function resolveToken(brandId) {
     } catch {}
   }
 
-  if (process.env.DOCFORGE_GH_TOKEN) return process.env.DOCFORGE_GH_TOKEN;
+  if (process.env.DOCGENT_GH_TOKEN) return process.env.DOCGENT_GH_TOKEN;
   if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
 
   try {
@@ -117,15 +117,15 @@ async function resolveToken(brandId) {
     if (t) {
       console.error(
         `warning: using the gh CLI token for '${brandId || "?"}'. That credential is broadly scoped; ` +
-        `set ${key || "DOCFORGE_GH_TOKEN_<BRAND>"} for agent use.`
+        `set ${key || "DOCGENT_GH_TOKEN_<BRAND>"} for agent use.`
       );
       return t;
     }
   } catch {}
 
   console.error(
-    `No GitHub token for brand '${brandId || "?"}'. Set ${key || "DOCFORGE_GH_TOKEN_<BRAND>"}, ` +
-    `add it to ~/.docforge/tokens.env, or run 'gh auth login'.`
+    `No GitHub token for brand '${brandId || "?"}'. Set ${key || "DOCGENT_GH_TOKEN_<BRAND>"}, ` +
+    `add it to ~/.docgent/tokens.env, or run 'gh auth login'.`
   );
   process.exit(2);
 }
@@ -137,10 +137,10 @@ async function makeStores(brandId) {
   const token = await resolveToken(brandId);
 
   // Repo follows the brand: North Face documents belong in the North Face org,
-  // not wherever DOCFORGE_REPO happened to point.
+  // not wherever DOCGENT_REPO happened to point.
   const slug = brandRepo(brandId, { override: flag("repo") });
   const [owner, repo] = slug.split("/");
-  const git = new GitStore({ owner, repo, token, branch: process.env.DOCFORGE_BRANCH || "main" });
+  const git = new GitStore({ owner, repo, token, branch: process.env.DOCGENT_BRANCH || "main" });
   return { git, docs: new DocumentStore(git), repo: slug };
 }
 
@@ -292,7 +292,7 @@ Body copy goes here.
     const doctype = flag("type");
     const recordsFile = flag("records");
     if (!brand || !doctype || !recordsFile) {
-      console.error("usage: docforge batch --brand <id> --type <doctype> --records <file>");
+      console.error("usage: docgent batch --brand <id> --type <doctype> --records <file>");
       process.exit(2);
     }
     loadBrand(brand);
@@ -313,7 +313,7 @@ Body copy goes here.
     // output is identical — that is the point of the Renderer interface.
     let renderFn = null;
     if (wantRender) {
-      if (process.env.DOCFORGE_RENDER_URL && !bool("local")) {
+      if (process.env.DOCGENT_RENDER_URL && !bool("local")) {
         const { RenderClient } = await import("../../core/src/client.mjs");
         const client = new RenderClient({ url: flag("url"), key: flag("key") });
         renderFn = async (abs) => {
@@ -394,7 +394,7 @@ Body copy goes here.
   case "timeline": {
     const target = positional()[0];
     if (!target || !target.includes("/")) {
-      console.error("usage: docforge timeline <brand>/<slug>");
+      console.error("usage: docgent timeline <brand>/<slug>");
       process.exit(2);
     }
     const [brand, slug] = target.split("/");
@@ -419,7 +419,7 @@ Body copy goes here.
     const { git, docs, repo } = await makeStores(flag("brand"));
     console.log(`repo ${repo}`);
     const { StaleWriteError } = await import("../../git-store/src/index.mjs");
-    const branch = `docforge-check-${Date.now().toString(36)}`;
+    const branch = `docgent-check-${Date.now().toString(36)}`;
     const results = [];
     const ok = (name, pass, detail = "") => {
       results.push({ name, pass, detail });
@@ -443,7 +443,7 @@ Body copy goes here.
         owner: git.owner, repo: git.repo, token: git.token, branch,
       });
 
-      const testPath = "documents/.docforge-check.md";
+      const testPath = "documents/.docgent-check.md";
       const created = await scratch.writeFile(testPath, "v1\n", {
         message: "test: git-store integration check",
       });
@@ -474,8 +474,8 @@ Body copy goes here.
 
       const atomic = await scratch.commitFiles(
         [
-          { path: "documents/.docforge-check-a.md", content: "a\n" },
-          { path: "documents/.docforge-check-b.md", content: "b\n" },
+          { path: "documents/.docgent-check-a.md", content: "a\n" },
+          { path: "documents/.docgent-check-b.md", content: "b\n" },
         ],
         { message: "test: atomic multi-file commit" }
       );

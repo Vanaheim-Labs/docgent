@@ -1,6 +1,6 @@
 # Docgent
 
-(formerly DocForge) Multi-brand document production: version-controlled Markdown → semantic HTML → WeasyPrint → PDF.
+(formerly Docgent) Multi-brand document production: version-controlled Markdown → semantic HTML → WeasyPrint → PDF.
 
 Agents produce at volume via CLI. Humans edit surgically via web UI. Both write to the same
 git-backed source of truth — git *is* the database, there is no separate CMS store and therefore
@@ -23,7 +23,7 @@ the validator rejects the escape hatch.
 packages/
   core/         md → html → pdf pipeline, brand token compiler, pluggable renderers
   vocabulary/   semantic block registry + validator
-  cli/          docforge new|validate|render|brands|docs
+  cli/          docgent new|validate|render|brands|docs
 brands/
   vanaheim/     brand.yaml tokens + overlay CSS
 documents/
@@ -42,10 +42,10 @@ apps/
 ## Usage
 
 ```bash
-node packages/cli/src/docforge.mjs brands
-node packages/cli/src/docforge.mjs new --brand vanaheim --type "Strategy Memo" --title "Q3 Review"
-node packages/cli/src/docforge.mjs validate documents/vanaheim/q3-review/doc.md
-node packages/cli/src/docforge.mjs render documents/vanaheim/q3-review/doc.md
+node packages/cli/src/docgent.mjs brands
+node packages/cli/src/docgent.mjs new --brand vanaheim --type "Strategy Memo" --title "Q3 Review"
+node packages/cli/src/docgent.mjs validate documents/vanaheim/q3-review/doc.md
+node packages/cli/src/docgent.mjs render documents/vanaheim/q3-review/doc.md
 ```
 
 Renderer is pluggable — `--renderer chrome` swaps WeasyPrint for headless Chrome.

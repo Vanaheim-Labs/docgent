@@ -96,8 +96,8 @@ export async function POST(
       name:
         session.user.name ||
         (session.user as { login?: string }).login ||
-        "DocForge Studio",
-      email: session.user.email || "studio@docforge.local",
+        "Docgent Studio",
+      email: session.user.email || "studio@docgent.local",
     };
 
     const result = await docs.saveDocument(brand, slug, content, {
@@ -165,7 +165,7 @@ function commitMessage(opts: {
   if (modelLabel) lines.push(`Model: ${modelLabel}${modelId ? ` (${modelId})` : ""}`);
   if (scopeLabel) lines.push(`Scope: ${scopeLabel}`);
   lines.push(`Accepted-by: ${who}`);
-  lines.push("Generated-by: DocForge Studio");
+  lines.push("Generated-by: Docgent Studio");
   return lines.join("\n");
 }
 

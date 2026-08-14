@@ -1,5 +1,5 @@
 {
-  "name": "@docforge/vocabulary",
+  "name": "@docgent/vocabulary",
   "version": "0.1.0",
   "type": "module",
   "main": "./src/validate.mjs",

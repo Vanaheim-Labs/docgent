@@ -1,5 +1,5 @@
 {
-  "name": "@docforge/git-store",
+  "name": "@docgent/git-store",
   "version": "0.1.0",
   "type": "module",
   "main": "./src/index.mjs",
@@ -18,7 +18,7 @@
     "registry": "https://npm.pkg.github.com"
   },
   "dependencies": {
-    "@docforge/core": "*",
+    "@docgent/core": "*",
     "yaml": "^2.9.0"
   }
 }

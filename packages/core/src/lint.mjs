@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * DocForge render-time linter.
+ * Docgent render-time linter.
  *
  * The vocabulary validator (packages/vocabulary) checks the SOURCE: is this
  * markdown legal? This module checks the ARTEFACT: did the thing we produced

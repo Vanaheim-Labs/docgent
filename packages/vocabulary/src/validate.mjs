@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// DocForge vocabulary validator.
+// Docgent vocabulary validator.
 // Enforces the contract in vocabulary.yaml: block ids, attribute names,
 // enum values, required attributes, frontmatter keys, and the no-raw-HTML rule.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseYaml, splitFrontmatter } from "@docforge/core/yaml";
+import { parseYaml, splitFrontmatter } from "@docgent/core/yaml";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const VOCAB_PATH = path.join(__dirname, "..", "vocabulary.yaml");

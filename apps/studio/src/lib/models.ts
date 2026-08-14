@@ -3,7 +3,7 @@
  *
  * Keys are server-side only. A key in the browser is a published key, so the
  * client never sees one: it names a model, and this module decides which
- * credential that implies. Same posture as DOCFORGE_GH_TOKEN.
+ * credential that implies. Same posture as DOCGENT_GH_TOKEN.
  *
  * Providers are reached over plain fetch rather than an SDK. Two REST calls do
  * not justify two dependencies in the Vercel bundle, and it keeps adding a
@@ -58,8 +58,8 @@ export function findModel(id: string): ModelSpec | null {
 function keyFor(provider: Provider): string | null {
   const key =
     provider === "anthropic"
-      ? process.env.DOCFORGE_ANTHROPIC_KEY
-      : process.env.DOCFORGE_OPENAI_KEY;
+      ? process.env.DOCGENT_ANTHROPIC_KEY
+      : process.env.DOCGENT_OPENAI_KEY;
   return key && key.trim() ? key.trim() : null;
 }
 
@@ -101,7 +101,7 @@ export async function complete(opts: {
   const key = keyFor(model.provider);
   if (!key) {
     throw new ModelError(
-      `No API key configured for ${model.provider}. Set DOCFORGE_${model.provider.toUpperCase()}_KEY.`,
+      `No API key configured for ${model.provider}. Set DOCGENT_${model.provider.toUpperCase()}_KEY.`,
       503
     );
   }

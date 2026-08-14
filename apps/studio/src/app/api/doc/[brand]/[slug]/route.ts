@@ -97,8 +97,8 @@ export async function PUT(
   try {
     const { docs } = storesFor(brand);
     const author = {
-      name: session.user.name || (session.user as { login?: string }).login || "DocForge Studio",
-      email: session.user.email || "studio@docforge.local",
+      name: session.user.name || (session.user as { login?: string }).login || "Docgent Studio",
+      email: session.user.email || "studio@docgent.local",
     };
 
     const result = await docs.saveDocument(brand, slug, content, {

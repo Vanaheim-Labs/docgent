@@ -1,5 +1,5 @@
 {
-  "name": "@docforge/studio",
+  "name": "@docgent/studio",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,9 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@docforge/core": "*",
-    "@docforge/git-store": "*",
-    "@docforge/vocabulary": "*",
+    "@docgent/core": "*",
+    "@docgent/git-store": "*",
+    "@docgent/vocabulary": "*",
     "next": "15.5.23",
     "react": "19.0.0",
     "react-dom": "19.0.0",

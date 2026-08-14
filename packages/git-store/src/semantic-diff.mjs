@@ -1,5 +1,5 @@
 /**
- * Semantic diff for DocForge documents.
+ * Semantic diff for Docgent documents.
  *
  * A raw markdown diff is noise: rewrapping a paragraph shows as a wholesale
  * rewrite, and a changed keyfigure looks identical to a changed adjective.
@@ -32,7 +32,7 @@ function parseAttrBrace(rest) {
 }
 
 // Imported (not just re-exported) so this module can use it locally too.
-import { parseFrontmatter } from "@docforge/core/yaml";
+import { parseFrontmatter } from "@docgent/core/yaml";
 export { parseFrontmatter };
 
 /**

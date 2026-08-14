@@ -60,7 +60,7 @@ export async function POST(
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="${slug}-preview.pdf"`,
         "Cache-Control": "no-store",
-        "X-DocForge-Render-Ms": String(renderMs ?? ""),
+        "X-Docgent-Render-Ms": String(renderMs ?? ""),
       },
     });
   } catch (e) {

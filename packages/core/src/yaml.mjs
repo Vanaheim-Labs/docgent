@@ -1,5 +1,5 @@
 /**
- * Single source of truth for YAML parsing across DocForge.
+ * Single source of truth for YAML parsing across Docgent.
  *
  * Previously four hand-rolled parsers existed (core/render.mjs,
  * vocabulary/validate.mjs, git-store/documents.mjs, git-store/semantic-diff.mjs).

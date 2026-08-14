@@ -1,7 +1,7 @@
 /**
  * Batch document production.
  *
- * The original motivation for DocForge: an agent generating N documents from a
+ * The original motivation for Docgent: an agent generating N documents from a
  * data source, each one compliant with the vocabulary and the brand design
  * system, without the agent needing to know how any of it works.
  *

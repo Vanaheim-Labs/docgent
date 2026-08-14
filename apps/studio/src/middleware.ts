@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/auth";
 
 /**
- * Same host -> brand map as lib/store.ts (DOCFORGE_HOST_BRANDS), duplicated
+ * Same host -> brand map as lib/store.ts (DOCGENT_HOST_BRANDS), duplicated
  * rather than imported: middleware runs on the Edge runtime, which cannot
  * load lib/store.ts's Node `fs` reads. This copy only ever needs the
  * hostname -> brand id mapping, not brand.yaml content, so it stays a plain
@@ -10,7 +10,7 @@ import { auth } from "@/auth";
  */
 function hostBrandMap(): Record<string, string> {
   return Object.fromEntries(
-    (process.env.DOCFORGE_HOST_BRANDS || "")
+    (process.env.DOCGENT_HOST_BRANDS || "")
       .split(",")
       .map((pair) => pair.trim())
       .filter(Boolean)

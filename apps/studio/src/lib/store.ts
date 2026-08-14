@@ -53,7 +53,7 @@ export type DocSummary = {
     email: string | null;
     at: number | null;
     subject: string;
-    /** True when the commit trailer names DocForge Studio as the author of
+    /** True when the commit trailer names Docgent Studio as the author of
      *  the change — i.e. an accepted AI rewrite rather than hand-typed
      *  prose. Read from the commit message, not a database, so it survives
      *  clone and mirror the same way the rest of the history does. */
@@ -160,8 +160,8 @@ function resolveBrandsDir(): string {
   return join(process.cwd(), "..", "..", "brands");
 }
 
-const BRANDS_DIR = process.env.DOCFORGE_BRANDS_DIR
-  ? resolve(process.env.DOCFORGE_BRANDS_DIR)
+const BRANDS_DIR = process.env.DOCGENT_BRANDS_DIR
+  ? resolve(process.env.DOCGENT_BRANDS_DIR)
   : resolveBrandsDir();
 
 /**
@@ -256,7 +256,7 @@ export function findBrand(id: string): Brand | null {
  * rule Studio should rely on.
  */
 const HOST_BRAND_MAP: Record<string, string> = Object.fromEntries(
-  (process.env.DOCFORGE_HOST_BRANDS || "")
+  (process.env.DOCGENT_HOST_BRANDS || "")
     .split(",")
     .map((pair) => pair.trim())
     .filter(Boolean)
@@ -284,14 +284,14 @@ export function storesFor(brandId: string) {
   const hit = cached.get(brandId);
   if (hit) return hit;
 
-  const token = process.env.DOCFORGE_GH_TOKEN;
-  if (!token) throw new Error("DOCFORGE_GH_TOKEN is not set");
+  const token = process.env.DOCGENT_GH_TOKEN;
+  if (!token) throw new Error("DOCGENT_GH_TOKEN is not set");
 
   const brand = findBrand(brandId);
   if (!brand) throw new Error(`Unknown brand '${brandId}'`);
 
   const [owner, repo] = brand.repo.split("/");
-  const branch = process.env.DOCFORGE_BRANCH || "main";
+  const branch = process.env.DOCGENT_BRANCH || "main";
 
   const git = new GitStore({ owner, repo, token, branch });
   const entry = { git, docs: new DocumentStore(git), brand };
@@ -375,7 +375,7 @@ export async function listAllDocuments(
             subject,
             // Every commit Studio makes on an author's behalf carries this
             // trailer — see the rewrite accept route and the save route.
-            isAgent: /Generated-by:\s*DocForge Studio/i.test(entry.message || ""),
+            isAgent: /Generated-by:\s*Docgent Studio/i.test(entry.message || ""),
           };
         } catch {
           // A history call failing for one document should not blank its row;
@@ -390,6 +390,6 @@ export async function listAllDocuments(
 
 /** The repo backing a brand, for display. */
 export function repoSlug(brandId?: string) {
-  if (!brandId) return "docforge";
+  if (!brandId) return "docgent";
   return findBrand(brandId)?.repo ?? "unknown";
 }

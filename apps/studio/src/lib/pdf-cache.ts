@@ -129,9 +129,9 @@ let store: PdfStore | null = null;
 
 export function pdfStore(): PdfStore {
   if (store) return store;
-  const endpoint = process.env.DOCFORGE_PDF_CACHE_ENDPOINT;
-  const bucket = process.env.DOCFORGE_PDF_CACHE_BUCKET;
-  const token = process.env["DOCFORGE_PDF_CACHE_" + "TOKEN"];
+  const endpoint = process.env.DOCGENT_PDF_CACHE_ENDPOINT;
+  const bucket = process.env.DOCGENT_PDF_CACHE_BUCKET;
+  const token = process.env["DOCGENT_PDF_CACHE_" + "TOKEN"];
   store =
     endpoint && bucket && token
       ? new R2PdfStore(endpoint, bucket, token)
@@ -140,5 +140,5 @@ export function pdfStore(): PdfStore {
 }
 
 export function cacheDriver() {
-  return process.env.DOCFORGE_PDF_CACHE_ENDPOINT ? "r2" : "memory";
+  return process.env.DOCGENT_PDF_CACHE_ENDPOINT ? "r2" : "memory";
 }

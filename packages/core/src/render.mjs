@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * DocForge core renderer.
+ * Docgent core renderer.
  *   markdown (+frontmatter) -> pandoc -> semantic HTML -> WeasyPrint -> PDF
  *
  * Renderer is pluggable: implement the Renderer interface and register it.
@@ -53,13 +53,13 @@ export function brandRepo(brandId, { override } = {}) {
       if (b.repo) return b.repo;
     } catch {}
   }
-  const env = process.env.DOCFORGE_REPO;
+  const env = process.env.DOCGENT_REPO;
   if (env) return env;
   if (DEFAULT_REPO) return DEFAULT_REPO;
   throw new Error(
     brandId
-      ? `Brand '${brandId}' declares no 'repo' in brand.yaml, and no --repo/DOCFORGE_REPO override was given.`
-      : "No brand given, so no document repo could be resolved. Pass --brand, --repo, or set DOCFORGE_REPO."
+      ? `Brand '${brandId}' declares no 'repo' in brand.yaml, and no --repo/DOCGENT_REPO override was given.`
+      : "No brand given, so no document repo could be resolved. Pass --brand, --repo, or set DOCGENT_REPO."
   );
 }
 

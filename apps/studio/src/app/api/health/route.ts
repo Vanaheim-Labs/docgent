@@ -10,10 +10,10 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   const checks: Record<string, boolean> = {
-    gh_token: !!process.env.DOCFORGE_GH_TOKEN,
+    gh_token: !!process.env.DOCGENT_GH_TOKEN,
     auth_secret: !!process.env.AUTH_SECRET,
-    render_url: !!process.env.DOCFORGE_RENDER_URL,
-    render_key: !!process.env.DOCFORGE_API_KEY,
+    render_url: !!process.env.DOCGENT_RENDER_URL,
+    render_key: !!process.env.DOCGENT_API_KEY,
     repo_readable: false,
     worker_reachable: false,
   };
@@ -35,7 +35,7 @@ export async function GET() {
   checks.repo_readable = all.length > 0 && all.every(Boolean);
 
   try {
-    const url = process.env.DOCFORGE_RENDER_URL;
+    const url = process.env.DOCGENT_RENDER_URL;
     if (url) {
       const r = await fetch(`${url.replace(/\/$/, "")}/health`, {
         signal: AbortSignal.timeout(10_000),

@@ -92,7 +92,7 @@ export function LibraryView({
           {documents.length === 0 && (
             <div className="empty">
               No documents yet. Create one with{" "}
-              <code>docforge new --brand &lt;id&gt; --title &quot;...&quot;</code>
+              <code>docgent new --brand &lt;id&gt; --title &quot;...&quot;</code>
             </div>
           )}
 

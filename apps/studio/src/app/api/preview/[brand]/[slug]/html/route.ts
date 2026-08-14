@@ -61,7 +61,7 @@ export async function POST(
       headers: {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-store",
-        "X-DocForge-Render-Ms": String(renderMs ?? ""),
+        "X-Docgent-Render-Ms": String(renderMs ?? ""),
       },
     });
   } catch (e) {

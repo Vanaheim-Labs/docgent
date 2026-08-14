@@ -1,4 +1,4 @@
-# DocForge Studio
+# Docgent Studio
 
 Read-only web UI over the git-backed document store (Phase 4).
 
@@ -24,7 +24,7 @@ previews is byte-identical to the one an agent produces from the CLI.
 
 ## Environment
 
-See `.env.example`. `DOCFORGE_GH_TOKEN` is used for all repo access rather
+See `.env.example`. `DOCGENT_GH_TOKEN` is used for all repo access rather
 than the signed-in user's token, so permissions are governed by org
 membership rather than by whatever scopes an individual granted.
 

@@ -1,5 +1,5 @@
 {
-  "name": "@docforge/core",
+  "name": "@docgent/core",
   "version": "0.1.0",
   "type": "module",
   "main": "./src/render.mjs",

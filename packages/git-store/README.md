@@ -1,4 +1,4 @@
-# @docforge/git-store
+# @docgent/git-store
 
 Git is the database. There is no separate CMS store, therefore no sync layer
 and no reconciliation logic. Agents commit via the CLI; humans commit via
@@ -49,7 +49,7 @@ await git.openPullRequest({ title, body, head, base })
 
 ### Document layer
 
-`GitStore` knows about files and commits. `DocumentStore` knows about DocForge
+`GitStore` knows about files and commits. `DocumentStore` knows about Docgent
 documents - where they live, what a version timeline means, and how to commit
 an edit with proper attribution.
 
@@ -74,4 +74,4 @@ node --test packages/git-store/test/git-store.test.mjs
 
 Unit tests stub `fetch`, so concurrency semantics are verified without
 network access. Integration checks run through the CLI against a scratch
-branch (`docforge git-check`).
+branch (`docgent git-check`).

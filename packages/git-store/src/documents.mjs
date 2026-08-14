@@ -1,12 +1,12 @@
 /**
  * Document-level operations on top of the raw GitStore.
  *
- * GitStore knows about files and commits. This layer knows about DocForge
+ * GitStore knows about files and commits. This layer knows about Docgent
  * documents: where they live, what a version timeline means, and how to
  * commit an edit with proper attribution and a useful message.
  */
 import { GitStore, NotFoundError } from "./index.mjs";
-import { parseFrontmatter } from "@docforge/core/yaml";
+import { parseFrontmatter } from "@docgent/core/yaml";
 
 const DOC_ROOT = "documents";
 const BRAND_ROOT = "brands";

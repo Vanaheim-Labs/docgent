@@ -1,5 +1,5 @@
 /**
- * DocForge git store.
+ * Docgent git store.
  *
  * Git IS the database. There is no separate CMS store, therefore no sync
  * layer and no reconciliation logic. Agents commit via CLI; humans commit via

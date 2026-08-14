@@ -16,16 +16,16 @@ export async function renderMarkdown(
   brand: string,
   assets: Record<string, string> = {}
 ): Promise<RenderResult> {
-  const url = process.env.DOCFORGE_RENDER_URL;
-  const key = process.env.DOCFORGE_API_KEY;
-  if (!url) throw new Error("DOCFORGE_RENDER_URL is not set");
-  if (!key) throw new Error("DOCFORGE_API_KEY is not set");
+  const url = process.env.DOCGENT_RENDER_URL;
+  const key = process.env.DOCGENT_API_KEY;
+  if (!url) throw new Error("DOCGENT_RENDER_URL is not set");
+  if (!key) throw new Error("DOCGENT_API_KEY is not set");
 
   const res = await fetch(`${url.replace(/\/$/, "")}/render`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-DocForge-Key": key,
+      "X-Docgent-Key": key,
     },
     body: JSON.stringify({ markdown, brand, assets }),
     signal: AbortSignal.timeout(120_000),
@@ -42,8 +42,8 @@ export async function renderMarkdown(
 
   return {
     pdf: Buffer.from(await res.arrayBuffer()),
-    renderMs: Number(res.headers.get("x-docforge-render-ms")) || null,
-    requestId: res.headers.get("x-docforge-request-id"),
+    renderMs: Number(res.headers.get("x-docgent-render-ms")) || null,
+    requestId: res.headers.get("x-docgent-request-id"),
   };
 }
 
@@ -64,16 +64,16 @@ export async function renderMarkdownHtml(
   brand: string,
   assets: Record<string, string> = {}
 ): Promise<RenderHtmlResult> {
-  const url = process.env.DOCFORGE_RENDER_URL;
-  const key = process.env.DOCFORGE_API_KEY;
-  if (!url) throw new Error("DOCFORGE_RENDER_URL is not set");
-  if (!key) throw new Error("DOCFORGE_API_KEY is not set");
+  const url = process.env.DOCGENT_RENDER_URL;
+  const key = process.env.DOCGENT_API_KEY;
+  if (!url) throw new Error("DOCGENT_RENDER_URL is not set");
+  if (!key) throw new Error("DOCGENT_API_KEY is not set");
 
   const res = await fetch(`${url.replace(/\/$/, "")}/render/html`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-DocForge-Key": key,
+      "X-Docgent-Key": key,
     },
     body: JSON.stringify({ markdown, brand, assets }),
     signal: AbortSignal.timeout(60_000),
@@ -90,7 +90,7 @@ export async function renderMarkdownHtml(
 
   return {
     html: await res.text(),
-    renderMs: Number(res.headers.get("x-docforge-render-ms")) || null,
+    renderMs: Number(res.headers.get("x-docgent-render-ms")) || null,
   };
 }
 
