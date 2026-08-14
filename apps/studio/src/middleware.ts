@@ -35,7 +35,12 @@ function brandForHost(host: string | null): string | null {
  * Vercel URL) is unrestricted so development is not blocked by DNS setup.
  */
 function guardBrandPath(req: NextRequest): NextResponse | null {
-  const host = req.headers.get("host");
+  // Prefer X-Forwarded-Host: requests arriving via the Cloudflare Worker proxy
+  // (docs.inkl.com, docs.vanaheim.com.au, docs.northface.vc -> proxy.lobkit.com
+  // -> this deployment) carry the original public hostname there, while the
+  // Host header itself is rewritten to the stable Vercel deployment domain.
+  // Falls back to Host for direct/local requests that bypass the proxy.
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
   const brand = brandForHost(host);
   if (!brand) return null; // unmapped host: no per-brand restriction
 
