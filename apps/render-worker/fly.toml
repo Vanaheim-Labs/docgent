@@ -1,16 +1,16 @@
-# fly.toml app configuration file generated for docforge-render on 2026-08-08T19:02:13+10:00
+# fly.toml app configuration file for docgent-render
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'docforge-render'
+app = 'docgent-render'
 primary_region = 'syd'
 
 [build]
   dockerfile = 'Dockerfile'
 
 [env]
-  DOCFORGE_PIPELINE_DIR = '/app/pipeline'
+  DOCGENT_PIPELINE_DIR = '/app/pipeline'
   PORT = '8080'
 
 [http_service]
