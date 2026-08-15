@@ -1,6 +1,6 @@
-import { auth } from "@/auth";
 import { storesFor } from "@/lib/store";
 import { renderMarkdownHtml, collectAssetsFromGit } from "@/lib/render";
+import { authorizeRequest } from "@/lib/agent-auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -16,10 +16,10 @@ export async function POST(
   req: Request,
   ctx: { params: Promise<{ brand: string; slug: string }> }
 ) {
-  const session = await auth();
-  if (!session) return new Response("unauthorised", { status: 401 });
-
   const { brand, slug } = await ctx.params;
+
+  const authz = await authorizeRequest(req, brand);
+  if (!authz.ok) return new Response("unauthorised", { status: 401 });
 
   let body: { content?: string };
   try {

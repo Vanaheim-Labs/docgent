@@ -1,6 +1,6 @@
-import { auth } from "@/auth";
 import { storesFor } from "@/lib/store";
 import { loadVocabulary } from "@/lib/vocabulary";
+import { authorizeRequest } from "@/lib/agent-auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -28,10 +28,10 @@ export async function POST(
   req: Request,
   ctx: { params: Promise<{ brand: string; slug: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) return new Response("unauthorised", { status: 401 });
-
   const { brand, slug } = await ctx.params;
+
+  const authz = await authorizeRequest(req, brand);
+  if (!authz.ok) return new Response("unauthorised", { status: 401 });
 
   let body: { to?: string; note?: string; baseSha?: string };
   try {
@@ -82,8 +82,8 @@ export async function POST(
       : `${fmBody}\nstatus: ${to}`;
     const newContent = open + newFm + close + content.slice(fmMatch[0].length);
 
-    const who = session.user.name || (session.user as { login?: string }).login || "unknown";
-    const email = session.user.email || "studio@docgent.local";
+    const who = authz.author.name;
+    const email = authz.author.email;
 
     // Commit trailers keep the audit trail inside git itself.
     const trailers = [
@@ -123,13 +123,14 @@ export async function POST(
 
 /** Reports the current status and which transitions are available. */
 export async function GET(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ brand: string; slug: string }> }
 ) {
-  const session = await auth();
-  if (!session) return new Response("unauthorised", { status: 401 });
-
   const { brand, slug } = await ctx.params;
+
+  const authz = await authorizeRequest(req, brand);
+  if (!authz.ok) return new Response("unauthorised", { status: 401 });
+
   try {
     const { docs } = storesFor(brand);
     const doc = await docs.readDocument(brand, slug);

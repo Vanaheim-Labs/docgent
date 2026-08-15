@@ -1,7 +1,7 @@
-import { auth } from "@/auth";
 import { storesFor } from "@/lib/store";
 import { loadVocabulary } from "@/lib/vocabulary";
 import { validateMarkdown } from "@/lib/validate-client";
+import { authorizeRequest } from "@/lib/agent-auth";
 import {
   availableModels,
   complete,
@@ -33,7 +33,12 @@ export const maxDuration = 120;
  */
 
 /** The models the picker may offer, so the client never names a key. */
-export async function GET() {
+export async function GET(req: Request) {
+  // No brand param on this endpoint (models are global, not per-brand), so
+  // this only accepts a signed-in session, not an agent token — an agent
+  // deciding which model to request is a Studio-editor affordance, not part
+  // of the read/propose/accept document flow the token is scoped for.
+  const { auth } = await import("@/auth");
   const session = await auth();
   if (!session) return new Response("unauthorised", { status: 401 });
   const models = availableModels();
@@ -60,10 +65,10 @@ export async function POST(
   req: Request,
   ctx: { params: Promise<{ brand: string; slug: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) return new Response("unauthorised", { status: 401 });
-
   const { brand, slug } = await ctx.params;
+
+  const authz = await authorizeRequest(req, brand);
+  if (!authz.ok) return new Response("unauthorised", { status: 401 });
 
   let body: Body;
   try {
@@ -172,7 +177,7 @@ export async function POST(
       model: model.id,
       provider: model.provider,
       instruction,
-      requestedBy: session.user.email || session.user.name || "unknown",
+      requestedBy: authz.author.email,
       at: new Date().toISOString(),
     },
   });

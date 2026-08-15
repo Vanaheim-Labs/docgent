@@ -1,7 +1,7 @@
-import { auth } from "@/auth";
 import { storesFor } from "@/lib/store";
 import { renderMarkdown, collectAssetsFromGit } from "@/lib/render";
 import { pdfStore, cacheKey, cacheDriver } from "@/lib/pdf-cache";
+import { authorizeRequest } from "@/lib/agent-auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -22,12 +22,11 @@ export async function GET(
   req: Request,
   ctx: { params: Promise<{ brand: string; slug: string }> }
 ) {
-  const session = await auth();
-  if (!session) {
-    return new Response("unauthorised", { status: 401 });
-  }
-
   const { brand, slug } = await ctx.params;
+
+  const authz = await authorizeRequest(req, brand);
+  if (!authz.ok) return new Response("unauthorised", { status: 401 });
+
   const ref = new URL(req.url).searchParams.get("ref") || undefined;
 
   try {

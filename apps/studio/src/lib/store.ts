@@ -16,6 +16,7 @@ import { DocumentStore } from "../../../../packages/git-store/src/documents.mjs"
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { timingSafeEqual } from "node:crypto";
 
 /** Frontmatter fields the listing presents. Every one is optional: a
  *  document is still listable when its author has not filled these in. */
@@ -265,6 +266,42 @@ export function emailAllowedForBrand(email: string, brandId: string): boolean {
  *  where there is no destination path yet to check a single brand against. */
 export function brandsForEmail(email: string): Brand[] {
   return brands().filter((b) => emailAllowedForBrand(email, b.id));
+}
+
+/**
+ * Agent bearer-token check, for callers that are not a signed-in human.
+ *
+ * Mirrors the existing DOCGENT_GH_TOKEN_<ID> env convention (see
+ * resolveToken in the CLI): one token per brand, in
+ * DOCGENT_AGENT_TOKEN_<BRAND_ID_UPPER>. There is no shared/global agent
+ * token by design — a leaked Inkl token must never grant Northface access,
+ * same boundary the human access lists already enforce.
+ *
+ * Tokens are plain opaque secrets set as deployment env vars, not stored in
+ * brand.yaml (which is committed) or in the documents repo. Comparison is
+ * timing-safe so response latency cannot be used to brute-force a token
+ * character by character.
+ */
+export function agentTokenValidForBrand(token: string, brandId: string): boolean {
+  const envKey = "DOCGENT_AGENT_TOKEN_" + brandId.toUpperCase();
+  const expected = process.env[envKey];
+  if (!expected) return false; // no token configured for this brand: fail closed
+  const a = Buffer.from(token);
+  const b = Buffer.from(expected);
+  // timingSafeEqual throws on length mismatch rather than returning false;
+  // a length check first is not itself a timing leak worth worrying about
+  // here (brand tokens are fixed-length random secrets, not user input
+  // whose length is itself sensitive).
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+/** Fixed commit identity for agent-authenticated writes, distinct per brand
+ *  so "who touched this" stays meaningful in the timeline (see DocSummary's
+ *  lastCommit.isAgent, which already special-cases "Docgent Studio" — this
+ *  is the token-authenticated sibling of that same idea). */
+export function agentAuthorForBrand(brandId: string): { name: string; email: string } {
+  return { name: "Docgent Agent (" + brandId + ")", email: "agent+" + brandId + "@docgent.local" };
 }
 
 // Keyed by brand: a single shared instance would serve one brand's documents

@@ -1,7 +1,8 @@
 import { auth } from "@/auth";
-import { storesFor } from "@/lib/store";
+import { storesFor, agentTokenValidForBrand } from "@/lib/store";
 import { loadVocabulary } from "@/lib/vocabulary";
 import { validateMarkdown } from "@/lib/validate-client";
+import { authorizeRequest } from "@/lib/agent-auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -15,10 +16,11 @@ export async function GET(
   req: Request,
   ctx: { params: Promise<{ brand: string; slug: string }> }
 ) {
-  const session = await auth();
-  if (!session) return new Response("unauthorised", { status: 401 });
-
   const { brand, slug } = await ctx.params;
+
+  const authz = await authorizeRequest(req, brand);
+  if (!authz.ok) return new Response("unauthorised", { status: 401 });
+
   const ref = new URL(req.url).searchParams.get("ref") || undefined;
 
   try {
@@ -55,10 +57,10 @@ export async function PUT(
   req: Request,
   ctx: { params: Promise<{ brand: string; slug: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) return new Response("unauthorised", { status: 401 });
-
   const { brand, slug } = await ctx.params;
+
+  const authz = await authorizeRequest(req, brand);
+  if (!authz.ok) return new Response("unauthorised", { status: 401 });
 
   let body: { content?: string; baseSha?: string; message?: string };
   try {
@@ -96,10 +98,7 @@ export async function PUT(
   // Guard 2: optimistic concurrency, plus attribution.
   try {
     const { docs } = storesFor(brand);
-    const author = {
-      name: session.user.name || (session.user as { login?: string }).login || "Docgent Studio",
-      email: session.user.email || "studio@docgent.local",
-    };
+    const author = authz.author;
 
     const result = await docs.saveDocument(brand, slug, content, {
       baseSha,

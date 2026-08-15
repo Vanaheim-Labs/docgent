@@ -1,7 +1,7 @@
-import { auth } from "@/auth";
 import { storesFor } from "@/lib/store";
 import { loadVocabulary } from "@/lib/vocabulary";
 import { validateMarkdown } from "@/lib/validate-client";
+import { authorizeRequest } from "@/lib/agent-auth";
 // Untyped ESM package in the monorepo; allowJs resolves it without types.
 import { nextVersion, setFrontmatterVersion } from "../../../../../../../../packages/core/src/version.mjs";
 
@@ -42,10 +42,10 @@ export async function POST(
   req: Request,
   ctx: { params: Promise<{ brand: string; slug: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) return new Response("unauthorised", { status: 401 });
-
   const { brand, slug } = await ctx.params;
+
+  const authz = await authorizeRequest(req, brand);
+  if (!authz.ok) return new Response("unauthorised", { status: 401 });
 
   let body: { ref?: string; baseSha?: string; note?: string };
   try {
@@ -135,8 +135,8 @@ export async function POST(
       );
     }
 
-    const who = session.user.name || (session.user as { login?: string }).login || "Docgent Studio";
-    const email = session.user.email || "studio@docgent.local";
+    const who = authz.author.name;
+    const email = authz.author.email;
     const short = ref.slice(0, 7);
 
     const trailers = [

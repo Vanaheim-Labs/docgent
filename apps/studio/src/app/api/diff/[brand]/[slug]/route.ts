@@ -1,6 +1,6 @@
-import { auth } from "@/auth";
 import { storesFor } from "@/lib/store";
 import { diffDocuments, diffHeadline, diffUnified } from "@/lib/diff";
+import { authorizeRequest } from "@/lib/agent-auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -18,10 +18,11 @@ export async function GET(
   req: Request,
   ctx: { params: Promise<{ brand: string; slug: string }> }
 ) {
-  const session = await auth();
-  if (!session) return new Response("unauthorised", { status: 401 });
-
   const { brand, slug } = await ctx.params;
+
+  const authz = await authorizeRequest(req, brand);
+  if (!authz.ok) return new Response("unauthorised", { status: 401 });
+
   const url = new URL(req.url);
   const base = url.searchParams.get("base");
   const head = url.searchParams.get("head");
