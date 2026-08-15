@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
-import { listAllDocuments, type DocSummary } from "@/lib/store";
+import { headers } from "next/headers";
+import { listAllDocuments, resolveBrandForHost, type DocSummary } from "@/lib/store";
 import { UserChip } from "@/components/UserChip";
 import { LibraryView } from "@/components/LibraryView";
 
@@ -10,12 +11,13 @@ export default async function Home() {
   const session = await auth();
   if (!session) redirect("/signin");
 
-  // Docgent is one domain with the brand in the path, not one domain per
-  // brand, so what a signed-in person is shown here is scoped by which
-  // brands their account is allowed into (auth.ts's signIn/jwt callbacks),
-  // not by which host they arrived on. An account allowed into every brand
-  // sees every brand's documents on this single library page.
-  const allowedBrands = (session.user as { allowedBrands?: string[] } | undefined)?.allowedBrands ?? [];
+  // A dedicated brand domain (docs.inkl.com etc.) shows only that brand's
+  // documents — the domain boundary Andrew asked for is not just about who
+  // can sign in, it is what the signed-in person is shown. On a host with
+  // no brand mapping (local dev, the raw Vercel URL) every brand is shown,
+  // same as before.
+  const host = (await headers()).get("host");
+  const lockedBrand = resolveBrandForHost(host);
 
   let documents: DocSummary[] = [];
   let error: string | null = null;
@@ -25,8 +27,12 @@ export default async function Home() {
     // withLastCommit: the queue needs to know who touched a document last
     // and whether that was an agent, which frontmatter alone cannot answer.
     const res = await listAllDocuments({ withLastCommit: true });
-    documents = res.documents.filter((d) => allowedBrands.includes(d.brand));
-    errors = res.errors.filter((e) => allowedBrands.includes(e.brand));
+    documents = lockedBrand
+      ? res.documents.filter((d) => d.brand === lockedBrand.id)
+      : res.documents;
+    errors = lockedBrand
+      ? res.errors.filter((e) => e.brand === lockedBrand.id)
+      : res.errors;
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
@@ -76,6 +82,7 @@ export default async function Home() {
       <LibraryView
         documents={documents}
         userChip={<UserChip />}
+        lockedBrand={lockedBrand ? { id: lockedBrand.id, name: lockedBrand.name } : null}
       />
     </>
   );

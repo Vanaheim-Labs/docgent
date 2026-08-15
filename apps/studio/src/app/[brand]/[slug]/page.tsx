@@ -1,9 +1,11 @@
 import { auth } from "@/auth";
 import { redirect, notFound } from "next/navigation";
+import { headers } from "next/headers";
 import {
   storesFor,
   repoSlug,
   listAllDocuments,
+  resolveBrandForHost,
   type DocSummary,
   type TimelineEntry,
 } from "@/lib/store";
@@ -25,23 +27,22 @@ export default async function DocumentPage({ params, searchParams }: Props) {
   const { brand, slug } = await params;
   const { v: commitSha } = await searchParams;
 
-  // Docgent is one domain with the brand in the path, not one domain per
-  // brand, so what gates access to this brand is the signed-in account's
-  // allowed-brand list (auth.ts), the same list middleware.ts already
-  // checked to let this request through at all. Checking again here is
-  // defence in depth, and it also scopes the sidebar switcher below.
-  const allowedBrands = (session.user as { allowedBrands?: string[] } | undefined)?.allowedBrands ?? [];
-  if (!allowedBrands.includes(brand)) notFound();
+  // On a domain dedicated to one brand, that brand is the only thing this
+  // page is allowed to show or link to — matches the guard already applied
+  // by middleware.ts, and the same host->brand lookup auth.ts uses.
+  const host = (await headers()).get("host");
+  const lockedBrand = resolveBrandForHost(host);
+  if (lockedBrand && lockedBrand.id !== brand) notFound();
 
   const { docs } = storesFor(brand);
 
   let documents: DocSummary[] = [];
   try {
-    // Sidebar spans every brand the signed-in account can reach, so the
-    // switcher works from any document without ever offering one this
-    // account is not allowed to open.
+    // Sidebar spans every brand so the switcher works from any document —
+    // except on a brand-locked domain, where every other brand is filtered
+    // out below so the switcher never offers a document it cannot open.
     const all = (await listAllDocuments()).documents;
-    documents = all.filter((d) => allowedBrands.includes(d.brand));
+    documents = lockedBrand ? all.filter((d) => d.brand === lockedBrand.id) : all;
   } catch {
     // sidebar degrades to empty rather than failing the page
   }

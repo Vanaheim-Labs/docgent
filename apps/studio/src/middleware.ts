@@ -2,22 +2,43 @@ import { NextResponse, NextRequest, type NextFetchEvent } from "next/server";
 import { auth } from "@/auth";
 
 /**
- * Per-brand scoping, ahead of and in addition to the auth check.
- *
- * Docgent is served from one domain with the brand in the path
- * (docs.docgent.io/<brand>/<slug>) rather than one domain per brand, so
- * there is no host->brand lookup here any more — the brand a request names
- * is just the first path segment. What still needs enforcing per request is
- * that the signed-in user is actually allowed into *that* brand: sign-in
- * only proves membership in at least one brand (see auth.ts), not every
- * brand, so a correctly authenticated Inkl user must still be refused
- * /northface/<slug>.
- *
- * The session's allowed-brand list is written into the JWT at sign-in
- * (auth.ts's jwt callback) precisely so this check can run here, on the
- * Edge runtime, without re-reading brand.yaml off disk on every request.
+ * Same host -> brand map as lib/store.ts (DOCGENT_HOST_BRANDS), duplicated
+ * rather than imported: middleware runs on the Edge runtime, which cannot
+ * load lib/store.ts's Node `fs` reads. This copy only ever needs the
+ * hostname -> brand id mapping, not brand.yaml content, so it stays a plain
+ * env parse with no filesystem dependency.
  */
-function guardBrandPath(req: NextRequest, allowedBrands: string[] | null): NextResponse | null {
+function hostBrandMap(): Record<string, string> {
+  return Object.fromEntries(
+    (process.env.DOCGENT_HOST_BRANDS || "")
+      .split(",")
+      .map((pair) => pair.trim())
+      .filter(Boolean)
+      .map((pair) => pair.split("=").map((s) => s.trim().toLowerCase()))
+      .filter(([host, brand]) => host && brand)
+  );
+}
+
+function brandForHost(host: string | null): string | null {
+  if (!host) return null;
+  const bare = host.toLowerCase().split(":")[0];
+  return hostBrandMap()[bare] ?? null;
+}
+
+/**
+ * Per-domain scoping, ahead of and in addition to the auth check.
+ *
+ * Each production domain is dedicated to one brand. Even a correctly
+ * authenticated Inkl user must never be able to open
+ * docs.inkl.com/northface/<slug> — the boundary is the domain, not just
+ * who is logged in. A host with no brand mapping (local dev, the raw
+ * Vercel URL) is unrestricted so development is not blocked by DNS setup.
+ */
+function guardBrandPath(req: NextRequest): NextResponse | null {
+  const host = req.headers.get("host");
+  const brand = brandForHost(host);
+  if (!brand) return null; // unmapped host: no per-brand restriction
+
   const segments = req.nextUrl.pathname.split("/").filter(Boolean);
   // Top-level static files served straight out of public/ (docgent-logo.svg,
   // favicon.ico, etc.) have no brand segment to check — they are assets of
@@ -29,22 +50,16 @@ function guardBrandPath(req: NextRequest, allowedBrands: string[] | null): NextR
     !isStaticFile &&
     !["api", "signin", "_next", "favicon.ico"].includes(segments[0]);
 
-  const brandSegment = isBrandRoute
-    ? segments[0]
-    : segments[0] === "api" && segments.length > 2 && !["auth", "health"].includes(segments[1])
-      ? segments[2]
-      : null;
-
-  if (!brandSegment) return null; // not a brand-scoped route
-
-  // No session yet, or a session predating this check (allowedBrands null):
-  // let the request through to auth()'s own gate / the route handler, which
-  // still requires a session. This guard only narrows *which* brand a
-  // signed-in user reaches, it is not itself the sign-in check.
-  if (!allowedBrands) return null;
-
-  if (!allowedBrands.includes(brandSegment)) {
+  if (isBrandRoute && segments[0] !== brand) {
     return NextResponse.rewrite(new URL("/not-found", req.url));
+  }
+
+  // API routes are also brand-scoped: /api/doc/[brand]/... etc.
+  if (segments[0] === "api" && segments.length > 2 && segments[2] !== brand) {
+    // Skip auth's own routes (api/auth, api/health), which have no brand segment.
+    if (!["auth", "health"].includes(segments[1])) {
+      return NextResponse.rewrite(new URL("/not-found", req.url));
+    }
   }
 
   return null;
@@ -91,9 +106,7 @@ function withPublicHost(req: NextRequest): NextRequest {
 type AuthMiddlewareFn = (request: NextRequest, event: NextFetchEvent) => ReturnType<typeof NextResponse.next> | Promise<Response>;
 
 const authMiddleware = auth((req) => {
-  const allowedBrands =
-    (req.auth?.user as { allowedBrands?: string[] } | undefined)?.allowedBrands ?? null;
-  const guarded = guardBrandPath(req, allowedBrands);
+  const guarded = guardBrandPath(req);
   if (guarded) return guarded;
   return NextResponse.next();
 }) as unknown as AuthMiddlewareFn;
