@@ -1,11 +1,12 @@
-"""DocForge render worker.
+"""Docgent render worker.
 
 Markdown (+ frontmatter) -> pandoc -> semantic HTML -> WeasyPrint -> PDF.
 
 This service is the single source of render truth. Studio (Vercel) and the CLI
 both call it, so a document renders identically regardless of who asked.
 
-Auth: shared secret in the X-DocForge-Key header. Set DOCFORGE_API_KEY in the
+Auth: shared secret in the X-DocForge-Key header (rename to X-Docgent-Key is
+pending a coordinated Fly+Studio deploy). Set DOCFORGE_API_KEY in the
 environment; if unset the service refuses to start rather than running open.
 """
 from __future__ import annotations
@@ -333,7 +334,7 @@ def render_pdf(markdown: str, brand_id: str, assets: dict[str, str] | None) -> b
 # do not, so the preview reproduces the page box to keep measure and line
 # breaks close to the PDF without pretending to paginate.
 PREVIEW_CSS = """
-/* injected by DocForge for the HTML preview pane only */
+/* injected by Docgent for the HTML preview pane only */
 html { background: #edeef1; }
 body { background: #edeef1; margin: 0; padding: 24px 0; }
 body > section.cover,
