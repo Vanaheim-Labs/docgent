@@ -67,8 +67,7 @@ export function LibraryFilterPanel({
     <aside className="sidebar">
       <div className="sidebar-head">
         <Link href="/" className="wordmark" style={{ color: "inherit" }}>
-          <span className="wordmark-dot" />
-          Docgent
+          <img src="/docgent-logo.svg" alt="Docgent" className="wordmark-logo" />
         </Link>
         <div className="wordmark-sub">Studio</div>
       </div>
