@@ -40,8 +40,14 @@ function guardBrandPath(req: NextRequest): NextResponse | null {
   if (!brand) return null; // unmapped host: no per-brand restriction
 
   const segments = req.nextUrl.pathname.split("/").filter(Boolean);
+  // Top-level static files served straight out of public/ (docgent-logo.svg,
+  // favicon.ico, etc.) have no brand segment to check — they are assets of
+  // the app shell, not brand content, so a dotted first segment is never a
+  // brand route regardless of which file it is.
+  const isStaticFile = segments.length > 0 && segments[0].includes(".");
   const isBrandRoute =
     segments.length > 0 &&
+    !isStaticFile &&
     !["api", "signin", "_next", "favicon.ico"].includes(segments[0]);
 
   if (isBrandRoute && segments[0] !== brand) {
