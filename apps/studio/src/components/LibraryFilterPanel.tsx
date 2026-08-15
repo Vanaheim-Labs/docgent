@@ -26,15 +26,10 @@ export function LibraryFilterPanel({
   documents,
   filters,
   onChange,
-  lockedBrandName,
 }: {
   documents: DocSummary[];
   filters: LibraryFilters;
   onChange: (next: LibraryFilters) => void;
-  /** Set when this domain is dedicated to one brand — the brand facet is
-   *  then a fact of the deployment, not something to filter by, so the
-   *  picker becomes a plain label instead of a checkbox list. */
-  lockedBrandName?: string | null;
 }) {
   const brandCounts = useMemo(() => {
     const m = new Map<string, { name: string; count: number }>();
@@ -101,30 +96,21 @@ export function LibraryFilterPanel({
         ))}
       </div>
 
-      {lockedBrandName ? (
+      {brandCounts.length > 0 && (
         <div className="filter-group">
           <div className="filter-label">Brand</div>
-          <div className="filter-row" style={{ cursor: "default" }}>
-            <span className="filter-row-name">{lockedBrandName}</span>
-          </div>
+          {brandCounts.map(([id, { name, count }]) => (
+            <button
+              key={id}
+              className="filter-row"
+              data-active={filters.brands.has(id)}
+              onClick={() => toggleBrand(id)}
+            >
+              <span className="filter-row-name">{name}</span>
+              <span className="filter-row-count">{count}</span>
+            </button>
+          ))}
         </div>
-      ) : (
-        brandCounts.length > 0 && (
-          <div className="filter-group">
-            <div className="filter-label">Brand</div>
-            {brandCounts.map(([id, { name, count }]) => (
-              <button
-                key={id}
-                className="filter-row"
-                data-active={filters.brands.has(id)}
-                onClick={() => toggleBrand(id)}
-              >
-                <span className="filter-row-name">{name}</span>
-                <span className="filter-row-count">{count}</span>
-              </button>
-            ))}
-          </div>
-        )
       )}
 
       {(filters.brands.size > 0 || filters.statuses.size > 0 || filters.search) && (

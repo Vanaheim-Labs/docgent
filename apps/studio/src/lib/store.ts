@@ -243,36 +243,28 @@ export function findBrand(id: string): Brand | null {
 }
 
 /**
- * Maps a request hostname to the one brand that domain serves.
+ * Whether a signed-in email is allowed into a given brand.
  *
- * Each production domain (docs.vanaheim.com.au, docs.northface.vc,
- * docs.inkl.com) is dedicated to exactly one brand — Studio is not a
- * cross-brand app on those hosts, it is that brand's app. Local dev and the
- * raw Vercel URL have no brand mapping and deliberately resolve to null:
- * see auth.ts, which rejects sign-in rather than falling back to any brand.
- *
- * Env-driven rather than inferred from the hostname string, because
- * "docs.vanaheim.com.au" -> "vanaheim" is a coincidence of naming, not a
- * rule Studio should rely on.
+ * Docgent is served from a single domain with the brand in the path
+ * (docs.docgent.io/<brand>/<slug>), not one domain per brand — so isolation
+ * is enforced per request against the path, not once at the DNS/host level.
+ * Each brand's brand.yaml still owns its own access list; a person allowed
+ * into 'inkl' is not automatically allowed into 'northface' just because
+ * both checks now happen in the same place.
  */
-const HOST_BRAND_MAP: Record<string, string> = Object.fromEntries(
-  (process.env.DOCGENT_HOST_BRANDS || "")
-    .split(",")
-    .map((pair) => pair.trim())
-    .filter(Boolean)
-    .map((pair) => {
-      const [host, brand] = pair.split("=").map((s) => s.trim().toLowerCase());
-      return [host, brand];
-    })
-    .filter(([host, brand]) => host && brand)
-);
+export function emailAllowedForBrand(email: string, brandId: string): boolean {
+  const brand = findBrand(brandId);
+  if (!brand) return false;
+  const addr = email.toLowerCase();
+  if (brand.access.emails.includes(addr)) return true;
+  const domain = addr.split("@")[1] || "";
+  return brand.access.domains.includes(domain);
+}
 
-export function resolveBrandForHost(host: string | null | undefined): Brand | null {
-  if (!host) return null;
-  const bare = host.toLowerCase().split(":")[0];
-  const brandId = HOST_BRAND_MAP[bare];
-  if (!brandId) return null;
-  return findBrand(brandId);
+/** Every brand whose access list admits this email — used at sign-in time,
+ *  where there is no destination path yet to check a single brand against. */
+export function brandsForEmail(email: string): Brand[] {
+  return brands().filter((b) => emailAllowedForBrand(email, b.id));
 }
 
 // Keyed by brand: a single shared instance would serve one brand's documents
