@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, NextRequest, type NextFetchEvent } from "next/server";
 import { auth } from "@/auth";
 
 /**
@@ -35,12 +35,7 @@ function brandForHost(host: string | null): string | null {
  * Vercel URL) is unrestricted so development is not blocked by DNS setup.
  */
 function guardBrandPath(req: NextRequest): NextResponse | null {
-  // Prefer X-Forwarded-Host: requests arriving via the Cloudflare Worker proxy
-  // (docs.inkl.com, docs.vanaheim.com.au, docs.northface.vc -> proxy.lobkit.com
-  // -> this deployment) carry the original public hostname there, while the
-  // Host header itself is rewritten to the stable Vercel deployment domain.
-  // Falls back to Host for direct/local requests that bypass the proxy.
-  const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
+  const host = req.headers.get("host");
   const brand = brandForHost(host);
   if (!brand) return null; // unmapped host: no per-brand restriction
 
@@ -64,14 +59,58 @@ function guardBrandPath(req: NextRequest): NextResponse | null {
   return null;
 }
 
-export default auth((req) => {
+/**
+ * Requests to every brand domain (docs.docgent.io, inkl.docgent.io,
+ * vanaheim.docgent.io, northface.docgent.io) arrive via a Cloudflare Worker
+ * proxy (proxy.lobkit.com), not direct Vercel domain attachment. The Worker
+ * rewrites Host to the stable Vercel deployment domain and forwards the
+ * real public hostname in X-Forwarded-Host instead.
+ *
+ * auth()'s trustHost option only tells NextAuth to trust *the Host header it
+ * receives* — it does not know to prefer X-Forwarded-Host. Left uncorrected,
+ * every OAuth callback URL, session cookie and CSRF check auth() builds
+ * targets the proxy's stable domain rather than the domain the visitor is
+ * actually on, so sign-in and sign-out silently fail on every proxied
+ * domain. Rebuilding the request with Host corrected before auth() ever
+ * sees it fixes that at the source; everything downstream (guardBrandPath,
+ * auth() itself, route handlers) then agrees on one real hostname.
+ *
+ * Falls back to the existing request unchanged for direct/local traffic
+ * that bypasses the proxy (dev, the raw Vercel URL) — there is no
+ * X-Forwarded-Host to correct against there.
+ */
+function withPublicHost(req: NextRequest): NextRequest {
+  const forwardedHost = req.headers.get("x-forwarded-host");
+  if (!forwardedHost || forwardedHost === req.headers.get("host")) return req;
+
+  const headers = new Headers(req.headers);
+  headers.set("host", forwardedHost);
+
+  const forwardedProto = req.headers.get("x-forwarded-proto") || req.nextUrl.protocol.replace(":", "");
+  const url = new URL(req.nextUrl.pathname + req.nextUrl.search, `${forwardedProto}://${forwardedHost}`);
+
+  return new NextRequest(url, {
+    headers,
+    method: req.method,
+    body: req.method === "GET" || req.method === "HEAD" ? undefined : req.body,
+    duplex: req.method === "GET" || req.method === "HEAD" ? undefined : "half",
+  });
+}
+
+type AuthMiddlewareFn = (request: NextRequest, event: NextFetchEvent) => ReturnType<typeof NextResponse.next> | Promise<Response>;
+
+const authMiddleware = auth((req) => {
   const guarded = guardBrandPath(req);
   if (guarded) return guarded;
   return NextResponse.next();
-});
+}) as unknown as AuthMiddlewareFn;
+
+export default function middleware(req: NextRequest, event: NextFetchEvent) {
+  return authMiddleware(withPublicHost(req), event);
+}
 
 // Run on the Node.js runtime, not Edge: auth.ts (imported via the `auth`
-// wrapper below) pulls in lib/store.ts, which reads brand.yaml from disk
+// wrapper above) pulls in lib/store.ts, which reads brand.yaml from disk
 // with node:fs. That only works where Node's fs module exists.
 export const runtime = "nodejs";
 
