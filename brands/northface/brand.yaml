@@ -4,7 +4,7 @@ tagline: Valuation Infrastructure
 
 # North Face is a separate organisation. Its documents live in its own GitHub
 # org so access control follows ownership, not convenience.
-repo: north-face-investments/docforge-documents
+repo: north-face-investments/docgent-documents
 
 # Studio access: any verified Google account on the company domain.
 access:

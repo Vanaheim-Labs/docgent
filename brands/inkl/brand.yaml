@@ -3,7 +3,7 @@ name: inkl
 tagline: News Worth Reading
 
 # Inkl's documents live in its own GitHub org.
-repo: inkldev/docforge-documents
+repo: inkldev/docgent-documents
 
 # Studio access: any verified Google account on either company domain.
 access:
