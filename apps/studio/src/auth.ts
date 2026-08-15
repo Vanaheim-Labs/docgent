@@ -24,6 +24,12 @@ import { resolveBrandForHost } from "@/lib/store";
  * every sign-in. Fail closed, not "pick a default brand".
  */
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // Studio is served from several custom domains that all point at the same
+  // Vercel deployment (docs.docgent.io, inkl.docgent.io, vanaheim.docgent.io,
+  // northface.docgent.io). Auth.js only trusts the incoming Host header on
+  // multi-domain deployments when told to; without this it silently drops
+  // the session on every domain except whichever one AUTH_URL points at.
+  trustHost: true,
   providers: [
     Google({
       // Always show the chooser: guests are frequently signed into a
