@@ -1401,6 +1401,102 @@ kbd {
   background: var(--accent-soft);
 }
 
+/* Strike (Phase 10): near-zero cognitive cost, "red pen on a printed page"
+   per HANDOVER.md section 7b. Trivially undoable, so the visual is a dim +
+   strikethrough rather than a removal warning. */
+.outline-strike {
+  flex: 0 0 auto;
+  opacity: 0;
+  padding: 2px 5px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--ink-faint);
+}
+.outline-row:hover .outline-strike,
+.outline-strike:focus-visible,
+.outline-strike[data-active="true"] {
+  opacity: 1;
+}
+.outline-strike:hover { background: var(--accent-soft); }
+.outline-strike[data-active="true"] {
+  color: #b91c1c;
+  text-decoration: underline;
+}
+.outline-row[data-struck="true"] .outline-link {
+  text-decoration: line-through;
+  color: var(--ink-faint);
+}
+.outline-row[data-struck="true"] { background: var(--paper-alt); }
+
+/* Reorder: drag affordance on the whole row. No separate handle — the row
+   already has a title="Drag to reorder" and a grab cursor communicates it
+   without adding another icon to an outline that already carries fold,
+   strike and rewrite triggers. */
+.outline-row { cursor: grab; }
+.outline-row:active { cursor: grabbing; }
+
+/* Note composer (Phase 10): a small floating panel anchored to the source
+   pane's vertical position of the clicked paragraph, same anchorTop pattern
+   RewriteBar already uses — one positioning idiom for every floating editor
+   affordance rather than each one inventing its own. */
+.note-composer {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  z-index: 8;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(16, 22, 32, .18);
+  padding: 10px 12px;
+}
+.note-composer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  margin-bottom: 6px;
+}
+.note-composer-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--ink-faint);
+  padding: 0 2px;
+}
+.note-composer-input {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+.note-composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* Review-mode preview becomes clickable-to-annotate; the cursor communicates
+   the mode change without adding chrome, matching how the outline row's
+   grab cursor communicates drag. */
+.pane-preview[data-annotatable="true"] { cursor: crosshair; }
+
 /* Proposal review: a diff the author is being asked to rule on, so it sits
    as its own panel rather than inline in the pane grid — accepting or
    rejecting is a decision, not part of the continuous editing flow. */

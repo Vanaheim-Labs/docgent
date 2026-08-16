@@ -80,6 +80,15 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [proposal, setProposal] = useState<RewriteProposal | null>(null);
   const [acceptedNote, setAcceptedNote] = useState<string | null>(null);
 
+  /**
+   * Annotation-in-progress: which source line a Review-mode click landed on,
+   * plus the draft text before it commits to the buffer. A `note` vocabulary
+   * block (packages/vocabulary/vocabulary.yaml), never an HTML comment --
+   * HANDOVER.md section 7b, decision 1.
+   */
+  const [noteTarget, setNoteTarget] = useState<{ line: number; top: number } | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -631,6 +640,69 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     []
   );
 
+  /* ---------------- annotation (Phase 10) ----------------
+   * Review-mode click-to-annotate. Reuses the same [data-source-line]
+   * anchors the scroll sync already walks, so "which line did this click
+   * land on" is one function, not two competing implementations of nearest-
+   * anchor lookup. Opens a one-line composer; committing writes a note
+   * vocabulary block (never an HTML comment -- HANDOVER.md section 7b,
+   * decision 1) on the line right after the clicked paragraph. */
+  const openNoteAt = useCallback(
+    (clientY: number) => {
+      const win = frameRef.current?.contentWindow;
+      if (!win) return;
+      const all = anchors();
+      if (all.length === 0) return;
+      const y = clientY + win.scrollY;
+      let nearest = all[0];
+      let best = Infinity;
+      for (const a of all) {
+        const d = Math.abs(docTop(a.el, win) - y);
+        if (d < best) { best = d; nearest = a; }
+      }
+      const top = Math.max(0, offsetForLine(nearest.line) - (textareaRef.current?.scrollTop ?? 0));
+      setNoteDraft("");
+      setNoteTarget({ line: nearest.line, top });
+    },
+    [anchors, docTop, offsetForLine]
+  );
+
+  const closeNote = useCallback(() => {
+    setNoteTarget(null);
+    setNoteDraft("");
+  }, []);
+
+  // Inserts the note block as its own paragraph directly after the target
+  // line. A trailing blank line guarantees pandoc parses it as a new fenced
+  // div rather than folding it into the preceding paragraph.
+  const commitNote = useCallback(() => {
+    if (!noteTarget || !noteDraft.trim()) { closeNote(); return; }
+    const lines = content.split("\n");
+    const insertAt = Math.min(lines.length, noteTarget.line);
+    const block = ["", '::: note {author="reviewer"}', noteDraft.trim(), ":::", ""];
+    lines.splice(insertAt, 0, ...block);
+    const joined = lines.join("\n");
+    applyEdit(joined, offsetForLine(insertAt + 1), offsetForLine(insertAt + 1));
+    closeNote();
+  }, [noteTarget, noteDraft, content, applyEdit, offsetForLine, closeNote]);
+
+  // Preview-pane click, Review posture only -- Edit posture keeps the
+  // preview a passive reference, per the existing posture contract that
+  // editing only ever happens in the source.
+  const onPreviewClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (posture !== "review" || mode !== "html") return;
+      const frame = frameRef.current;
+      if (!frame) return;
+      const rect = frame.getBoundingClientRect();
+      const win = frame.contentWindow;
+      if (!win) return;
+      const localY = e.clientY - rect.top;
+      openNoteAt(localY);
+    },
+    [posture, mode, openNoteAt]
+  );
+
   /* ---------------- directed rewrite ---------------- */
 
   // Opens the bar against the current textarea selection. Refuses an empty
@@ -669,6 +741,95 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     setRewriteTarget(null);
     setProposal(null);
   }, []);
+
+  /* ---------------- strike ----------------
+   * Deterministic text transform, not a serialiser (HANDOVER.md section 7b,
+   * decision 2): toggles a .struck class in the heading's own pandoc
+   * attribute block. A heading with no block gets one added; the body is
+   * never touched, so strike is trivially undoable and commits only on
+   * save, same as any other edit. */
+  const isStruck = useCallback(
+    (h: Heading): boolean => {
+      const line = content.split("\n")[h.line - 1] ?? "";
+      const attrs = line.match(/\{([^}]*)\}\s*$/)?.[1] ?? "";
+      return /(^|\s)\.struck(\s|$)/.test(attrs);
+    },
+    [content]
+  );
+
+  const toggleStrike = useCallback(
+    (h: Heading) => {
+      const lines = content.split("\n");
+      const line = lines[h.line - 1] ?? "";
+      const attrMatch = line.match(/^(#{1,6}\s+.*?)\s*\{([^}]*)\}\s*$/);
+      let next: string;
+      if (attrMatch) {
+        const head = attrMatch[1];
+        const attrs = attrMatch[2];
+        const already = /(^|\s)\.struck(\s|$)/.test(attrs);
+        const nextAttrs = already
+          ? attrs.replace(/(^|\s)\.struck(\s|$)/, " ").trim()
+          : (attrs.trim() + " .struck").trim();
+        next = nextAttrs ? head + " {" + nextAttrs + "}" : head;
+      } else {
+        const m = line.match(/^(#{1,6}\s+.*\S)\s*$/);
+        next = m ? m[1] + " {.struck}" : line;
+      }
+      lines[h.line - 1] = next;
+      const joined = lines.join("\n");
+      const pos = offsetForLine(h.line);
+      applyEdit(joined, pos, pos + next.length);
+    },
+    [content, applyEdit, offsetForLine]
+  );
+
+  /* ---------------- reorder ----------------
+   * Also a deterministic text transform (HANDOVER.md section 7b, decision
+   * 2): each same-level section (heading line through the line before the
+   * next heading of equal-or-shallower level) is extracted as a contiguous
+   * string and the buffer is reassembled with sections in the requested
+   * order. Content is never parsed into a tree -- this is string slicing
+   * plus concatenation, safe against nesting and adjacent fenced divs by
+   * construction (a section's fenced divs are wholly inside its own slice,
+   * since sectionEnd already respects heading boundaries).
+   */
+  const moveSection = useCallback(
+    (fromLine: number, toLine: number) => {
+      if (fromLine === toLine) return;
+      const from = headings.find((h) => h.line === fromLine);
+      const to = headings.find((h) => h.line === toLine);
+      if (!from || !to || from.level !== to.level) return;
+
+      const lines = content.split("\n");
+      const slice = (h: Heading) => {
+        const end = sectionEnd(h);
+        return lines.slice(h.line - 1, end).join("\n");
+      };
+
+      // Only resequence among same-level headings, since a section's own
+      // subsections travel with it inside its slice -- reordering across
+      // levels would be ambiguous about where the moved block nests.
+      const peers = headings.filter((h) => h.level === from.level);
+      const order = peers.map((h) => h.line);
+      const fromIdx = order.indexOf(fromLine);
+      const toIdx = order.indexOf(toLine);
+      if (fromIdx === -1 || toIdx === -1) return;
+      const moved = order.splice(fromIdx, 1)[0];
+      order.splice(toIdx, 0, moved);
+
+      const peerSlices = new Map(peers.map((h) => [h.line, slice(h)]));
+      const orderedText = order.map((line) => peerSlices.get(line)).join("\n");
+
+      const firstPeer = peers[0];
+      const lastPeer = peers[peers.length - 1];
+      const before = lines.slice(0, firstPeer.line - 1).join("\n");
+      const after = lines.slice(sectionEnd(lastPeer)).join("\n");
+
+      const rejoined = [before, orderedText, after].filter((s) => s.length > 0).join("\n");
+      applyEdit(rejoined, 0, 0);
+    },
+    [content, headings, sectionEnd, applyEdit]
+  );
 
   // Resolved lazily inside RewriteBar, at request time — never at open time —
   // so a proposal always reflects what is currently selected/scoped, not a
@@ -1238,6 +1399,36 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
       )}
 
+      {noteTarget && (
+        <div className="note-composer" style={{ top: noteTarget.top }} role="dialog" aria-label="Add a note">
+          <div className="note-composer-head">
+            <span>Note — line {noteTarget.line}</span>
+            <button className="note-composer-close" onClick={closeNote} aria-label="Cancel">×</button>
+          </div>
+          <textarea
+            className="note-composer-input"
+            autoFocus
+            rows={2}
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            placeholder="Direction for the next pass — e.g. &quot;shorter, cut the second example&quot;"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                commitNote();
+              }
+              if (e.key === "Escape") closeNote();
+            }}
+          />
+          <div className="note-composer-actions">
+            <button className="btn btn-secondary" onClick={closeNote}>Cancel</button>
+            <button className="btn" onClick={commitNote} disabled={!noteDraft.trim()}>
+              Add note <kbd>⌘⏎</kbd>
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="editor-panes" data-posture={posture}>
         <div className="pane pane-source" data-outline={showOutline && headings.length > 0}>
           {showOutline && headings.length > 0 && (
@@ -1250,8 +1441,33 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                 {headings.map((h) => {
                   const foldable = sectionEnd(h) > h.line;
                   const isOpen = !folded.includes(h.line);
+                  const struck = isStruck(h);
                   return (
-                    <div key={h.line} className="outline-row" data-level={h.level}>
+                    <div
+                      key={h.line}
+                      className="outline-row"
+                      data-level={h.level}
+                      data-struck={struck}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/x-docgent-line", String(h.line));
+                        e.dataTransfer.setData("text/x-docgent-level", String(h.level));
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
+                      onDragOver={(e) => {
+                        if (e.dataTransfer.types.includes("text/x-docgent-line")) {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                        }
+                      }}
+                      onDrop={(e) => {
+                        const fromLine = Number(e.dataTransfer.getData("text/x-docgent-line"));
+                        if (!Number.isFinite(fromLine) || fromLine === h.line) return;
+                        e.preventDefault();
+                        moveSection(fromLine, h.line);
+                      }}
+                      title="Drag to reorder"
+                    >
                       <button
                         className="outline-fold"
                         onClick={() => toggleFold(h.line)}
@@ -1267,6 +1483,15 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                         title={`${h.text} — line ${h.line}`}
                       >
                         {h.text}
+                      </button>
+                      <button
+                        className="outline-strike"
+                        onClick={() => toggleStrike(h)}
+                        data-active={struck}
+                        title={struck ? "Unstrike section" : "Strike section"}
+                        aria-label={struck ? `Unstrike ${h.text}` : `Strike ${h.text}`}
+                      >
+                        S
                       </button>
                       <button
                         className="outline-direct"
@@ -1318,7 +1543,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           )}
         </div>
 
-        <div className="pane pane-preview">
+        <div
+          className="pane pane-preview"
+          data-annotatable={posture === "review" && mode === "html"}
+          onClick={onPreviewClick}
+        >
           {previewError ? (
             <div className="banner" data-kind="error" style={{ margin: 12 }}>
               <strong>Preview failed.</strong>
