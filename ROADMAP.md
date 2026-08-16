@@ -1,4 +1,4 @@
-# Docgent — Described-but-not-implemented Roadmap
+# Docgent — Backlog: described but not implemented
 
 Generated 2026-08-16 from a review of the live site (docgent.io), the
 `docgent-website` repo, and this repo (README, `DOCGENTIC_BRIEF.md`,
@@ -6,17 +6,17 @@ Generated 2026-08-16 from a review of the live site (docgent.io), the
 
 **Scope note:** the "agent dispatch loop" (Slack/OpenClaw → proposal → diff →
 accept) described in the brief as the next build phase is **excluded** from
-this roadmap. That mechanism is OpenClaw skills territory (see
+this backlog. That mechanism is OpenClaw skills territory (see
 `docgent-doc-access` skill), not something Docgent itself needs to build —
 Studio is deliberately a thin git client with no AI credentials or routing
 logic of its own. Everything below is scoped to Docgent's own product surface.
 
-Phases are priority-ordered, not strictly sequential — each is independently
-shippable.
+Tracked as GitHub issues #1–#5. Not sequenced — each item is independently
+shippable and can be picked up in any order.
 
 ---
 
-## Phase 1 — Section-level human controls
+## Section-level human controls in Studio ([#1](https://github.com/Vanaheim-Labs/docgent/issues/1))
 
 Promised in `DOCGENTIC_BRIEF.md` under "the human-in-the-loop creative layer"
 as in progress/roadmap. None of this exists yet in `apps/studio`.
@@ -29,7 +29,7 @@ as in progress/roadmap. None of this exists yet in `apps/studio`.
 - "Taste chips" (shorter / more direct / raise the stakes) as editable
   rewrite seeds rather than a rigid menu
 
-## Phase 2 — Review-action gaps
+## Review-action gaps ([#2](https://github.com/Vanaheim-Labs/docgent/issues/2))
 
 Site's review mockup shows `Accept / Edit / Comment / Send back` as
 first-class actions. Backend only implements a linear status lifecycle
@@ -41,7 +41,7 @@ is an unrelated code-comment in a markdown parser, not a feature.
 - "Send back" as a distinct action from a plain status demotion — i.e.
   attaching feedback/reason when returning a proposal to an agent
 
-## Phase 3 — Agent access ergonomics
+## Agent access ergonomics ([#3](https://github.com/Vanaheim-Labs/docgent/issues/3))
 
 Flagged directly in the brief and README as in-progress/not done. README:
 "Current focus: document discovery/auth-check API endpoints for
@@ -52,7 +52,7 @@ agent-driven access."
 - Endpoint to create a brand (currently manual: brand.yaml + repo + token)
 - Self-serve agent token issuance (currently manual, per HANDOVER/skill doc)
 
-## Phase 4 — Site claims with no matching implementation
+## Site claims with no matching implementation ([#4](https://github.com/Vanaheim-Labs/docgent/issues/4))
 
 Marketing copy ahead of what's built or, in one case, ahead of what's
 architecturally intended.
@@ -68,7 +68,7 @@ architecturally intended.
   architecture. This is a likely **permanent** site/product mismatch, not a
   backlog item — needs a messaging decision, not an engineering one.
 
-## Phase 5 — Operational debt (blocks safely scaling agent writes)
+## Machine user for agent commits ([#5](https://github.com/Vanaheim-Labs/docgent/issues/5))
 
 Not user-facing functionality, but named directly in `HANDOVER.md` §9 as
 pressing now that editing is live.
