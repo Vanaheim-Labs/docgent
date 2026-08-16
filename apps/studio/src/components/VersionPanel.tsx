@@ -20,6 +20,79 @@ function displaySubject(subject: string): string {
   return (m ? m[1] : subject).trim() || subject;
 }
 
+/**
+ * One frame in the filmstrip.
+ *
+ * Lazy: only requests a thumbnail once scrolled near, since each miss costs
+ * a real render-worker round trip (pandoc + WeasyPrint + pdftoppm). Once
+ * loaded the URL is cached by the browser under the same immutable
+ * Cache-Control the API sets for historical refs, so re-mounting the panel
+ * never re-fetches.
+ */
+function FilmstripFrame({
+  brand,
+  slug,
+  sha,
+  version,
+  isCurrent,
+  active,
+  onSelect,
+}: {
+  brand: string;
+  slug: string;
+  sha: string;
+  version: number;
+  isCurrent: boolean;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const [visible, setVisible] = useState(false);
+  const [errored, setErrored] = useState(false);
+  const ref = useCallback((node: HTMLButtonElement | null) => {
+    if (!node) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisible(true);
+          obs.disconnect();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    obs.observe(node);
+  }, []);
+
+  const src = isCurrent
+    ? `/api/thumbnail/${brand}/${slug}`
+    : `/api/thumbnail/${brand}/${slug}?ref=${sha}`;
+
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className="filmstrip-frame"
+      data-active={active}
+      onClick={onSelect}
+      title={`r${version} — ${sha.slice(0, 7)}`}
+    >
+      {visible && !errored ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={`Revision ${version} thumbnail`}
+          loading="lazy"
+          onError={() => setErrored(true)}
+        />
+      ) : (
+        <div className="filmstrip-frame-placeholder">
+          {errored ? "—" : "r" + version}
+        </div>
+      )}
+      <span className="filmstrip-frame-label">r{version}</span>
+    </button>
+  );
+}
+
 export function VersionPanel({
   brand,
   slug,
@@ -179,6 +252,30 @@ export function VersionPanel({
             {timeline.length} {timeline.length === 1 ? "revision" : "revisions"}
           </span>
         </div>
+
+        {timeline.length > 0 && (
+          <div className="filmstrip" role="list" aria-label="Version filmstrip">
+            {timeline.map((t) => {
+              const isViewing = viewingSha ? t.sha === viewingSha : t.isCurrent;
+              return (
+                <FilmstripFrame
+                  key={t.sha}
+                  brand={brand}
+                  slug={slug}
+                  sha={t.sha}
+                  version={t.version}
+                  isCurrent={t.isCurrent}
+                  active={isViewing}
+                  onSelect={() =>
+                    (window.location.href = t.isCurrent
+                      ? `/${brand}/${slug}`
+                      : `/${brand}/${slug}?v=${t.sha}`)
+                  }
+                />
+              );
+            })}
+          </div>
+        )}
 
         {docVersion && (
           <div className="panel-body" style={{ paddingBottom: 0 }}>

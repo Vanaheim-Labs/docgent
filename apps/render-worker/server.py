@@ -617,6 +617,104 @@ def render_html_route():
         },
     )
 
+def render_thumbnail(markdown: str, brand_id: str, assets: dict[str, str] | None) -> bytes:
+    """Renders page 1 of the PDF to a PNG, for the version filmstrip.
+
+    Reuses render_pdf's output rather than a separate render path: the
+    thumbnail must be pixel-true to the artefact it represents, not a
+    lighter approximation that could drift from what actually prints.
+    pdftoppm (poppler-utils) rasterises the existing PDF; no second
+    HTML/CSS pass.
+    """
+    pdf_bytes = render_pdf(markdown, brand_id, assets)
+
+    with tempfile.TemporaryDirectory(prefix="docforge-thumb-") as tmp:
+        work = Path(tmp)
+        pdf_path = work / "doc.pdf"
+        pdf_path.write_bytes(pdf_bytes)
+
+        out_prefix = work / "thumb"
+        proc = subprocess.run(
+            ["pdftoppm", "-png", "-f", "1", "-l", "1", "-scale-to-x", "480",
+             "-scale-to-y", "-1", str(pdf_path), str(out_prefix)],
+            capture_output=True,
+            timeout=30,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                "pdftoppm failed: " + proc.stderr.decode("utf-8", "replace")[:1000]
+            )
+
+        # pdftoppm names single-page output "<prefix>-1.png" or "<prefix>.png"
+        # depending on version; check both rather than assuming.
+        for candidate in (work / "thumb-1.png", work / "thumb.png", work / "thumb-01.png"):
+            if candidate.exists():
+                return candidate.read_bytes()
+        raise RuntimeError("pdftoppm produced no output file")
+
+
+@app.post("/thumbnail")
+def thumbnail_route():
+    """Renders page 1 as a PNG thumbnail, for the studio version filmstrip.
+
+    Same request contract as /render (markdown + brand + assets) so callers
+    that already have a render payload can request a thumbnail with no
+    reshaping. Content-addressing and caching are the studio's concern; this
+    endpoint is stateless like /render.
+    """
+    if not authorised():
+        jlog("thumbnail.unauthorised", ip=request.remote_addr)
+        return jsonify(error="unauthorised"), 401
+
+    if request.content_length and request.content_length > MAX_BODY_BYTES:
+        return jsonify(error="payload too large"), 413
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify(error="expected a JSON object"), 400
+
+    markdown = body.get("markdown")
+    if not isinstance(markdown, str) or not markdown.strip():
+        return jsonify(error="'markdown' is required"), 400
+
+    fm = read_frontmatter(markdown)
+    brand_id = body.get("brand") or fm.get("brand")
+    if not brand_id:
+        return jsonify(error="no brand given (body 'brand' or frontmatter)"), 400
+
+    assets = body.get("assets") or {}
+    if not isinstance(assets, dict):
+        return jsonify(error="'assets' must be an object of path -> base64"), 400
+
+    try:
+        png = render_thumbnail(markdown, str(brand_id), assets)
+    except FileNotFoundError as e:
+        jlog("thumbnail.unknown_brand", brand=brand_id, error=str(e))
+        return jsonify(error=str(e)), 404
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    except subprocess.TimeoutExpired:
+        jlog("thumbnail.timeout", brand=brand_id)
+        return jsonify(error="render timed out"), 504
+    except RuntimeError as e:
+        jlog("thumbnail.failed", brand=brand_id, error=str(e)[:500])
+        return jsonify(error=str(e)), 422
+
+    total_ms = int((time.time() - g.t_start) * 1000)
+    jlog("thumbnail.ok", brand=brand_id, bytes=len(png), total_ms=total_ms)
+
+    return (
+        png,
+        200,
+        {
+            "Content-Type": "image/png",
+            "Cache-Control": "private, max-age=31536000, immutable",
+            "X-DocForge-Request-Id": g.request_id,
+            "X-DocForge-Render-Ms": str(total_ms),
+        },
+    )
+
+
 if not API_KEY:
     # Fail closed. An unauthenticated render endpoint is a free PDF farm.
     log.warning(

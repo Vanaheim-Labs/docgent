@@ -94,6 +94,52 @@ export async function renderMarkdownHtml(
   };
 }
 
+export type ThumbnailResult = {
+  png: Buffer;
+  renderMs: number | null;
+};
+
+/**
+ * Renders page 1 of a document to a PNG thumbnail, for the version filmstrip.
+ *
+ * Calls the worker's own PDF pipeline (not a lighter approximation) so the
+ * thumbnail is pixel-true to the artefact it represents.
+ */
+export async function renderThumbnail(
+  markdown: string,
+  brand: string,
+  assets: Record<string, string> = {}
+): Promise<ThumbnailResult> {
+  const url = process.env.DOCGENT_RENDER_URL;
+  const key = process.env.DOCGENT_API_KEY;
+  if (!url) throw new Error("DOCGENT_RENDER_URL is not set");
+  if (!key) throw new Error("DOCGENT_API_KEY is not set");
+
+  const res = await fetch(`${url.replace(/\/$/, "")}/thumbnail`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Docgent-Key": key,
+    },
+    body: JSON.stringify({ markdown, brand, assets }),
+    signal: AbortSignal.timeout(60_000),
+  });
+
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      const j = await res.json();
+      if (j?.error) detail = j.error;
+    } catch {}
+    throw new Error(`thumbnail failed — ${detail}`);
+  }
+
+  return {
+    png: Buffer.from(await res.arrayBuffer()),
+    renderMs: Number(res.headers.get("x-docgent-render-ms")) || null,
+  };
+}
+
 /** Fetches a document's assets from git as base64, for the render call. */
 export async function collectAssetsFromGit(
   git: any,

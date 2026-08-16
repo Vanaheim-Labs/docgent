@@ -31,6 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       fontconfig \
       curl \
       ca-certificates \
+      poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # --- pandoc (pinned) -------------------------------------------------------

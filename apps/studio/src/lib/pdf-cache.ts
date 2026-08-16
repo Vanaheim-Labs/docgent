@@ -29,6 +29,15 @@ export function cacheKey({ brand, slug, commitSha }: CacheKey) {
   return `${brand}/${slug}/${commitSha}.pdf`;
 }
 
+/**
+ * Same content-addressing as cacheKey, for filmstrip thumbnails. A separate
+ * key (not a subpath of the PDF key) so an R2 driver can list/expire the two
+ * artefact types independently if that's ever needed.
+ */
+export function thumbCacheKey({ brand, slug, commitSha }: CacheKey) {
+  return `${brand}/${slug}/${commitSha}.thumb.png`;
+}
+
 /* ------------------------------------------------------------------ *
  * In-memory driver (default)
  * ------------------------------------------------------------------ */
