@@ -475,14 +475,56 @@ function Span(el)
   return el
 end
 
+-- Wraps a struck section (Studio Phase 10) so the whole section reads as
+-- cut, not just its heading.
+--
+-- Strike is stored as one attribute on the heading (Editor.tsx toggleStrike,
+-- a deterministic text transform -- HANDOVER.md section 7b, decision 2), so
+-- the source stays a single line edit. But a reader scanning the rendered
+-- document needs the whole section to look struck, or a dimmed headline over
+-- full-strength body text reads as a rendering bug, not a directive. This
+-- pass runs server-side over the block tree, not the source, so the
+-- attribute-per-heading storage model is unaffected -- only presentation
+-- changes.
+local function wrap_struck_sections(blocks)
+  local out = {}
+  local i = 1
+  while i <= #blocks do
+    local b = blocks[i]
+    if b.t == 'Header' and b.classes:includes('struck') then
+      local level = b.level
+      local group = { b }
+      local j = i + 1
+      while j <= #blocks do
+        local nb = blocks[j]
+        if nb.t == 'Header' and nb.level <= level then break end
+        table.insert(group, nb)
+        j = j + 1
+      end
+      local wrap = pandoc.Div(group)
+      wrap.classes:insert('struck-section')
+      table.insert(out, wrap)
+      i = j
+    else
+      table.insert(out, b)
+      i = i + 1
+    end
+  end
+  return out
+end
+
 -- Stamps top-level blocks with their originating source line.
 --
 -- Document-level pass so doc.meta is readable before blocks are emitted.
 function Pandoc(doc)
-  if not doc.meta or not doc.meta.docforge_source_lines then return doc end
+  local blocks = wrap_struck_sections(doc.blocks)
+
+  if not doc.meta or not doc.meta.docforge_source_lines then
+    return pandoc.Pandoc(blocks, doc.meta)
+  end
   local cursor = 1
   local out = {}
-  for _, b in ipairs(doc.blocks) do
+  for _, b in ipairs(blocks) do
     local text = pandoc.utils.stringify(b)
     local line = find_line(text, cursor)
     if line then cursor = line end

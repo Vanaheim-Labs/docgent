@@ -195,12 +195,32 @@ h2.numbered::before { content: counter(h1counter) "." counter(h2counter) "  "; c
    document and in print, visibly marked, until someone removes the heading
    attribute or the text itself. Dimmed + struck-through rather than hidden:
    hiding it here would silently change what ships, which is exactly what
-   HANDOVER.md's "strike is trivially undoable" promise depends on not doing. */
-h1.struck, h2.struck, h3.struck, h4.struck, h5.struck, h6.struck {
-  text-decoration: line-through;
-  color: var(--ink-faint);
+   HANDOVER.md's "strike is trivially undoable" promise depends on not doing.
+
+   Strike is stored as one attribute on the heading (a deterministic text
+   transform, not a serialiser -- decision 2), but the whole section needs to
+   *read* as cut, not just its title: a dimmed headline over full-strength
+   body text looks like a rendering bug, not a directive. The vocabulary
+   filter's wrap_struck_sections() groups a struck heading with the blocks
+   that belong to it (up to the next heading of equal-or-shallower level)
+   into a .struck-section wrapper server-side, so this is one selector
+   rather than a heading rule plus a fragile sibling-combinator hack that
+   can't express "until the next heading" in CSS alone. */
+.struck-section {
+  opacity: 0.55;
 }
-h1.struck::before, h2.struck::before { color: var(--ink-faint); }
+.struck-section > h1,
+.struck-section > h2,
+.struck-section > h3,
+.struck-section > h4,
+.struck-section > h5,
+.struck-section > h6 {
+  text-decoration: line-through;
+}
+.struck-section > h1::before,
+.struck-section > h2::before {
+  color: inherit;
+}
 
 p { margin: 0 0 0.7rem; text-align: var(--body-align, justify); }
 p.lead { font-size: 1.12rem; line-height: 1.45; color: var(--ink-soft); text-align: left; }
