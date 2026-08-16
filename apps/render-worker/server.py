@@ -32,10 +32,15 @@ from flask import Flask, g, jsonify, request
 # Configuration
 # --------------------------------------------------------------------------- #
 
-PIPELINE_DIR = Path(os.environ.get("DOCFORGE_PIPELINE_DIR", "/app/pipeline"))
-API_KEY = os.environ.get("DOCFORGE_API_KEY", "")
-MAX_BODY_BYTES = int(os.environ.get("DOCFORGE_MAX_BODY", 20 * 1024 * 1024))
-RENDER_TIMEOUT = int(os.environ.get("DOCFORGE_RENDER_TIMEOUT", 90))
+# DOCGENT_* is current; DOCFORGE_* is accepted as a fallback so a partial
+# rollout of fly.toml/secrets doesn't lock the service into an empty
+# API_KEY (this exact gap is what caused render/thumbnail 401s despite a
+# correctly-set DOCGENT_API_KEY secret -- the old names were the only ones
+# actually read here).
+PIPELINE_DIR = Path(os.environ.get("DOCGENT_PIPELINE_DIR") or os.environ.get("DOCFORGE_PIPELINE_DIR", "/app/pipeline"))
+API_KEY = os.environ.get("DOCGENT_API_KEY") or os.environ.get("DOCFORGE_API_KEY", "")
+MAX_BODY_BYTES = int(os.environ.get("DOCGENT_MAX_BODY") or os.environ.get("DOCFORGE_MAX_BODY", 20 * 1024 * 1024))
+RENDER_TIMEOUT = int(os.environ.get("DOCGENT_RENDER_TIMEOUT") or os.environ.get("DOCFORGE_RENDER_TIMEOUT", 90))
 
 TEMPLATE = PIPELINE_DIR / "core" / "templates" / "document.html"
 FILTER = PIPELINE_DIR / "core" / "filters" / "vocabulary.lua"
