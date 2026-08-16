@@ -426,7 +426,11 @@ def _before():
 
 
 def authorised() -> bool:
-    supplied = request.headers.get("X-DocForge-Key", "")
+    # Studio and the CLI both send X-Docgent-Key (packages/core/src/client.mjs,
+    # apps/studio/src/lib/render.ts). The old X-DocForge-Key name is accepted
+    # too, so a client on the previous header during a rolling deploy doesn't
+    # get locked out mid-rollout.
+    supplied = request.headers.get("X-Docgent-Key") or request.headers.get("X-DocForge-Key", "")
     return bool(API_KEY) and hmac.compare_digest(supplied, API_KEY)
 
 
