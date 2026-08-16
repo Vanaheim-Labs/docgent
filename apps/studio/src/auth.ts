@@ -3,6 +3,16 @@ import Google from "next-auth/providers/google";
 import { brandsForEmail } from "@/lib/store";
 
 /**
+ * The single admin account for the /admin area (brand config management,
+ * not brand *content* — that stays gated by the per-brand access lists
+ * above). Hardcoded rather than read from brand.yaml: admin access is a
+ * property of the Studio deployment itself, not of any one brand, so it
+ * does not belong in per-brand config. Revisit if/when multi-admin support
+ * is needed.
+ */
+const ADMIN_EMAIL = "andrew@dcr.vc";
+
+/**
  * Studio auth.
  *
  * Docgent is served from a single domain with the brand in the URL path
@@ -61,14 +71,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const p = profile as { email?: string } | undefined;
       if (p?.email) {
         token.allowedBrands = brandsForEmail(p.email).map((b) => b.id);
+        // Computed once at sign-in for the same reason allowedBrands is:
+        // middleware needs it on the Edge runtime without a disk read.
+        token.isAdmin = p.email === ADMIN_EMAIL;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        const u = session.user as { provider?: string; allowedBrands?: string[] };
+        const u = session.user as { provider?: string; allowedBrands?: string[]; isAdmin?: boolean };
         if (token.provider) u.provider = token.provider as string;
         u.allowedBrands = (token.allowedBrands as string[] | undefined) ?? [];
+        u.isAdmin = (token.isAdmin as boolean | undefined) ?? false;
       }
       return session;
     },
