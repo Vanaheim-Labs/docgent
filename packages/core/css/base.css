@@ -190,6 +190,18 @@ h1.numbered::before { content: counter(h1counter) ".  "; color: var(--accent); }
 h2.numbered { counter-increment: h2counter; }
 h2.numbered::before { content: counter(h1counter) "." counter(h2counter) "  "; color: var(--accent); font-weight: 500; }
 
+/* Struck sections (Studio Phase 10). A human's "cut this" direction to the
+   next AI pass, not a deletion -- the section and its body stay in the
+   document and in print, visibly marked, until someone removes the heading
+   attribute or the text itself. Dimmed + struck-through rather than hidden:
+   hiding it here would silently change what ships, which is exactly what
+   HANDOVER.md's "strike is trivially undoable" promise depends on not doing. */
+h1.struck, h2.struck, h3.struck, h4.struck, h5.struck, h6.struck {
+  text-decoration: line-through;
+  color: var(--ink-faint);
+}
+h1.struck::before, h2.struck::before { color: var(--ink-faint); }
+
 p { margin: 0 0 0.7rem; text-align: var(--body-align, justify); }
 p.lead { font-size: 1.12rem; line-height: 1.45; color: var(--ink-soft); text-align: left; }
 
