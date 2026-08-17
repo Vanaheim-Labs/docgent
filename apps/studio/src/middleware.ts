@@ -27,7 +27,7 @@ function guardBrandPath(req: NextRequest, allowedBrands: string[] | null): NextR
   const isBrandRoute =
     segments.length > 0 &&
     !isStaticFile &&
-    !["api", "signin", "_next", "favicon.ico"].includes(segments[0]);
+    !["api", "admin", "signin", "_next", "favicon.ico"].includes(segments[0]);
 
   const brandSegment = isBrandRoute
     ? segments[0]
