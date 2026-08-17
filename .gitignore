@@ -39,8 +39,10 @@ nfqa/
 # Documents live in per-brand stores, never in the pipeline repo:
 #   Vanaheim-Labs/docforge-documents
 #   north-face-investments/docforge-documents
-brands/*/source/
 documents/
+
+# brands/ is a git submodule (see .gitmodules) pointing at a private repo
+# of real brand configs — nothing under it is tracked directly here.
 
 # local credentials (never commit)
 .secrets/
