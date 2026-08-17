@@ -13,7 +13,7 @@
 // Untyped ESM package in the monorepo; allowJs resolves it without types.
 import { GitStore } from "../../../../packages/git-store/src/index.mjs";
 import { DocumentStore } from "../../../../packages/git-store/src/documents.mjs";
-import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { timingSafeEqual } from "node:crypto";
@@ -421,4 +421,119 @@ export async function listAllDocuments(
 export function repoSlug(brandId?: string) {
   if (!brandId) return "docgent";
   return findBrand(brandId)?.repo ?? "unknown";
+}
+
+/**
+ * Admin brand-config CRUD (Phase 2).
+ *
+ * Deliberately raw file reads/writes against brands/<id>/brand.yaml, same
+ * as the rest of this module — not a YAML parse/stringify round trip. A
+ * round trip through a YAML library would silently reformat comments,
+ * key order and quoting style on every save, turning every admin edit into
+ * a noisy diff unrelated to what the admin actually changed. Editing the
+ * raw text preserves everything the admin didn't touch.
+ *
+ * This is filesystem-only, same limitation resolveBrandsDir() already has:
+ * on Vercel's read-only deployment filesystem these writes fail. Brand
+ * config editing therefore only works where BRANDS_DIR is writable (local
+ * dev today; wherever Phase 3's split private-config store ends up living).
+ * That is a Phase 3 concern, not something Phase 2 needs to solve.
+ */
+
+/** Raw brand.yaml text for the admin editor. Null if the brand or file
+ *  does not exist, so callers can 404 rather than show an empty editor. */
+export function getBrandYamlSource(brandId: string): string | null {
+  const path = join(BRANDS_DIR, brandId, "brand.yaml");
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+/** Every brand id that has a brand.yaml on disk, admin-only view — unlike
+ *  brands() this does not require a repo: field, so a pipeline-only or
+ *  half-configured brand still shows up for an admin to finish setting up. */
+export function allBrandIds(): string[] {
+  try {
+    return readdirSync(BRANDS_DIR, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && existsSync(join(BRANDS_DIR, e.name, "brand.yaml")))
+      .map((e) => e.name)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+/** Non-recursive listing of a brand's scaffold folders (assets/css/doctypes/
+ *  fonts), for the admin view to show what exists without needing to walk
+ *  the whole tree — brand scaffolds are one level deep by convention. */
+export function brandScaffold(brandId: string): Record<string, string[]> {
+  const dir = join(BRANDS_DIR, brandId);
+  const scaffoldDirs = ["assets", "css", "doctypes", "fonts"];
+  const out: Record<string, string[]> = {};
+  for (const name of scaffoldDirs) {
+    try {
+      out[name] = readdirSync(join(dir, name), { withFileTypes: true })
+        .filter((e) => e.isFile())
+        .map((e) => e.name)
+        .sort();
+    } catch {
+      out[name] = [];
+    }
+  }
+  return out;
+}
+
+/**
+ * Overwrites brand.yaml for an existing brand with admin-provided text.
+ *
+ * No validation beyond "is this a brand that exists" — the admin UI is
+ * trusted, single-operator (isAdmin gates the whole /admin tree already),
+ * and brand.yaml has no schema enforcement anywhere else in the pipeline
+ * either; a malformed save surfaces the same way a malformed hand-edit
+ * always has, at render time. Clears brandCache so the next brands() call
+ * (e.g. re-computing allowedBrands at next sign-in, or this same admin
+ * session re-reading the list) sees the change immediately rather than a
+ * stale in-memory copy.
+ */
+export function writeBrandYamlSource(brandId: string, yaml: string): void {
+  const dir = join(BRANDS_DIR, brandId);
+  if (!existsSync(dir)) throw new Error(`Unknown brand: ${brandId}`);
+  writeFileSync(join(dir, "brand.yaml"), yaml, "utf8");
+  brandCache = null;
+}
+
+/**
+ * Scaffolds a brand new to the pipeline: the folder, an empty brand.yaml
+ * seeded with just `id`/`name` (everything else an admin fills in via the
+ * editor afterwards), and the four convention scaffold folders so the new
+ * brand looks like every other brand immediately rather than only after
+ * its first asset upload.
+ *
+ * Rejects an id that already has a directory rather than overwriting it —
+ * creation and editing are separate actions in the UI on purpose, so a
+ * mistyped "create" can never clobber an existing brand's config.
+ */
+export function createBrand(brandId: string, name: string): void {
+  const id = brandId.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) {
+    throw new Error("Brand id must be lowercase letters, numbers and hyphens only");
+  }
+  const dir = join(BRANDS_DIR, id);
+  if (existsSync(dir)) throw new Error(`Brand already exists: ${id}`);
+
+  mkdirSync(dir, { recursive: true });
+  for (const sub of ["assets", "css", "doctypes", "fonts"]) {
+    mkdirSync(join(dir, sub), { recursive: true });
+  }
+  const seed = `id: ${id}
+name: ${name || id}
+
+access:
+  emails: []
+  domains: []
+`;
+  writeFileSync(join(dir, "brand.yaml"), seed, "utf8");
+  brandCache = null;
 }
