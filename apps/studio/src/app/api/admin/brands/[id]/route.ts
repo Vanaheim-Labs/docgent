@@ -17,7 +17,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const yaml = getBrandYamlSource(id);
   if (yaml === null) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  return NextResponse.json({ id, yaml, scaffold: brandScaffold(id) });
+  // Agent bearer token for this brand — read from env at request time (not
+  // build time) so it's always current. Never logged or cached; admin-only.
+  const tokenKey = "DOCGENT_AGENT_TOKEN_" + id.toUpperCase();
+  const agentToken = process.env[tokenKey] ?? null;
+
+  return NextResponse.json({ id, yaml, scaffold: brandScaffold(id), agentToken });
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

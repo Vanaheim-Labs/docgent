@@ -2,10 +2,58 @@
 
 import { useState } from "react";
 
+function AgentTokenRow({ token }: { token: string | null }) {
+  const [revealed, setRevealed] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  if (!token) {
+    return (
+      <p style={{ fontSize: 12.5, color: "var(--ink-faint)", marginTop: 6 }}>
+        No agent token configured. Set <code>DOCGENT_AGENT_TOKEN_{"<BRAND_ID_UPPER>"}</code> in Vercel env vars.
+      </p>
+    );
+  }
+
+  async function copy() {
+    await navigator.clipboard.writeText(token!);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
+      <code
+        style={{
+          flex: 1,
+          fontSize: 12,
+          padding: "6px 10px",
+          background: "var(--paper-alt)",
+          border: "1px solid var(--rule)",
+          borderRadius: 4,
+          overflowX: "auto",
+          userSelect: revealed ? "all" : "none",
+          letterSpacing: revealed ? undefined : 2,
+        }}
+      >
+        {revealed ? token : "••••••••••••••••••••••••"}
+      </code>
+      <button type="button" className="btn btn-secondary" onClick={() => setRevealed((v) => !v)}>
+        {revealed ? "Hide" : "Reveal"}
+      </button>
+      {revealed && (
+        <button type="button" className="btn btn-secondary" onClick={copy}>
+          {copied ? "Copied!" : "Copy"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 type Props = {
   brandId: string;
   initialYaml: string;
   scaffold: Record<string, string[]>;
+  agentToken: string | null;
 };
 
 /**
@@ -19,7 +67,7 @@ type Props = {
  * save. A textarea can never do that: it round-trips exactly what it was
  * given, plus whatever the admin typed.
  */
-export function BrandEditor({ brandId, initialYaml, scaffold }: Props) {
+export function BrandEditor({ brandId, initialYaml, scaffold, agentToken }: Props) {
   const [yaml, setYaml] = useState(initialYaml);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +130,11 @@ export function BrandEditor({ brandId, initialYaml, scaffold }: Props) {
             <code>{error}</code>
           </div>
         )}
+      </div>
+
+      <div>
+        <strong style={{ fontSize: 13 }}>Agent token</strong>
+        <AgentTokenRow token={agentToken} />
       </div>
 
       <div>

@@ -13,6 +13,10 @@ export default async function AdminBrandDetailPage({ params }: { params: Promise
 
   const scaffold = brandScaffold(id);
 
+  // Read the agent token server-side — only visible to the admin, never
+  // exposed to the client until they explicitly hit "Reveal" in the editor.
+  const agentToken = process.env["DOCGENT_AGENT_TOKEN_" + id.toUpperCase()] ?? null;
+
   return (
     <div className="shell">
       <div className="main">
@@ -26,7 +30,7 @@ export default async function AdminBrandDetailPage({ params }: { params: Promise
           <UserChip />
         </div>
         <div className="content">
-          <BrandEditor brandId={id} initialYaml={yaml} scaffold={scaffold} />
+          <BrandEditor brandId={id} initialYaml={yaml} scaffold={scaffold} agentToken={agentToken} />
         </div>
       </div>
     </div>
