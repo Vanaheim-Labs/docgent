@@ -15,6 +15,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..", "..");
 const OUT = path.join(__dirname, "pipeline");
 const FONTS = path.join(__dirname, "fonts");
+// Same DOCGENT_BRANDS_DIR convention as packages/core/src/render.mjs and
+// apps/studio/src/lib/store.ts — brand data may live outside this repo
+// (private submodule), so the deploy staging step needs to find it there
+// too rather than assuming ROOT/brands.
+const BRANDS_ROOT = process.env.DOCGENT_BRANDS_DIR
+  ? path.resolve(process.env.DOCGENT_BRANDS_DIR)
+  : path.join(ROOT, "brands");
 
 function copyDir(src, dest) {
   fs.mkdirSync(dest, { recursive: true });
@@ -36,7 +43,7 @@ for (const sub of ["templates", "filters", "css"]) {
 }
 
 // brands: brand.yaml + css + assets, excluding documents
-const brandsSrc = path.join(ROOT, "brands");
+const brandsSrc = BRANDS_ROOT;
 for (const brand of fs.readdirSync(brandsSrc)) {
   const bdir = path.join(brandsSrc, brand);
   if (!fs.statSync(bdir).isDirectory()) continue;
