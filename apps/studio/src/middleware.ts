@@ -66,15 +66,20 @@ function guardBrandPath(req: NextRequest, allowedBrands: string[] | null): NextR
  */
 function guardAdminPath(req: NextRequest, session: { isAdmin?: boolean } | null): NextResponse | null {
   const segments = req.nextUrl.pathname.split("/").filter(Boolean);
-  const isAdminRoute = segments[0] === "admin" || (segments[0] === "api" && segments[1] === "admin");
-  if (!isAdminRoute) return null;
+  const isAdminApiRoute = segments[0] === "api" && segments[1] === "admin";
+  const isAdminPageRoute = segments[0] === "admin";
+  if (!isAdminApiRoute && !isAdminPageRoute) return null;
 
   if (!session) {
+    // API routes must return JSON errors, not HTML redirects — a fetch()
+    // following a 307 to /signin gets back an HTML page and JSON.parse throws.
+    if (isAdminApiRoute) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const signInUrl = new URL("/signin", req.url);
     return NextResponse.redirect(signInUrl);
   }
 
   if (!session.isAdmin) {
+    if (isAdminApiRoute) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     return NextResponse.rewrite(new URL("/not-found", req.url));
   }
 
