@@ -51,6 +51,37 @@ function guardBrandPath(req: NextRequest, allowedBrands: string[] | null): NextR
 }
 
 /**
+ * /admin is a separate concern from per-brand access entirely: it is not
+ * about viewing/editing any one brand's documents, it is about managing
+ * brand *configuration* across all brands, so it is deliberately not
+ * folded into guardBrandPath's allowedBrands check above. A user can be in
+ * every brand's access list and still not be an admin, and vice versa.
+ *
+ * No session: send to sign-in same as any other protected route (auth()
+ * itself would also catch this, but redirecting here gives a cleaner URL
+ * than falling through to the default sign-in flow). Signed in but not
+ * admin: not-found, not a 403 — consistent with guardBrandPath's choice not
+ * to reveal *why* access was refused, and reusing the existing not-found
+ * page instead of adding a new one.
+ */
+function guardAdminPath(req: NextRequest, session: { isAdmin?: boolean } | null): NextResponse | null {
+  const segments = req.nextUrl.pathname.split("/").filter(Boolean);
+  const isAdminRoute = segments[0] === "admin" || (segments[0] === "api" && segments[1] === "admin");
+  if (!isAdminRoute) return null;
+
+  if (!session) {
+    const signInUrl = new URL("/signin", req.url);
+    return NextResponse.redirect(signInUrl);
+  }
+
+  if (!session.isAdmin) {
+    return NextResponse.rewrite(new URL("/not-found", req.url));
+  }
+
+  return null;
+}
+
+/**
  * Requests to every brand domain (docs.docgent.io, inkl.docgent.io,
  * vanaheim.docgent.io, northface.docgent.io) arrive via a Cloudflare Worker
  * proxy (proxy.lobkit.com), not direct Vercel domain attachment. The Worker
@@ -91,10 +122,14 @@ function withPublicHost(req: NextRequest): NextRequest {
 type AuthMiddlewareFn = (request: NextRequest, event: NextFetchEvent) => ReturnType<typeof NextResponse.next> | Promise<Response>;
 
 const authMiddleware = auth((req) => {
-  const allowedBrands =
-    (req.auth?.user as { allowedBrands?: string[] } | undefined)?.allowedBrands ?? null;
-  const guarded = guardBrandPath(req, allowedBrands);
+  const user = req.auth?.user as { allowedBrands?: string[]; isAdmin?: boolean } | undefined;
+
+  const guardedAdmin = guardAdminPath(req, req.auth ? { isAdmin: user?.isAdmin } : null);
+  if (guardedAdmin) return guardedAdmin;
+
+  const guarded = guardBrandPath(req, user?.allowedBrands ?? null);
   if (guarded) return guarded;
+
   return NextResponse.next();
 }) as unknown as AuthMiddlewareFn;
 
