@@ -64,16 +64,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async jwt({ token, account, profile }) {
       if (account?.provider) token.provider = account.provider;
-      // Computed once at sign-in (and whenever the token is otherwise
-      // refreshed with a profile present), not on every request: brand
-      // access rarely changes, and middleware needs this list on the Edge
-      // runtime where re-reading brand.yaml off disk is not available.
       const p = profile as { email?: string } | undefined;
-      if (p?.email) {
-        token.allowedBrands = brandsForEmail(p.email).map((b) => b.id);
-        // Computed once at sign-in for the same reason allowedBrands is:
-        // middleware needs it on the Edge runtime without a disk read.
-        token.isAdmin = p.email === ADMIN_EMAIL;
+      // Recompute on every jwt() call where we have an email — either from
+      // the OAuth profile (first sign-in) or from the persisted token.email
+      // (subsequent requests). This ensures isAdmin and allowedBrands are
+      // always current even for sessions issued before this field existed,
+      // without requiring a sign-out/sign-in cycle to pick up new values.
+      const email = p?.email ?? (typeof token.email === "string" ? token.email : undefined);
+      if (email) {
+        token.allowedBrands = brandsForEmail(email).map((b) => b.id);
+        token.isAdmin = email === ADMIN_EMAIL;
       }
       return token;
     },
