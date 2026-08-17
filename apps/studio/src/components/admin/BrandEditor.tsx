@@ -81,6 +81,7 @@ export function BrandEditor({ brandId, initialYaml, scaffold, agentToken }: Prop
     try {
       const res = await fetch(`/api/admin/brands/${brandId}`, {
         method: "PUT",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ yaml }),
       });

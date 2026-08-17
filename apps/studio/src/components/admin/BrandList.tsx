@@ -26,6 +26,7 @@ export function BrandList({ initialBrands }: { initialBrands: BrandSummary[] }) 
     try {
       const res = await fetch("/api/admin/brands", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, name }),
       });
