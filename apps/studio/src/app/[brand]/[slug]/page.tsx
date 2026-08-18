@@ -107,7 +107,8 @@ export default async function DocumentPage({ params, searchParams }: Props) {
     doc = commitSha
       ? await docs.readAt(brand, slug, commitSha)
       : await docs.readDocument(brand, slug);
-  } catch {
+  } catch (e) {
+    console.error(`[doc-page] readDocument failed for ${brand}/${slug}:`, e);
     notFound();
   }
 
