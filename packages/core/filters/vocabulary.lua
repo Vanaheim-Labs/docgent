@@ -306,18 +306,24 @@ function Div(el)
 
   elseif has('kpi-row') or has('kpirow') then
     -- ::kpi-row  horizontal stat panel. Items are bullet list with value:/label: pairs.
+    -- Pandoc stringifies each item as "value: $7.8B label: Total advice market p.a."
+    -- because the YAML-style indented continuation is rendered as plain inline text
+    -- with a SoftBreak. We split on the literal "label:" keyword to extract both parts.
     local items = first_list_items(el.content)
     local stats = {}
     if items then
       for _, item in ipairs(items) do
         local text = inlines_to_text(item)
-        local val = text:match('[Vv]alue%s*:%s*([^\n]+)')
-        local lbl = text:match('[Ll]abel%s*:%s*([^\n]+)')
+        -- Pattern: "value: VAL label: LBL" (SoftBreaks become spaces in stringify)
+        local val = text:match('[Vv]alue%s*:%s*(.-)%s+[Ll]abel%s*:')
+        local lbl = text:match('[Ll]abel%s*:%s*(.+)$')
         if val and lbl then
           table.insert(stats, { value = val:match('^%s*(.-)%s*$'), label = lbl:match('^%s*(.-)%s*$') })
         else
-          local v, l = split_label(text)
-          if v then table.insert(stats, { value = v, label = l or '' }) end
+          -- Fallback: first token before space is value, rest is label
+          local v, l = text:match('^(%S+)%s+(.+)$')
+          if v then table.insert(stats, { value = v, label = l or '' })
+          else table.insert(stats, { value = text, label = '' }) end
         end
       end
     end
@@ -335,11 +341,20 @@ function Div(el)
 
   elseif has('key-figure') or has('keyfig') then
     -- ::key-figure  single big stat with value:, label:, source: lines.
+    -- Content may arrive as a single paragraph block where newlines become spaces.
+    -- Use keyword anchors to split the concatenated string.
     local text = ''
-    for _, b in ipairs(el.content) do text = text .. pandoc.utils.stringify(b) .. '\n' end
-    local value  = (text:match('[Vv]alue%s*:%s*([^\n]+)') or ''):match('^%s*(.-)%s*$')
-    local label  = (text:match('[Ll]abel%s*:%s*([^\n]+)') or ''):match('^%s*(.-)%s*$')
-    local source = text:match('[Ss]ource%s*:%s*([^\n]+)')
+    for _, b in ipairs(el.content) do text = text .. pandoc.utils.stringify(b) .. ' ' end
+    -- Extract value: stops at label: or source:
+    local value  = text:match('[Vv]alue%s*:%s*(.-)%s+[Ll]abel%s*:')
+              or text:match('[Vv]alue%s*:%s*(.-)%s+[Ss]ource%s*:')
+              or text:match('[Vv]alue%s*:%s*(.+)$') or ''
+    -- Extract label: stops at source:
+    local label  = text:match('[Ll]abel%s*:%s*(.-)%s+[Ss]ource%s*:')
+              or text:match('[Ll]abel%s*:%s*(.+)$') or ''
+    local source = text:match('[Ss]ource%s*:%s*(.+)$')
+    value  = value:match('^%s*(.-)%s*$') or value
+    label  = label:match('^%s*(.-)%s*$') or label
     local out = {
       raw('<div class="keyfigure">'),
       raw('<div class="keyfigure-value">' .. esc(value) .. '</div>'),
