@@ -149,9 +149,13 @@ function resolveBrandsDir(): string {
     resolve(here, "..", "..", "..", "..", "brands"),
     resolve(here, "..", "..", "..", "..", "..", "brands"),
     resolve(here, "..", "..", "..", "..", "..", "..", "brands"),
-    // Vercel traces files under the task root preserving repo layout.
+    // Vercel serverless: cwd is /var/task/apps/studio; brands/ lands at /var/task/brands.
+    // Walk up from cwd until we find it.
     join(process.cwd(), "brands"),
+    join(process.cwd(), "..", "brands"),
     join(process.cwd(), "..", "..", "brands"),
+    // Absolute fallback for the known Vercel task-root layout.
+    "/var/task/brands",
   ];
 
   for (const dir of candidates) {
