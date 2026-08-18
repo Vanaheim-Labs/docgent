@@ -214,6 +214,40 @@ blocks:
       resolved: { type: boolean, default: false }
     breakInside: avoid
 
+  - id: chart
+    syntax: "::chart{label=... title=... caption=...}"
+    description: Inline SVG chart with label, title, and caption. Body is raw SVG markup.
+    attrs:
+      label: { type: string, required: false }
+      title: { type: string, required: false }
+      caption: { type: string, required: false }
+    breakInside: avoid
+
+  - id: key-figure
+    syntax: "::key-figure"
+    description: Single prominent metric with value, label, and optional source. Use for
+      one standout statistic per section. Pairs well with surrounding body copy.
+    attrs:
+      value: { type: string, required: true }
+      label: { type: string, required: true }
+      source: { type: string, required: false }
+    breakInside: avoid
+
+  - id: kpi-row
+    syntax: "::kpi-row"
+    description: Horizontal strip of 3–6 KPI metrics. Each list item is a metric with
+      value and label keys. Renders as evenly-spaced cards in a single row.
+    breakInside: avoid
+
+  - id: risk
+    syntax: "::risk{severity=low|medium|high|critical}"
+    description: Risk callout block with severity badge. Body describes the risk and
+      any mitigations. Rendered with colour-coded severity indicator.
+    attrs:
+      severity: { type: enum, values: [low, medium, high, critical], default: medium }
+      title: { type: string, required: false }
+    breakInside: avoid
+
 inlines:
   - id: term
     syntax: "[text]{.term}"
