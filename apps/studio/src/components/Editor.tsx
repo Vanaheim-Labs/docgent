@@ -64,6 +64,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [posture, setPosture] = useState<Posture>("edit");
   const [showOutline, setShowOutline] = useState(true);
   const [folded, setFolded] = useState<number[]>([]);
+  const [showErrors, setShowErrors] = useState(false);
 
   /**
    * Directed rewrite: bar open state plus the scope it was opened against.
@@ -108,6 +109,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   );
   const errors = diagnostics.filter((d) => d.severity === "error");
   const warnings = diagnostics.filter((d) => d.severity === "warning");
+
+  // Auto-close the errors panel once all diagnostics are resolved.
+  useEffect(() => {
+    if (diagnostics.length === 0) setShowErrors(false);
+  }, [diagnostics.length]);
 
   /* ---------------- preview ---------------- */
 
@@ -1156,17 +1162,29 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           )}
           {previewing && <span className="editor-stat">rendering…</span>}
           {errors.length > 0 && (
-            <span className="diag-pill" data-severity="error">
-              {errors.length} error{errors.length > 1 ? "s" : ""}
-            </span>
+            <button
+              className={`diag-pill diag-pill-btn${showErrors ? " diag-pill-active" : ""}`}
+              data-severity="error"
+              onClick={() => setShowErrors((v) => !v)}
+              title={showErrors ? "Hide errors" : "Show all errors"}
+              aria-expanded={showErrors}
+            >
+              {errors.length} error{errors.length > 1 ? "s" : ""} {showErrors ? "▲" : "▼"}
+            </button>
           )}
           {errors.length === 0 && warnings.length > 0 && (
-            <span className="diag-pill" data-severity="warning">
-              {warnings.length} warning{warnings.length > 1 ? "s" : ""}
-            </span>
+            <button
+              className={`diag-pill diag-pill-btn${showErrors ? " diag-pill-active" : ""}`}
+              data-severity="warning"
+              onClick={() => setShowErrors((v) => !v)}
+              title={showErrors ? "Hide warnings" : "Show all warnings"}
+              aria-expanded={showErrors}
+            >
+              {warnings.length} warning{warnings.length > 1 ? "s" : ""} {showErrors ? "▲" : "▼"}
+            </button>
           )}
           {errors.length === 0 && warnings.length === 0 && (
-            <span className="diag-pill" data-severity="ok">valid</span>
+            <span className="diag-pill" data-severity="ok" onClick={() => setShowErrors(false)}>valid ✓</span>
           )}
           {/* Shown only once there is something to describe. An empty field
               sitting beside an unmodified document is a demand for input the
@@ -1396,6 +1414,52 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             onAccept={acceptProposal}
             onReject={closeRewrite}
           />
+        </div>
+      )}
+
+      {showErrors && diagnostics.length > 0 && (
+        <div className="errors-panel" role="dialog" aria-label="Document diagnostics">
+          <div className="errors-panel-header">
+            <span className="errors-panel-title">
+              {errors.length > 0 ? (
+                <>
+                  <span className="errors-panel-icon" data-severity="error">✕</span>
+                  {errors.length} error{errors.length !== 1 ? "s" : ""}
+                  {warnings.length > 0 ? `, ${warnings.length} warning${warnings.length !== 1 ? "s" : ""}` : ""}
+                </>
+              ) : (
+                <>
+                  <span className="errors-panel-icon" data-severity="warning">⚠</span>
+                  {warnings.length} warning{warnings.length !== 1 ? "s" : ""}
+                </>
+              )}
+            </span>
+            <button
+              className="errors-panel-close"
+              onClick={() => setShowErrors(false)}
+              aria-label="Close diagnostics panel"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="errors-panel-body">
+            {diagnostics.map((d, i) => (
+              <button
+                key={i}
+                className="errors-panel-row"
+                data-severity={d.severity}
+                onClick={() => { jumpToLine(d.line); setShowErrors(false); }}
+                title={`Jump to line ${d.line}`}
+              >
+                <span className="errors-panel-severity">{d.severity === "error" ? "E" : "W"}</span>
+                <span className="errors-panel-lineno">L{d.line}</span>
+                <span className="errors-panel-msg">{d.message}</span>
+              </button>
+            ))}
+          </div>
+          <div className="errors-panel-footer">
+            Click any row to jump to that line
+          </div>
         </div>
       )}
 
