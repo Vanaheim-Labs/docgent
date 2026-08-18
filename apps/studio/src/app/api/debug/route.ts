@@ -1,57 +1,51 @@
-import { existsSync, readdirSync } from "node:fs";
-import { resolve, dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { brands as loadBrands } from "@/lib/store";
+import { brands as loadBrands, storesFor } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET() {
-  // Simulate exactly what store.ts does
-  const here = (() => {
-    try { return dirname(fileURLToPath(import.meta.url)); }
-    catch { return typeof __dirname === "string" ? __dirname : process.cwd(); }
-  })();
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const brand = url.searchParams.get("brand") || "increm";
+  const slug = url.searchParams.get("slug") || "cgt-valuation-platform-im";
 
-  const storeHere = (() => {
-    // store.ts is at src/lib/store.ts — same depth resolution but different __dirname
-    // We can infer by checking what BRANDS_DIR resolves to
-    return "(check brandList below)";
-  })();
+  const result: Record<string, unknown> = {
+    brand,
+    slug,
+    step: "starting",
+  };
 
-  const candidates = [
-    resolve(here, "..", "..", "brands"),
-    resolve(here, "..", "..", "..", "brands"),
-    resolve(here, "..", "..", "..", "..", "brands"),
-    resolve(here, "..", "..", "..", "..", "..", "brands"),
-    resolve(here, "..", "..", "..", "..", "..", "..", "brands"),
-    join(process.cwd(), "brands"),
-    join(process.cwd(), "..", "brands"),
-    join(process.cwd(), "..", "..", "brands"),
-    "/var/task/brands",
-  ];
-
-  const found: Record<string, string[] | false> = {};
-  for (const c of candidates) {
-    try { found[c] = readdirSync(c); }
-    catch { found[c] = false; }
-  }
-
-  // Call brands() from store.ts directly to see what it actually returns
-  let brandList: string[] = [];
-  let brandError = "";
+  // Step 1: brands() — disk read
   try {
-    brandList = loadBrands().map(b => b.id);
+    const bs = loadBrands();
+    result.brandsLoaded = bs.map(b => ({ id: b.id, repo: b.repo }));
+    result.step = "brands() ok";
   } catch (e: unknown) {
-    brandError = String(e);
+    result.brandsError = String(e);
+    return Response.json(result);
   }
 
-  return Response.json({
-    cwd: process.cwd(),
-    debugHere: here,
-    storeHere,
-    candidatesFromDebugHere: found,
-    brandList,
-    brandError,
-  });
+  // Step 2: storesFor()
+  let store: Awaited<ReturnType<typeof storesFor>> | null = null;
+  try {
+    store = await storesFor(brand);
+    result.storesForOk = true;
+    result.brandRepo = store.brand.repo;
+    result.step = "storesFor() ok";
+  } catch (e: unknown) {
+    result.storesForError = String(e);
+    return Response.json(result);
+  }
+
+  // Step 3: actual doc read
+  try {
+    const doc = await store.docs.readDocument(brand, slug);
+    result.docRead = true;
+    result.docTitle = doc?.frontmatter?.title ?? "(no title)";
+    result.step = "readDocument() ok";
+  } catch (e: unknown) {
+    result.docReadError = String(e);
+    result.step = "readDocument() FAILED";
+  }
+
+  return Response.json(result);
 }
