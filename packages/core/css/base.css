@@ -1084,3 +1084,161 @@ em.accent { font-style: normal; color: var(--accent); }
 }
 .rm-item td:first-child { color: var(--ink); font-weight: 500; }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHASE H — Final polish
+   Applies across all brands; brand CSS may narrow or override as needed.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ---------- print-color-adjust: exact ------------------------------------ */
+/*
+  Browsers and WeasyPrint may strip tinted backgrounds in print mode unless
+  told not to. Force exact colour rendering for the entire document so
+  callout tints, kpi-card tops, tranche rows, tension-box, and cover all
+  appear as designed.
+*/
+* {
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+/* ---------- tabular-nums extension --------------------------------------- */
+/*
+  roadmap, product-grid, and comparison-grid weren't in the original selector
+  list. Add them so any numeric content aligns properly.
+*/
+.rm-table, .prod-grid, .cg {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ---------- section eyebrow (section-number) ------------------------------ */
+/*
+  The vocabulary filter emits .section-header > .section-number ahead of
+  each h1. Brands style the visual detail (font size, colour, letter-spacing);
+  the base layer handles flow control so the eyebrow never splits from the
+  heading it precedes.
+*/
+.section-number {
+  display: block;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+.section-number + h1 {
+  break-before: avoid;
+  page-break-before: avoid;
+}
+/* The section-number is a structural wrapper; its ::before/::after are
+   reserved for brands to add separators — suppress any core inheritance. */
+.section-number::before { content: none; }
+
+/* ---------- no-break utility --------------------------------------------- */
+/*
+  .no-break keeps a block together with the element that follows it.
+  Used by the vocabulary filter on .section-header wrappers.
+*/
+.no-break {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+/* ---------- section-opener ----------------------------------------------- */
+/*
+  Full-page section dividers. The vocabulary filter emits .section-opener
+  wrapping the eyebrow + H1 + optional blurb. Base layer handles page
+  assignment and page-break semantics; brands control the visual design
+  (padding, ghost numeral, accent rule, etc.).
+*/
+.section-opener {
+  page: section-opener;
+  break-before: page;
+  page-break-before: always;
+}
+
+/* Eyebrow and H1 must stay together on the opener page */
+.section-opener .section-number {
+  break-before: avoid;
+  page-break-before: avoid;
+}
+.section-opener .section-number + h1 {
+  break-before: avoid;
+  page-break-before: avoid;
+}
+
+/* ---------- section-ghost ------------------------------------------------ */
+/*
+  Large ghost numeral behind the section heading. Brands set font-size,
+  opacity, position. Base layer: absolute positioning + non-interactive.
+*/
+.section-ghost {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1;
+}
+
+/* Content on opener pages sits above the ghost */
+.section-opener .section-open,
+.section-opener > .section-number,
+.section-opener > h1 {
+  position: relative;
+  z-index: 2;
+}
+
+/* ---------- heading keep-with-next (belt-and-braces) --------------------- */
+/*
+  The heading rule already sets break-after:avoid on h1-h6. These add the
+  legacy page-break-* aliases WeasyPrint also honours, and extend coverage
+  to h5/h6 which the earlier rule omitted. They also cover .section-header
+  wrappers that the filter emits around h1s on section openers.
+*/
+h5, h6 {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+.section-header {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+/* ---------- widow/orphan extension --------------------------------------- */
+/*
+  The body rule sets orphans:3; widows:3. These extend it to elements that
+  weren't covered: definition blocks, phase blocks, comparison-grid notes.
+*/
+.definition, .phase, .cc-note, .prod-row, .rm-item {
+  orphans: 3;
+  widows: 3;
+}
+
+/* ---------- fine-tuning -------------------------------------------------- */
+/*
+  Small typographic improvements to match the v36 original more closely.
+*/
+
+/* Tighten large headings slightly more than the current -0.015em */
+h1 { letter-spacing: -0.02em; }
+
+/* H2: hairline separator aids navigation in long documents */
+h2 {
+  padding-bottom: 0.15rem;
+  border-bottom: 0.4pt solid var(--rule);
+}
+
+/* H3: stone caps eyebrow treatment matches v36 sub-section style */
+h3 {
+  letter-spacing: 0.02em;
+}
+
+/* Section-number separator dots: brands override colour via --accent */
+.section-number-sep {
+  margin: 0 0.25em;
+  color: var(--accent);
+}
+
+/* Figures: tighten caption spacing */
+.figure-caption { margin-top: 0.3rem; }
+
+/* Tables: last row of a tbody gets a heavier closing rule */
+tbody tr:last-child td {
+  border-bottom: 1pt solid var(--rule);
+}
+
