@@ -192,6 +192,17 @@ blocks:
       Bullet list items under each H3 become em-dash rows.
     breakInside: avoid
 
+  - id: financialtable
+    syntax: "::: financialtable {caption=...}"
+    description: Financial statement table with semantic row types. Wrap a pipe
+      table in this block. Prefix the first cell of each row with section:,
+      sub:, or tot: to get section-header, subtotal, or grand-total treatment.
+      Unprefixed rows render as plain data rows. All columns from col 2 onward
+      are right-aligned with tabular numerals.
+    attrs:
+      caption: { type: string, required: false }
+    breakInside: avoid
+
   - id: roadmap
     syntax: "::: roadmap"
     description: 4-column roadmap table. Use H3 elements with class .head

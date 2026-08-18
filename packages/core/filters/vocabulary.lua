@@ -694,6 +694,87 @@ function Div(el)
     table.insert(out, raw('</table>'))
     return out
 
+  elseif has('financialtable') or has('financial-table') then
+    -- Financial table with semantic row types.
+    --
+    -- Authors annotate the first cell of each row with a prefix:
+    --   section:Label  -> <tr class="section"> — group header (caps divider)
+    --   sub:Label      -> <tr class="sub">     — subtotal (pearl bg, bold, double rule)
+    --   tot:Label      -> <tr class="tot">     — grand total (ink bg, white text)
+    --   (no prefix)    -> plain <tr>
+    --
+    -- Number cells (cols 2+) get class="r" for right-align + tabular-nums.
+    -- The first column gets class="lb" for bold label treatment on sub/tot rows.
+    --
+    -- The fenced div wraps a pipe table — pandoc processes the pipe table
+    -- into a Table AST node which we walk here.
+    local caption = attrget(el, 'caption', '')
+    local out = {}
+    if caption ~= '' then
+      table.insert(out, raw('<p class="datatable-caption">' .. esc(caption) .. '</p>'))
+    end
+    table.insert(out, raw('<table class="financial-table">'))
+
+    for _, b in ipairs(el.content) do
+      if b.t == 'Table' then
+        -- Emit thead from the table's head
+        local head = b.head
+        if head and head.rows and #head.rows > 0 then
+          table.insert(out, raw('<thead>'))
+          for _, row in ipairs(head.rows) do
+            table.insert(out, raw('<tr>'))
+            for i, cell in ipairs(row.cells) do
+              local cls = i == 1 and '' or ' class="r"'
+              local txt = pandoc.utils.stringify(cell.contents)
+              table.insert(out, raw('<th' .. cls .. '>' .. esc(txt) .. '</th>'))
+            end
+            table.insert(out, raw('</tr>'))
+          end
+          table.insert(out, raw('</thead>'))
+        end
+        -- Emit tbody from table bodies
+        table.insert(out, raw('<tbody>'))
+        for _, body in ipairs(b.bodies) do
+          for _, row in ipairs(body.body) do
+            if #row.cells == 0 then goto continue_row end
+            -- First cell determines row type
+            local first_txt = pandoc.utils.stringify(row.cells[1].contents)
+            local row_class = ''
+            local label = first_txt
+            local pfx = first_txt:match('^(section):(.+)$') or
+                        first_txt:match('^(sub):(.+)$') or
+                        first_txt:match('^(tot):(.+)$')
+            if pfx then
+              -- Extract prefix and real label
+              local p, l = first_txt:match('^([^:]+):(.+)$')
+              if p then
+                row_class = p
+                label = l:match('^%s*(.-)%s*$') -- trim
+              end
+            end
+            local tr_open = row_class ~= '' and '<tr class="' .. row_class .. '">' or '<tr>'
+            table.insert(out, raw(tr_open))
+            -- First cell
+            local first_cls = 'lb'
+            table.insert(out, raw('<td class="' .. first_cls .. '">' .. esc(label) .. '</td>'))
+            -- Remaining cells
+            for i = 2, #row.cells do
+              local txt = pandoc.utils.stringify(row.cells[i].contents)
+              table.insert(out, raw('<td class="r">' .. esc(txt) .. '</td>'))
+            end
+            table.insert(out, raw('</tr>'))
+            ::continue_row::
+          end
+        end
+        table.insert(out, raw('</tbody>'))
+      else
+        -- Non-table content (e.g. paragraphs) emitted as-is
+        table.insert(out, b)
+      end
+    end
+    table.insert(out, raw('</table>'))
+    return out
+
   elseif has('signature') then
     local name = attrget(el, 'name', '')
     local role = el.attributes['role']
