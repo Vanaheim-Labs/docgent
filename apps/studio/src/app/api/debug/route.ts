@@ -1,13 +1,22 @@
 import { existsSync, readdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { brands as loadBrands } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET() {
+  // Simulate exactly what store.ts does
   const here = (() => {
     try { return dirname(fileURLToPath(import.meta.url)); }
     catch { return typeof __dirname === "string" ? __dirname : process.cwd(); }
+  })();
+
+  const storeHere = (() => {
+    // store.ts is at src/lib/store.ts — same depth resolution but different __dirname
+    // We can infer by checking what BRANDS_DIR resolves to
+    return "(check brandList below)";
   })();
 
   const candidates = [
@@ -16,47 +25,33 @@ export async function GET() {
     resolve(here, "..", "..", "..", "..", "brands"),
     resolve(here, "..", "..", "..", "..", "..", "brands"),
     resolve(here, "..", "..", "..", "..", "..", "..", "brands"),
-    resolve(process.cwd(), "brands"),
-    resolve(process.cwd(), "..", "..", "brands"),
+    join(process.cwd(), "brands"),
+    join(process.cwd(), "..", "brands"),
+    join(process.cwd(), "..", "..", "brands"),
+    "/var/task/brands",
   ];
 
-  const found: Record<string, boolean | string[]> = {};
+  const found: Record<string, string[] | false> = {};
   for (const c of candidates) {
-    try {
-      const entries = readdirSync(c);
-      found[c] = entries;
-    } catch {
-      found[c] = false;
-    }
+    try { found[c] = readdirSync(c); }
+    catch { found[c] = false; }
   }
 
-  // Try the GitHub API fallback directly
-  let githubFallback: string | object = "not attempted";
+  // Call brands() from store.ts directly to see what it actually returns
+  let brandList: string[] = [];
+  let brandError = "";
   try {
-    const token = process.env.DOCGENT_BRANDS_TOKEN;
-    if (token) {
-      const res = await fetch(
-        "https://api.github.com/repos/Vanaheim-Labs/docgent-brands/contents/increm/brand.yaml",
-        { headers: { Authorization: `token ***}`, Accept: "application/vnd.github.v3+json" } }
-      );
-      githubFallback = { status: res.status, ok: res.ok };
-    } else {
-      githubFallback = "DOCGENT_BRANDS_TOKEN not set";
-    }
+    brandList = loadBrands().map(b => b.id);
   } catch (e: unknown) {
-    githubFallback = String(e);
+    brandError = String(e);
   }
 
   return Response.json({
     cwd: process.cwd(),
-    here,
-    candidatesChecked: found,
-    githubFallback,
-    env: {
-      DOCGENT_BRANDS_TOKEN: !!process.env.DOCGENT_BRANDS_TOKEN,
-      DOCGENT_BRANDS_WRITE_TOKEN: !!process.env.DOCGENT_BRANDS_WRITE_TOKEN,
-      DOCGENT_GH_TOKEN: !!process.env.DOCGENT_GH_TOKEN,
-      DOCGENT_BRANDS_REPO: process.env.DOCGENT_BRANDS_REPO ?? "(default)",
-    },
+    debugHere: here,
+    storeHere,
+    candidatesFromDebugHere: found,
+    brandList,
+    brandError,
   });
 }
