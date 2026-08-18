@@ -770,12 +770,33 @@ function Header(el)
     '<span class="section-number-label">' .. esc(label) .. '</span>' ..
     '</div>')
 
+  -- Emit the H1 as raw HTML so it stays inside the .section-opener block.
+  -- When el (a native pandoc Header) is placed between raw open/close divs,
+  -- WeasyPrint's block formatter can pull it out of the containing div context.
+  -- Rendering it as raw HTML keeps the heading firmly inside the opener.
+  local h1_id  = el.identifier ~= '' and (' id="' .. el.identifier .. '"') or ''
+  local h1_cls = 'class="section-h1"'
+  -- Preserve any data-nav-title attribute the heading carries
+  local nav_attr = ''
+  if el.attributes['data-nav-title'] then
+    nav_attr = ' data-nav-title="' .. esc(el.attributes['data-nav-title']) .. '"'
+  end
+  local h1_text = esc(inlines_to_text(el.content))
+  local heading = raw(
+    '<h1' .. h1_id .. ' ' .. h1_cls .. nav_attr .. '>' .. h1_text .. '</h1>')
+
+  -- Also set string-set on a hidden span so the running header still updates
+  -- to the new section title even though the H1 is now raw HTML.
+  local string_set = raw(
+    '<span class="section-string-set" style="position:absolute;visibility:hidden;">' ..
+    esc(inlines_to_text(el.content)) .. '</span>')
+
   -- Wrap the whole section opener (ghost + eyebrow + heading) in .section-opener
   -- so the CSS page: and padding-top rules have an element to land on.
-  local open  = raw('<div class="section-opener no-break">')
+  local open  = raw('<div class="section-opener">')
   local close = raw('</div>')
 
-  return { open, ghost, eyebrow, el, close }
+  return { open, ghost, string_set, eyebrow, heading, close }
 end
 
 

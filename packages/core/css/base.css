@@ -1158,9 +1158,35 @@ em.accent { font-style: normal; color: var(--accent); }
   break-before: avoid;
   page-break-before: avoid;
 }
-.section-opener .section-number + h1 {
+.section-opener .section-number + h1,
+.section-opener .section-number + .section-h1 {
   break-before: avoid;
   page-break-before: avoid;
+}
+
+/* .section-h1: the H1 inside a section-opener is emitted as raw HTML so it
+   stays firmly inside the containing div (native pandoc Header elements can
+   be pulled out of raw-HTML block context by WeasyPrint's block formatter).
+   Style it identically to h1 so brands only need to target one selector. */
+.section-h1 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--ink);
+  break-after: avoid;
+  page-break-after: avoid;
+  /* string-set so the running header updates to the new section title */
+  string-set: section content();
+}
+
+/* Hidden span that forces WeasyPrint's string-set to fire for the section
+   running header. Because .section-h1 is raw HTML, the filter also emits
+   this span to carry the string-set value. */
+.section-string-set {
+  string-set: section content();
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* ---------- section-ghost ------------------------------------------------ */
