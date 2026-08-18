@@ -30,7 +30,7 @@ export async function GET(
   const ref = new URL(req.url).searchParams.get("ref") || undefined;
 
   try {
-    const { git, docs } = storesFor(brand);
+    const { git, docs } = await storesFor(brand);
 
     // Resolve HEAD to a concrete commit so the current version is cacheable
     // too - it stops being "current" the moment someone commits.

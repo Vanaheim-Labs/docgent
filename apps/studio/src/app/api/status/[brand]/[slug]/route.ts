@@ -53,7 +53,7 @@ export async function POST(
   }
 
   try {
-    const { docs } = storesFor(brand);
+    const { docs } = await storesFor(brand);
     const doc = await docs.readDocument(brand, slug);
     const from = doc.frontmatter?.status || "draft";
 
@@ -132,7 +132,7 @@ export async function GET(
   if (!authz.ok) return new Response("unauthorised", { status: 401 });
 
   try {
-    const { docs } = storesFor(brand);
+    const { docs } = await storesFor(brand);
     const doc = await docs.readDocument(brand, slug);
     const from = doc.frontmatter?.status || "draft";
     return Response.json({ status: from, allowed: TRANSITIONS[from] ?? [] });

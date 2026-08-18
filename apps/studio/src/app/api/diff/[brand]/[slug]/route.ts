@@ -40,7 +40,7 @@ export async function GET(
   }
 
   try {
-    const { docs } = storesFor(brand);
+    const { docs } = await storesFor(brand);
 
     const [beforeDoc, afterDoc] = await Promise.all([
       docs.readAt(brand, slug, base),

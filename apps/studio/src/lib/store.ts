@@ -308,15 +308,68 @@ export function agentAuthorForBrand(brandId: string): { name: string; email: str
 // under another brand's route.
 const cached = new Map<string, { git: any; docs: any; brand: Brand }>();
 
+/**
+ * Loads brand config from the docgent-brands git repo via the GitHub API.
+ *
+ * This is the fallback path for when the brands/ directory is absent from
+ * the serverless bundle (e.g. when outputFileTracingIncludes doesn't capture
+ * the files, or when the clone-brands prebuild step didn't run). It reads
+ * brand.yaml directly from GitHub rather than the local filesystem, then
+ * synthesises a Brand record from the same scalar/accessBlock parsers the
+ * disk path uses, so the two paths stay in sync.
+ *
+ * Returns null when the brand doesn't exist or can't be fetched.
+ */
+async function loadBrandFromGit(brandId: string): Promise<Brand | null> {
+  const writeToken = process.env.DOCGENT_BRANDS_WRITE_TOKEN;
+  const readToken = process.env.DOCGENT_BRANDS_TOKEN || writeToken;
+  if (!readToken) return null;
+
+  const repoRef = process.env.DOCGENT_BRANDS_REPO ?? "Vanaheim-Labs/docgent-brands";
+  const [owner, repo] = repoRef.split("/");
+  const branch = process.env.DOCGENT_BRANCH ?? "main";
+
+  try {
+    // Use the GitHub contents API to fetch brand.yaml directly.
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${brandId}/brand.yaml?ref=${branch}`;
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `token ${readToken}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { content?: string };
+    if (!data.content) return null;
+    // GitHub returns content as base64 with embedded newlines.
+    const src = Buffer.from(data.content.replace(/\n/g, ""), "base64").toString("utf-8");
+    const repoField = scalar(src, "repo");
+    if (!repoField) return null;
+    return { id: brandId, name: scalar(src, "name") || brandId, repo: repoField, access: accessBlock(src) };
+  } catch {
+    return null;
+  }
+}
+
 /** Git and document stores for one brand. */
-export function storesFor(brandId: string) {
+export async function storesFor(brandId: string): Promise<{ git: any; docs: any; brand: Brand }> {
   const hit = cached.get(brandId);
   if (hit) return hit;
 
   const token = process.env.DOCGENT_GH_TOKEN;
   if (!token) throw new Error("DOCGENT_GH_TOKEN is not set");
 
-  const brand = findBrand(brandId);
+  // Try disk first (dev + correctly bundled Vercel deploys); fall back to the
+  // GitHub API for serverless environments where brands/ didn't make it into
+  // the bundle. The fallback costs one extra GitHub API call per cold start
+  // per brand, which is negligible compared to the document reads that follow.
+  let brand = findBrand(brandId);
+  if (!brand) {
+    brand = await loadBrandFromGit(brandId);
+    // Warm the in-memory cache so subsequent requests in the same function
+    // instance don't need another API call.
+    if (brand) brandCache = [...(brandCache ?? []), brand];
+  }
   if (!brand) throw new Error(`Unknown brand '${brandId}'`);
 
   const [owner, repo] = brand.repo.split("/");
@@ -347,7 +400,7 @@ export async function listAllDocuments(
   await Promise.all(
     brands().map(async (b) => {
       try {
-        const { docs } = storesFor(b.id);
+        const { docs } = await storesFor(b.id);
         // Frontmatter is what makes the index readable — titles, status and
         // dates instead of slugs and repo paths.
         const res = await docs.listDocuments({ brand: b.id, withFrontmatter: true });
@@ -393,7 +446,7 @@ export async function listAllDocuments(
     await Promise.all(
       documents.map(async (d) => {
         try {
-          const { docs } = storesFor(d.brand);
+          const { docs } = await storesFor(d.brand);
           const [entry] = await docs.timeline(d.brand, d.slug, { limit: 1 });
           if (!entry) return;
           const subject = String(entry.subject || entry.message || "").trim();

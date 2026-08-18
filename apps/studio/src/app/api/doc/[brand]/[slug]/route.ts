@@ -24,7 +24,7 @@ export async function GET(
   const ref = new URL(req.url).searchParams.get("ref") || undefined;
 
   try {
-    const { docs } = storesFor(brand);
+    const { docs } = await storesFor(brand);
     const doc = ref
       ? await docs.readAt(brand, slug, ref)
       : await docs.readDocument(brand, slug);
@@ -97,7 +97,7 @@ export async function PUT(
 
   // Guard 2: optimistic concurrency, plus attribution.
   try {
-    const { docs } = storesFor(brand);
+    const { docs } = await storesFor(brand);
     const author = authz.author;
 
     const result = await docs.saveDocument(brand, slug, content, {

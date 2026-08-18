@@ -89,7 +89,7 @@ export default async function DocumentPage({ params, searchParams }: Props) {
   const allowedBrands = (session.user as { allowedBrands?: string[] } | undefined)?.allowedBrands ?? [];
   if (!allowedBrands.includes(brand)) notFound();
 
-  const { docs } = storesFor(brand);
+  const { docs } = await storesFor(brand);
 
   let documents: DocSummary[] = [];
   try {

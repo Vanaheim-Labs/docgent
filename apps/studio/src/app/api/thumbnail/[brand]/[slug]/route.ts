@@ -26,7 +26,7 @@ export async function GET(
   const ref = new URL(req.url).searchParams.get("ref") || undefined;
 
   try {
-    const { git, docs } = storesFor(brand);
+    const { git, docs } = await storesFor(brand);
 
     let commitSha = ref;
     if (!commitSha) {

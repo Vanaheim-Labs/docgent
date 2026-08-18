@@ -91,7 +91,7 @@ export async function POST(
   const who = session.user.email || session.user.name || "unknown";
 
   try {
-    const { docs } = storesFor(brand);
+    const { docs } = await storesFor(brand);
     const author = {
       name:
         session.user.name ||

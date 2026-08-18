@@ -129,7 +129,7 @@ export async function fetchDocPreviewMeta(
   if (!brandInfo) return null;
 
   try {
-    const { docs } = storesFor(brand);
+    const { docs } = await storesFor(brand);
     const doc = ref ? await docs.readAt(brand, slug, ref) : await docs.readDocument(brand, slug);
     const fm = doc.frontmatter || {};
 

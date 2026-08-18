@@ -58,7 +58,7 @@ export async function POST(
   if (!ref) return Response.json({ error: "'ref' is required" }, { status: 400 });
 
   try {
-    const { docs } = storesFor(brand);
+    const { docs } = await storesFor(brand);
 
     const [source, head, timeline] = await Promise.all([
       docs.readAt(brand, slug, ref),

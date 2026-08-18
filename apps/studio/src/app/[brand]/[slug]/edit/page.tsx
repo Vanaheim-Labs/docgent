@@ -18,7 +18,7 @@ export default async function EditPage({ params }: Props) {
 
   let doc;
   try {
-    const { docs } = storesFor(brand);
+    const { docs } = await storesFor(brand);
     doc = await docs.readDocument(brand, slug);
   } catch {
     notFound();

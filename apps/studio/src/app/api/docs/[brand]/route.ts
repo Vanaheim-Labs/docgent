@@ -36,7 +36,7 @@ export async function GET(
   const doctypeFilter = url.searchParams.get("doctype") || undefined;
 
   try {
-    const { docs } = storesFor(brand);
+    const { docs } = await storesFor(brand);
     const { documents } = await docs.listDocuments({ brand, withFrontmatter: true });
 
     let out = documents.map((d: (typeof documents)[number]) => {
