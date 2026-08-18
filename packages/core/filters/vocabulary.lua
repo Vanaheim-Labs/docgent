@@ -127,14 +127,19 @@ function Div(el)
     return out
 
   elseif has('figure') then
-    local src = attrget(el, 'src', '')
+    -- Phase F: if src is non-empty, emit <img>. Otherwise pass content through
+    -- directly — allows inline SVG, raw HTML, or any other block content.
+    local src     = el.attributes['src'] or ''
     local caption = el.attributes['caption']
-    local source = el.attributes['source']
-    local width = attrget(el, 'width', 'column')
-    local out = {
-      raw('<figure class="figure" data-width="' .. esc(width) .. '">'),
-      raw('<img src="' .. esc(src) .. '" alt="' .. esc(caption or '') .. '">')
-    }
+    local source  = el.attributes['source']
+    local width   = attrget(el, 'width', 'column')
+    local out     = { raw('<figure class="figure" data-width="' .. esc(width) .. '">') }
+    if src ~= '' then
+      table.insert(out, raw('<img src="' .. esc(src) .. '" alt="' .. esc(caption or '') .. '">'))
+    else
+      -- Content passthrough: inline SVG, raw HTML, tables, etc.
+      for _, b in ipairs(el.content) do table.insert(out, b) end
+    end
     if caption then
       table.insert(out, raw('<figcaption class="figure-caption">' .. esc(caption) .. '</figcaption>'))
     end
@@ -142,6 +147,36 @@ function Div(el)
       table.insert(out, raw('<div class="figure-source">Source: ' .. esc(source) .. '</div>'))
     end
     table.insert(out, raw('</figure>'))
+    return out
+
+  elseif has('chart') then
+    -- Phase F: chart primitive. Wraps any content (SVG, raw HTML) in figure.chart
+    -- with optional chart-label (teal caps), chart-title (Crimson Pro 14pt), figcaption.
+    local label   = el.attributes['label']
+    local title   = el.attributes['title']
+    local caption = el.attributes['caption']
+    local source  = el.attributes['source']
+    local out     = { raw('<figure class="figure chart">') }
+    if label then
+      table.insert(out, raw('<div class="chart-label">' .. esc(label) .. '</div>'))
+    end
+    if title then
+      table.insert(out, raw('<div class="chart-title">' .. esc(title) .. '</div>'))
+    end
+    for _, b in ipairs(el.content) do table.insert(out, b) end
+    if caption then
+      table.insert(out, raw('<figcaption class="figure-caption">' .. esc(caption) .. '</figcaption>'))
+    end
+    if source then
+      table.insert(out, raw('<div class="figure-source">Source: ' .. esc(source) .. '</div>'))
+    end
+    table.insert(out, raw('</figure>'))
+    return out
+
+  elseif has('raw-html') or has('rawhtml') then
+    -- Phase F: pure HTML passthrough. Content passes through unchanged.
+    local out = {}
+    for _, b in ipairs(el.content) do table.insert(out, b) end
     return out
 
   elseif has('datatable') then
