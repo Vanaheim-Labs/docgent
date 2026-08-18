@@ -46,7 +46,8 @@ function stripInlineMarkup(text: string): string {
 
 /** Pulls the first paragraph out of a `::: summary` ... `:::` fenced block,
  *  if the document has one. Returns null if there is no summary block or it
- *  has no text content. */
+ *  has no text content. Operates on raw content — frontmatter is irrelevant
+ *  here because the summary block always appears in the body. */
 function extractSummaryBlock(content: string): string | null {
   const match = content.match(/:::\s*summary\s*\n([\s\S]*?)\n:::/);
   if (!match) return null;
@@ -58,11 +59,19 @@ function extractSummaryBlock(content: string): string | null {
   return paragraph ? stripInlineMarkup(paragraph) : null;
 }
 
+/** Strips the YAML frontmatter block (--- ... ---) from raw document content,
+ *  returning only the body. Safe to call even when no frontmatter is present. */
+function stripFrontmatter(content: string): string {
+  const match = content.match(/^---[\s\S]*?\n---\s*\n/);
+  return match ? content.slice(match[0].length) : content;
+}
+
 /** Falls back to the first real paragraph of the document body - skipping
- *  frontmatter (already stripped by the store), headings, and block
- *  fences - when there is no summary block to use instead. */
+ *  frontmatter, headings, and block fences - when there is no summary block
+ *  to use instead. */
 function extractFirstParagraph(content: string): string | null {
-  const lines = content.split("\n");
+  const body = stripFrontmatter(content);
+  const lines = body.split("\n");
   const buffer: string[] = [];
   for (const line of lines) {
     const trimmed = line.trim();

@@ -26,8 +26,24 @@ export async function GET(
     return new Response("not found", { status: 404 });
   }
 
-  const classification = meta.classification;
-  const isSensitive = classification === "confidential" || classification === "restricted" || classification === "Strictly Confidential";
+  const classification = meta.classification?.toLowerCase();
+  const isSensitive =
+    classification === "confidential" ||
+    classification === "restricted" ||
+    classification === "strictly confidential";
+
+  const versionLabel = meta.version
+    ? meta.version.startsWith("v")
+      ? meta.version
+      : `v${meta.version}`
+    : null;
+
+  // Clamp title font size: very long titles drop to 40px to stay on 2 lines
+  const titleFontSize = meta.title.length > 80 ? 40 : meta.title.length > 55 ? 48 : 60;
+
+  // Show description snippet only if it's genuinely informative (not just the fallback)
+  const showDescription =
+    meta.description && meta.description !== "A Docgent document." && !meta.subtitle;
 
   return new ImageResponse(
     (
@@ -38,80 +54,162 @@ export async function GET(
           justifyContent: "space-between",
           width: "100%",
           height: "100%",
-          padding: "64px 72px",
-          background: "linear-gradient(135deg, #0f2438 0%, #1f4b6e 60%, #2c6690 100%)",
+          background: "linear-gradient(145deg, #0b1e30 0%, #163652 55%, #1e5278 100%)",
           color: "#ffffff",
           fontFamily: '"Inter", "Helvetica Neue", Arial, sans-serif',
+          position: "relative",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div
-            style={{
-              display: "flex",
-              fontSize: 26,
-              fontWeight: 700,
-              letterSpacing: -0.5,
-              opacity: 0.92,
-            }}
-          >
-            {meta.brandName}
-          </div>
+        {/* Subtle top accent bar */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 4,
+            background: "linear-gradient(90deg, #4a9eda 0%, #2d7cbf 50%, #1a5c9a 100%)",
+            display: "flex",
+          }}
+        />
+
+        {/* Header: brand name + Docgent wordmark */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "52px 72px 0",
+          }}
+        >
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 10,
-              fontSize: 20,
-              opacity: 0.75,
+              gap: 12,
             }}
           >
-            Docgent
-          </div>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          {meta.doctype && (
             <div
               style={{
                 display: "flex",
-                fontSize: 22,
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: 2,
-                opacity: 0.7,
+                fontSize: 28,
+                fontWeight: 700,
+                letterSpacing: -0.5,
+                color: "#ffffff",
               }}
             >
-              {meta.doctype}
+              {meta.brandName}
             </div>
-          )}
+            {meta.doctype && (
+              <>
+                <div style={{ display: "flex", opacity: 0.35, fontSize: 24 }}>·</div>
+                <div
+                  style={{
+                    display: "flex",
+                    fontSize: 16,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: 1.5,
+                    color: "rgba(255,255,255,0.55)",
+                    paddingTop: 3,
+                  }}
+                >
+                  {meta.doctype}
+                </div>
+              </>
+            )}
+          </div>
           <div
             style={{
               display: "flex",
-              fontSize: meta.title.length > 60 ? 48 : 60,
-              fontWeight: 750,
-              lineHeight: 1.08,
-              letterSpacing: -1,
-              maxWidth: 980,
+              fontSize: 18,
+              fontWeight: 500,
+              color: "rgba(255,255,255,0.4)",
+              letterSpacing: 0.5,
+            }}
+          >
+            docs.docgent.io
+          </div>
+        </div>
+
+        {/* Main content: title + subtitle/description */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+            padding: "0 72px",
+            flex: 1,
+            justifyContent: "center",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              fontSize: titleFontSize,
+              fontWeight: 800,
+              lineHeight: 1.1,
+              letterSpacing: -1.5,
+              color: "#ffffff",
+              maxWidth: 1000,
             }}
           >
             {meta.title}
           </div>
           {meta.subtitle && (
-            <div style={{ display: "flex", fontSize: 28, opacity: 0.82, maxWidth: 900 }}>
+            <div
+              style={{
+                display: "flex",
+                fontSize: 26,
+                lineHeight: 1.4,
+                color: "rgba(255,255,255,0.72)",
+                maxWidth: 900,
+              }}
+            >
               {meta.subtitle}
+            </div>
+          )}
+          {showDescription && (
+            <div
+              style={{
+                display: "flex",
+                fontSize: 22,
+                lineHeight: 1.5,
+                color: "rgba(255,255,255,0.58)",
+                maxWidth: 860,
+              }}
+            >
+              {meta.description.length > 120
+                ? meta.description.slice(0, 117) + "…"
+                : meta.description}
             </div>
           )}
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 22 }}>
+        {/* Footer: status, classification, version, date */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "0 72px 52px",
+            borderTop: "1px solid rgba(255,255,255,0.08)",
+            paddingTop: 24,
+            marginTop: 24,
+          }}
+        >
           {meta.status && (
             <div
               style={{
                 display: "flex",
-                padding: "8px 18px",
-                borderRadius: 999,
-                background: "rgba(255,255,255,0.16)",
+                padding: "7px 16px",
+                borderRadius: 6,
+                background: "rgba(255,255,255,0.12)",
+                border: "1px solid rgba(255,255,255,0.18)",
+                fontSize: 18,
+                fontWeight: 600,
                 textTransform: "capitalize",
+                letterSpacing: 0.3,
               }}
             >
               {meta.status}
@@ -121,20 +219,55 @@ export async function GET(
             <div
               style={{
                 display: "flex",
-                padding: "8px 18px",
-                borderRadius: 999,
-                background: "rgba(214,80,80,0.35)",
-                border: "1px solid rgba(255,255,255,0.3)",
+                padding: "7px 16px",
+                borderRadius: 6,
+                background: "rgba(200,60,60,0.3)",
+                border: "1px solid rgba(255,100,100,0.4)",
+                fontSize: 18,
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+                color: "rgba(255,180,180,1)",
               }}
             >
-              {classification}
+              {meta.classification}
             </div>
           )}
-          {meta.version && (
-            <div style={{ display: "flex", opacity: 0.75 }}>v{meta.version}</div>
+          {versionLabel && (
+            <div
+              style={{
+                display: "flex",
+                fontSize: 18,
+                color: "rgba(255,255,255,0.45)",
+                fontWeight: 500,
+              }}
+            >
+              {versionLabel}
+            </div>
+          )}
+          {meta.client && (
+            <div
+              style={{
+                display: "flex",
+                fontSize: 18,
+                color: "rgba(255,255,255,0.45)",
+                fontWeight: 500,
+              }}
+            >
+              {meta.client}
+            </div>
           )}
           {meta.date && (
-            <div style={{ display: "flex", opacity: 0.75, marginLeft: "auto" }}>{meta.date}</div>
+            <div
+              style={{
+                display: "flex",
+                fontSize: 18,
+                color: "rgba(255,255,255,0.4)",
+                marginLeft: "auto",
+              }}
+            >
+              {meta.date}
+            </div>
           )}
         </div>
       </div>
