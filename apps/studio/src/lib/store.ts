@@ -440,6 +440,107 @@ export function repoSlug(brandId?: string) {
  * That is a Phase 3 concern, not something Phase 2 needs to solve.
  */
 
+/**
+ * Git-backed store pointing at the docgent-brands repo.
+ *
+ * Brand config (brand.yaml, assets) lives in Vanaheim-Labs/docgent-brands,
+ * not in a per-brand documents repo. This store is the single write path for
+ * agent-driven brand config updates so every change carries a signed commit
+ * with the agent's identity, and the brands repo history becomes a reliable
+ * audit trail of who changed what and why.
+ *
+ * Env vars:
+ *   DOCGENT_BRANDS_REPO  — "owner/repo" for the brands config store
+ *                          (default: "Vanaheim-Labs/docgent-brands")
+ *   DOCGENT_GH_TOKEN     — PAT with repo write scope (same as document stores)
+ *   DOCGENT_BRANCH       — branch to write to (default: "main")
+ */
+function brandsGitStore(): InstanceType<typeof GitStore> {
+  const token = process.env.DOCGENT_GH_TOKEN;
+  if (!token) throw new Error("DOCGENT_GH_TOKEN is not set");
+  const repoRef = process.env.DOCGENT_BRANDS_REPO ?? "Vanaheim-Labs/docgent-brands";
+  const [owner, repo] = repoRef.split("/");
+  const branch = process.env.DOCGENT_BRANCH ?? "main";
+  return new GitStore({ owner, repo, token, branch });
+}
+
+/**
+ * Reads brand.yaml from the docgent-brands git repo.
+ * Returns { content, sha } so callers can use the SHA for safe writes later.
+ * Throws if the brand or file does not exist.
+ */
+export async function getBrandYamlFromGit(
+  brandId: string
+): Promise<{ content: string; sha: string }> {
+  const git = brandsGitStore();
+  const file = await (git as any).readFile(`${brandId}/brand.yaml`);
+  return { content: file.content as string, sha: file.sha as string };
+}
+
+/**
+ * Writes brand.yaml to the docgent-brands git repo as a signed commit.
+ *
+ * Uses the same optimistic-concurrency model as document writes: the caller
+ * must supply the blob sha they based their edit on. If HEAD has moved since
+ * that read, the write is rejected with StaleWriteError (→ 409) rather than
+ * silently clobbering.
+ *
+ * The commit is attributed to the brand's agent identity so the brands repo
+ * history clearly distinguishes agent-authored config changes.
+ */
+export async function writeBrandYamlToGit(
+  brandId: string,
+  yaml: string,
+  sha: string,
+  author: { name: string; email: string },
+  message?: string
+): Promise<{ sha: string; commit: { sha: string; url: string } | null; changed: boolean }> {
+  const git = brandsGitStore();
+  const commitMessage = message ?? `feat(${brandId}): update brand config via agent`;
+  return (git as any).writeFile(`${brandId}/brand.yaml`, yaml, {
+    message: commitMessage,
+    sha,
+    author: { name: author.name, email: author.email, date: new Date().toISOString() },
+  });
+}
+
+/**
+ * Uploads or replaces an asset file in the docgent-brands git repo.
+ *
+ * Accepted content: UTF-8 text (SVG, CSS) or base64-encoded binary (PNG, etc.).
+ * The encoding field tells GitStore which path to take — "base64" for images,
+ * "utf-8" (default) for text.
+ *
+ * No baseSha required: assets are always overwritten, not diff-merged.
+ * We don't use StaleWrite protection here because two agents uploading the
+ * same logo file is idempotent — the last writer wins, and that's correct for
+ * assets (unlike prose edits where the last writer might clobber content).
+ */
+export async function writeBrandAssetToGit(
+  brandId: string,
+  filename: string,
+  content: string,
+  encoding: "utf-8" | "base64",
+  author: { name: string; email: string },
+  message?: string
+): Promise<{ sha: string; commit: { sha: string; url: string } | null; changed: boolean }> {
+  const git = brandsGitStore();
+  // Read current sha if the file exists so we can supply it for a clean update.
+  let currentSha: string | undefined;
+  try {
+    const existing = await (git as any).readFile(`${brandId}/assets/${filename}`);
+    currentSha = existing.sha;
+  } catch {
+    // File doesn't exist yet — that's fine, create is sha-free.
+  }
+  const commitMessage = message ?? `feat(${brandId}): upload asset ${filename} via agent`;
+  return (git as any).writeFile(`${brandId}/assets/${filename}`, content, {
+    message: commitMessage,
+    ...(currentSha ? { sha: currentSha } : {}),
+    author: { name: author.name, email: author.email, date: new Date().toISOString() },
+  });
+}
+
 /** Raw brand.yaml text for the admin editor. Null if the brand or file
  *  does not exist, so callers can 404 rather than show an empty editor. */
 export function getBrandYamlSource(brandId: string): string | null {
