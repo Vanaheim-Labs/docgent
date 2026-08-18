@@ -318,13 +318,19 @@ def _stage(work: Path, markdown: str, brand: dict, fm: dict,
 
 
 def _run_pandoc(md_path, html_path, brand, brand_id, fm, sheets, source_lines):
+    # Brand-specific template override: if laurion/templates/document.html exists,
+    # use it instead of the core template. This lets brands define a custom cover
+    # without touching the shared core template.
+    brand_template = Path(brand["_dir"]) / "templates" / "document.html"
+    active_template = brand_template if brand_template.exists() else TEMPLATE
+
     cmd = [
         "pandoc",
         str(md_path),
         "--from", PANDOC_EXTENSIONS,
         "--to", "html5",
         "--standalone",
-        "--template", str(TEMPLATE),
+        "--template", str(active_template),
         "--lua-filter", str(FILTER),
         "--lua-filter", str(MICROTYPE_FILTER),
         "--section-divs",
