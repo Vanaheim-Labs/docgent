@@ -90,8 +90,9 @@ function Div(el)
   local function has(c) return classes:includes(c) end
 
   if has('callout') then
-    local kind = attrget(el, 'kind', 'note')
-    local title = el.attributes['title']
+    -- Accept type=/label= (Tifin convention) alongside kind=/title= (core convention)
+    local kind = attrget(el, 'kind', attrget(el, 'type', 'note'))
+    local title = el.attributes['title'] or el.attributes['label']
     local out = { raw('<aside class="callout" data-kind="' .. esc(kind) .. '">') }
     if title then
       table.insert(out, raw('<div class="callout-title">' .. esc(title) .. '</div>'))
@@ -302,6 +303,202 @@ function Div(el)
     end
     if #out == 0 then return el end
     return out
+
+  elseif has('kpi-row') or has('kpirow') then
+    -- ::kpi-row  horizontal stat panel. Items are bullet list with value:/label: pairs.
+    local items = first_list_items(el.content)
+    local stats = {}
+    if items then
+      for _, item in ipairs(items) do
+        local text = inlines_to_text(item)
+        local val = text:match('[Vv]alue%s*:%s*([^\n]+)')
+        local lbl = text:match('[Ll]abel%s*:%s*([^\n]+)')
+        if val and lbl then
+          table.insert(stats, { value = val:match('^%s*(.-)%s*$'), label = lbl:match('^%s*(.-)%s*$') })
+        else
+          local v, l = split_label(text)
+          if v then table.insert(stats, { value = v, label = l or '' }) end
+        end
+      end
+    end
+    local out = { raw('<div class="kpi-row">') }
+    for _, stat in ipairs(stats) do
+      table.insert(out, raw(
+        '<div class="kpi">' ..
+        '<span class="kpi-n">' .. esc(stat.value) .. '</span>' ..
+        '<span class="kpi-l">' .. esc(stat.label) .. '</span>' ..
+        '</div>'
+      ))
+    end
+    table.insert(out, raw('</div>'))
+    return out
+
+  elseif has('key-figure') or has('keyfig') then
+    -- ::key-figure  single big stat with value:, label:, source: lines.
+    local text = ''
+    for _, b in ipairs(el.content) do text = text .. pandoc.utils.stringify(b) .. '\n' end
+    local value  = (text:match('[Vv]alue%s*:%s*([^\n]+)') or ''):match('^%s*(.-)%s*$')
+    local label  = (text:match('[Ll]abel%s*:%s*([^\n]+)') or ''):match('^%s*(.-)%s*$')
+    local source = text:match('[Ss]ource%s*:%s*([^\n]+)')
+    local out = {
+      raw('<div class="keyfigure">'),
+      raw('<div class="keyfigure-value">' .. esc(value) .. '</div>'),
+      raw('<div class="keyfigure-label">' .. esc(label) .. '</div>')
+    }
+    if source then
+      table.insert(out, raw('<div class="keyfigure-body">' .. esc(source:match('^%s*(.-)%s*$')) .. '</div>'))
+    end
+    table.insert(out, raw('</div>'))
+    return out
+
+  elseif has('risk') then
+    -- ::risk{severity="high|medium|low"}
+    local severity  = attrget(el, 'severity', attrget(el, 'level', 'medium'))
+    local badge_cls = severity == 'high' and 'b-high' or (severity == 'low' and 'b-low' or 'b-med')
+    local badge_lbl = severity:sub(1,1):upper() .. severity:sub(2)
+    local title_text, body_blocks = '', {}
+    local found = false
+    for _, b in ipairs(el.content) do
+      if not found and b.t == 'Para' then title_text = pandoc.utils.stringify(b); found = true
+      else table.insert(body_blocks, b) end
+    end
+    local out = {
+      raw('<div class="risk">'),
+      raw('<div class="risk-hd">' ..
+          '<div class="risk-t">' .. esc(title_text) .. '</div>' ..
+          '<div class="risk-b"><span class="badge ' .. badge_cls .. '">' .. badge_lbl .. '</span></div>' ..
+          '</div>')
+    }
+    for _, b in ipairs(body_blocks) do table.insert(out, b) end
+    table.insert(out, raw('</div>'))
+    return out
+
+  elseif has('implication') then
+    local label = el.attributes['label'] or 'Implication'
+    local out = { raw('<div class="implication"><div class="implication-label">' .. esc(label) .. '</div>') }
+    for _, b in ipairs(el.content) do table.insert(out, b) end
+    table.insert(out, raw('</div>'))
+    return out
+
+  elseif has('disclaimer') then
+    local out = { raw('<div class="disclaimer">') }
+    for _, b in ipairs(el.content) do table.insert(out, b) end
+    table.insert(out, raw('</div>'))
+    return out
+
+  elseif has('bignum') then
+    local value  = attrget(el, 'value', '')
+    local label  = el.attributes['label'] or ''
+    local source = el.attributes['source']
+    local out = {
+      raw('<div class="bignum">'),
+      raw('<span class="bignum-v">' .. esc(value) .. '</span>'),
+      raw('<div class="bignum-l">' .. esc(label) .. '</div>')
+    }
+    if source then table.insert(out, raw('<div class="bignum-s">' .. esc(source) .. '</div>')) end
+    table.insert(out, raw('</div>'))
+    return out
+
+  elseif has('phase') then
+    local tag    = el.attributes['tag'] or ''
+    local title  = el.attributes['title'] or ''
+    local period = el.attributes['period']
+    local active = attrget(el, 'active', 'false')
+    local cls    = 'phase' .. (active == 'true' and ' active' or '')
+    local out    = { raw('<div class="' .. cls .. '">') }
+    if tag   ~= '' then table.insert(out, raw('<div class="phase-tag">'   .. esc(tag)   .. '</div>')) end
+    if title ~= '' then table.insert(out, raw('<div class="phase-title">' .. esc(title) .. '</div>')) end
+    if period       then table.insert(out, raw('<div class="phase-period">' .. esc(period) .. '</div>')) end
+    for _, b in ipairs(el.content) do table.insert(out, b) end
+    table.insert(out, raw('</div>'))
+    return out
+
+  elseif has('spec') then
+    local title = attrget(el, 'title', '')
+    local sub   = el.attributes['subtitle'] or el.attributes['sub'] or ''
+    local out   = { raw('<div class="spec">') }
+    if title ~= '' then table.insert(out, raw('<div class="spec-title">' .. esc(title) .. '</div>')) end
+    if sub   ~= '' then table.insert(out, raw('<div class="spec-sub">'   .. esc(sub)   .. '</div>')) end
+    for _, b in ipairs(el.content) do table.insert(out, b) end
+    table.insert(out, raw('</div>'))
+    return out
+
+  elseif has('comparison-grid') or has('comparisongrid') then
+    local out  = { raw('<div class="cg">') }
+    local open = false
+    for _, b in ipairs(el.content) do
+      if b.t == 'Header' and b.level == 3 then
+        if open then table.insert(out, raw('</div>')) end
+        local hl    = b.classes:includes('highlight') or b.classes:includes('hl')
+        local lbl   = b.attributes['label'] or ''
+        local price = b.attributes['price'] or ''
+        local name  = inlines_to_text(b.content)
+        table.insert(out, raw('<div class="cc' .. (hl and ' hl' or '') .. '">'))
+        if lbl ~= '' then table.insert(out, raw('<div class="cc-lbl">'  .. esc(lbl)  .. '</div>')) end
+        table.insert(out, raw('<div class="cc-name">' .. esc(name) .. '</div>'))
+        if price ~= '' then table.insert(out, raw('<div class="cc-price">' .. esc(price) .. '</div>')) end
+        open = true
+      elseif open then
+        if b.t == 'Para' then
+          table.insert(out, raw('<div class="cc-note">'))
+          table.insert(out, b)
+          table.insert(out, raw('</div>'))
+        else
+          table.insert(out, b)
+        end
+      end
+    end
+    if open then table.insert(out, raw('</div>')) end
+    table.insert(out, raw('</div>'))
+    return out
+
+  elseif has('team-grid') or has('teamgrid') then
+    local out  = { raw('<div class="team-grid">') }
+    local open = false
+    for _, b in ipairs(el.content) do
+      if b.t == 'Header' and b.level == 3 then
+        if open then table.insert(out, raw('</div></div>')) end
+        local name = inlines_to_text(b.content)
+        local role = b.attributes['role'] or ''
+        table.insert(out, raw('<div class="tc">'))
+        table.insert(out, raw('<div class="tc-name">' .. esc(name) .. '</div>'))
+        if role ~= '' then table.insert(out, raw('<div class="tc-role">' .. esc(role) .. '</div>')) end
+        table.insert(out, raw('<div class="tc-bio">'))
+        open = true
+      elseif open then
+        table.insert(out, b)
+      end
+    end
+    if open then table.insert(out, raw('</div></div>')) end
+    table.insert(out, raw('</div>'))
+    return out
+
+  elseif has('product-cards') or has('productcards') then
+    local out  = { raw('<div class="prod-grid">') }
+    local open = false
+    for _, b in ipairs(el.content) do
+      if b.t == 'Header' and b.level == 3 then
+        if open then table.insert(out, raw('</div>')) end
+        local tag  = b.attributes['tag'] or ''
+        local sub  = b.attributes['subtitle'] or b.attributes['sub'] or ''
+        local name = inlines_to_text(b.content)
+        table.insert(out, raw('<div class="prod">'))
+        if tag ~= '' then table.insert(out, raw('<div class="prod-tag">' .. esc(tag) .. '</div>')) end
+        table.insert(out, raw('<div class="prod-title">' .. esc(name) .. '</div>'))
+        if sub ~= '' then table.insert(out, raw('<div class="prod-sub">' .. esc(sub) .. '</div>')) end
+        open = true
+      elseif open and b.t == 'BulletList' then
+        for _, item in ipairs(b.content) do
+          table.insert(out, raw('<div class="prod-row">' .. esc(inlines_to_text(item)) .. '</div>'))
+        end
+      elseif open then
+        table.insert(out, b)
+      end
+    end
+    if open then table.insert(out, raw('</div>')) end
+    table.insert(out, raw('</div>'))
+    return out
+
   elseif has('kpigrid') then
     -- Row of metric cards. Column count is a data-attribute AND a class so the
     -- brand CSS (.kpi-grid-2/3) and any core CSS keyed on data-cols both work.
