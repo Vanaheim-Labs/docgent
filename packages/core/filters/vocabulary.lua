@@ -755,17 +755,27 @@ function Header(el)
   local label = el.attributes['eyebrow'] or nav or inlines_to_text(el.content)
   local num = string.format('%02d', H1_SEEN)
 
+  -- The section-opener wrapper carries page:section-opener (via brand CSS),
+  -- which triggers @page section-opener to suppress running headers and apply
+  -- the full padding-top breathing room. Without this wrapper the @page rule
+  -- never fires — the root cause of missing ghost numeral, missing padding,
+  -- and running headers appearing on section opener pages.
+  local ghost = raw(
+    '<div class="section-ghost" aria-hidden="true">' .. esc(num) .. '</div>')
+
   local eyebrow = raw(
-    '<div class="section-header no-break">' ..
     '<div class="section-number" data-index="' .. num .. '">' ..
     '<span class="section-number-num">' .. num .. '</span>' ..
     '<span class="section-number-sep">·</span>' ..
     '<span class="section-number-label">' .. esc(label) .. '</span>' ..
     '</div>')
 
+  -- Wrap the whole section opener (ghost + eyebrow + heading) in .section-opener
+  -- so the CSS page: and padding-top rules have an element to land on.
+  local open  = raw('<div class="section-opener no-break">')
   local close = raw('</div>')
 
-  return { eyebrow, el, close }
+  return { open, ghost, eyebrow, el, close }
 end
 
 

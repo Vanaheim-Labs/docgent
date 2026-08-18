@@ -66,6 +66,9 @@ COPY pipeline/fonts/ /usr/local/share/fonts/docforge-brands/
 # Alias design-intent family names onto the variable-font family names the
 # binaries actually register under. Without this fontconfig falls back to
 # DejaVu/Liberation and every build still reports success.
+# Font rendering quality: hintfull + antialias + subpixel (loaded first, prefix 10-)
+COPY fontconfig/10-hinting.conf /etc/fonts/conf.d/10-hinting.conf
+# Family name aliases (loaded after hinting, prefix 49-)
 COPY fontconfig/49-docforge-aliases.conf /etc/fonts/conf.d/49-docforge-aliases.conf
 
 RUN fc-cache -f > /dev/null 2>&1 || true; \
