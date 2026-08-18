@@ -452,12 +452,14 @@ export function repoSlug(brandId?: string) {
  * Env vars:
  *   DOCGENT_BRANDS_REPO  — "owner/repo" for the brands config store
  *                          (default: "Vanaheim-Labs/docgent-brands")
- *   DOCGENT_BRANDS_TOKEN — dedicated PAT with repo write scope on docgent-brands
- *   DOCGENT_BRANCH          — branch to write to (default: "main")
+ *   DOCGENT_BRANDS_WRITE_TOKEN — dedicated PAT with repo write scope on docgent-brands
+ *                                 (separate from DOCGENT_BRANDS_TOKEN which is used by
+ *                                  the build-time brands clone and must not be replaced)
+ *   DOCGENT_BRANCH              — branch to write to (default: "main")
  */
 function brandsGitStore(): InstanceType<typeof GitStore> {
-  const token = process.env.DOCGENT_BRANDS_TOKEN;
-  if (!token) throw new Error("DOCGENT_BRANDS_TOKEN is not set");
+  const token = process.env.DOCGENT_BRANDS_WRITE_TOKEN;
+  if (!token) throw new Error("DOCGENT_BRANDS_WRITE_TOKEN is not set");
   const repoRef = process.env.DOCGENT_BRANDS_REPO ?? "Vanaheim-Labs/docgent-brands";
   const [owner, repo] = repoRef.split("/");
   const branch = process.env.DOCGENT_BRANCH ?? "main";
