@@ -219,6 +219,71 @@ def load_brand(brand_id: str) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Markdown pre-processor
+# --------------------------------------------------------------------------- #
+
+# Docgent shorthand uses double-colon delimiters: ::primitive{attrs} / ::
+# Pandoc's fenced_divs extension requires triple colons: ::: {.class attr=val} / :::
+# This pre-processor rewrites Docgent shorthand into pandoc-compatible fenced divs
+# BEFORE the markdown reaches pandoc, so the Lua vocabulary filter fires correctly.
+#
+# Supported forms:
+#   ::name                     -> ::: {.name}
+#   ::name{key="val" key2=x}  -> ::: {.name key="val" key2=x}
+#   ::                         -> :::
+#
+# The attrs string is kept verbatim — pandoc parses it as a key-value list.
+
+import re as _re
+
+_OPEN_RE  = _re.compile(r'^::([a-zA-Z][a-zA-Z0-9_-]*)(.*)$')
+_CLOSE_RE = _re.compile(r'^::$')
+
+
+def _preprocess_markdown(md: str) -> str:
+    """Rewrite ::primitive / :: shorthand into pandoc fenced-div syntax."""
+    lines = md.split('\n')
+    out = []
+    in_frontmatter = False
+    fm_done = False
+    for i, line in enumerate(lines):
+        # Skip frontmatter block (between --- delimiters at top of file)
+        stripped = line.strip()
+        if i == 0 and stripped == '---':
+            in_frontmatter = True
+            out.append(line)
+            continue
+        if in_frontmatter:
+            out.append(line)
+            if stripped == '---':
+                in_frontmatter = False
+                fm_done = True
+            continue
+
+        # Rewrite ::primitive{attrs} -> ::: {.primitive attrs}
+        m = _OPEN_RE.match(stripped)
+        if m and line.startswith('::'):
+            name  = m.group(1)
+            attrs = m.group(2).strip()
+            # Strip surrounding braces if present: {key=val} -> key=val
+            if attrs.startswith('{') and attrs.endswith('}'):
+                attrs = attrs[1:-1].strip()
+            if attrs:
+                out.append(f'::: {{.{name} {attrs}}}')
+            else:
+                out.append(f'::: {{.{name}}}')
+            continue
+
+        # Rewrite bare :: close delimiter -> :::
+        if _CLOSE_RE.match(stripped) and line.strip() == '::':
+            out.append(':::')
+            continue
+
+        out.append(line)
+    return '\n'.join(out)
+
+
+# --------------------------------------------------------------------------- #
 # Render pipeline
 # --------------------------------------------------------------------------- #
 
@@ -230,7 +295,7 @@ def _stage(work: Path, markdown: str, brand: dict, fm: dict,
     if these diverged the preview would stop predicting the PDF.
     """
     md_path = work / "doc.md"
-    md_path.write_text(markdown, encoding="utf-8")
+    md_path.write_text(_preprocess_markdown(markdown), encoding="utf-8")
 
     for rel, b64 in (assets or {}).items():
         target = (work / rel).resolve()
