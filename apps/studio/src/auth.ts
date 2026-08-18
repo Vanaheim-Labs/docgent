@@ -65,15 +65,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, account, profile }) {
       if (account?.provider) token.provider = account.provider;
       const p = profile as { email?: string } | undefined;
-      // Recompute on every jwt() call where we have an email — either from
-      // the OAuth profile (first sign-in) or from the persisted token.email
-      // (subsequent requests). This ensures isAdmin and allowedBrands are
-      // always current even for sessions issued before this field existed,
-      // without requiring a sign-out/sign-in cycle to pick up new values.
+      // Only recompute allowedBrands when we have a fresh OAuth profile (i.e.
+      // at sign-in time). On subsequent requests the JWT is already stamped
+      // with the correct list — recomputing it on every request calls
+      // brandsForEmail() which reads brands/ from disk. If that disk read
+      // fails on a cold middleware instance it silently stamps allowedBrands: []
+      // into the token, which causes guardBrandPath to 404 every doc page
+      // before the serverless handler even runs.
+      //
+      // To pick up brand access changes, users sign out and back in.
+      // Admins can force a refresh by clearing the session cookie.
       const email = p?.email ?? (typeof token.email === "string" ? token.email : undefined);
       if (email) {
-        token.allowedBrands = brandsForEmail(email).map((b) => b.id);
         token.isAdmin = email === ADMIN_EMAIL;
+        // Only stamp allowedBrands when we have a fresh profile (OAuth sign-in).
+        // On token refresh (no profile), keep whatever is already in the token.
+        if (p?.email) {
+          const computed = brandsForEmail(email).map((b) => b.id);
+          // If disk read returned nothing but token already has brands, keep them.
+          // This guards against a cold-start disk miss overwriting a valid token.
+          if (computed.length > 0 || !Array.isArray(token.allowedBrands)) {
+            token.allowedBrands = computed;
+          }
+        }
       }
       return token;
     },
