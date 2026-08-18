@@ -874,3 +874,213 @@ em.accent { font-style: normal; color: var(--accent); }
   color: var(--ink);
 }
 
+/* ---------- product-cards (::product-cards) ---------- */
+/*
+  2-column float grid. Each .prod card has an ink top rule and a
+  Crimson Pro title. Bullet rows use an em-dash glyph prefix.
+  Float is used so WeasyPrint (no grid support) lays two cards per row.
+*/
+.prod-grid {
+  margin: 1.4rem 0;
+}
+.prod-grid::after { content: ""; display: table; clear: both; }
+.prod {
+  float: left;
+  width: calc(50% - 0.6rem);
+  margin-right: 1.2rem;
+  margin-bottom: 1.2rem;
+  break-inside: avoid;
+  padding-top: 0.6rem;
+  border-top: 1.5pt solid var(--ink);
+}
+.prod:nth-child(even) { margin-right: 0; }
+.prod-tag {
+  font-family: var(--font-sans);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.2rem;
+}
+.prod-title {
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 0.25rem;
+}
+.prod-sub {
+  font-family: var(--font-sans);
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+  margin-bottom: 0.4rem;
+}
+.prod-row {
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  padding: 0.18rem 0 0.18rem 1.1rem;
+  border-bottom: 0.5pt solid var(--rule);
+  position: relative;
+}
+.prod-row::before {
+  content: "\2014"; /* em-dash */
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+  font-weight: 400;
+}
+
+/* ---------- comparison-grid (::comparison-grid) ---------- */
+/*
+  Each .cc column renders side-by-side. Highlighted column (.hl) has
+  accent-coloured name and a light mist background.
+*/
+.cg {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.8rem;
+  margin: 1.4rem 0;
+}
+.cc {
+  break-inside: avoid;
+  padding: 0.8rem 0.9rem;
+  background: var(--paper-alt);
+  border-radius: 2px;
+  border-top: 2pt solid var(--rule);
+}
+.cc.hl {
+  background: var(--accent-soft);
+  border-top-color: var(--accent);
+}
+.cc-lbl {
+  font-family: var(--font-sans);
+  font-size: 0.64rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 0.18rem;
+}
+.cc-name {
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 0.2rem;
+}
+.cc.hl .cc-name { color: var(--accent); }
+.cc-price {
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  margin-bottom: 0.4rem;
+}
+.cc-note {
+  font-family: var(--font-sans);
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+}
+.cc p { margin: 0 0 0.3rem; }
+.cc ul, .cc ol { margin: 0.3rem 0; padding-left: 1rem; }
+.cc li { font-size: 0.76rem; margin-bottom: 0.15rem; }
+
+/* ---------- spec (::spec) — screenshot 3-column grid ---------- */
+.spec {
+  margin: 1.4rem 0;
+  break-inside: avoid;
+}
+.spec-title {
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+  margin-bottom: 0.2rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1pt solid var(--rule);
+}
+.spec-sub {
+  font-family: var(--font-sans);
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+  margin-bottom: 0.6rem;
+}
+/* Images inside a spec block flow in a 3-column grid */
+.spec p:has(img),
+.spec figure {
+  display: inline-block;
+  width: calc(33.3% - 0.5rem);
+  margin: 0 0.4rem 0.4rem 0;
+  vertical-align: top;
+}
+.spec img {
+  width: 100%;
+  height: auto;
+  border: 0.5pt solid var(--rule);
+  border-radius: 2px;
+  display: block;
+}
+
+/* ---------- roadmap (::roadmap) ---------- */
+/*
+  4-column table. .rm-head row: teal caps, hairline border.
+  .rm-period row: Crimson Pro italic.
+  .rm-tranche cell: teal background accent.
+  .rm-item: accent bullet list inside a tranche cell.
+*/
+.rm-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4rem 0;
+  break-inside: avoid;
+  font-family: var(--font-sans);
+  font-size: 0.76rem;
+}
+.rm-head { background: var(--paper-alt); }
+.rm-head th {
+  padding: 0.5rem 0.55rem;
+  font-family: var(--font-sans);
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink);
+  border-bottom: 1.5pt solid var(--ink);
+  text-align: left;
+}
+.rm-head th:first-child { width: 22%; }
+.rm-period td {
+  padding: 0.5rem 0.55rem;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  border-bottom: 0.5pt solid var(--rule);
+  background: var(--paper-alt);
+}
+.rm-tranche td {
+  padding: 0.4rem 0.55rem;
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border-bottom: 0;
+}
+.rm-item td {
+  padding: 0.3rem 0.55rem 0.3rem 1rem;
+  color: var(--ink-soft);
+  border-bottom: 0.5pt solid var(--rule);
+  position: relative;
+}
+.rm-item td::before {
+  content: "\2022"; /* bullet */
+  position: absolute;
+  left: 0.4rem;
+  color: var(--accent);
+}
+.rm-item td:first-child { color: var(--ink); font-weight: 500; }
+

@@ -169,6 +169,37 @@ blocks:
       title: { type: string, required: true }
     breakInside: avoid
 
+  - id: spec
+    syntax: "::: spec {title=... subtitle=...}"
+    description: Screenshot spec block with optional title and subtitle. Images
+      inside flow in a 3-column grid.
+    attrs:
+      title: { type: string, required: false }
+      subtitle: { type: string, required: false }
+    breakInside: avoid
+
+  - id: comparison-grid
+    syntax: "::: comparison-grid"
+    description: Side-by-side product/plan comparison. Each H3 starts a column;
+      use class .highlight on the H3 to mark the recommended option.
+      Use label= and price= attributes on the H3.
+    breakInside: avoid
+
+  - id: product-cards
+    syntax: "::: product-cards"
+    description: 2-column float grid of product cards. Each H3 starts a card;
+      use tag= for the category pill, subtitle= for the sub-heading.
+      Bullet list items under each H3 become em-dash rows.
+    breakInside: avoid
+
+  - id: roadmap
+    syntax: "::: roadmap"
+    description: 4-column roadmap table. Use H3 elements with class .head
+      (column headers), .period (italic time period row), .tranche (teal
+      accent header row), or plain H3 (treated as tranche). Bullet list items
+      under a tranche row become item rows; cells separated by " | ".
+    breakInside: avoid
+
   - id: toc
     syntax: "::: toc"
     description: Table of contents placeholder — populated at render time.

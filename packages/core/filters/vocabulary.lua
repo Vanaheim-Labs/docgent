@@ -627,6 +627,73 @@ function Div(el)
     table.insert(out, raw('</div>'))
     return out
 
+  elseif has('roadmap') then
+    -- 4-column roadmap table.
+    -- Structure: each H3 inside the block becomes a row type:
+    --   H3 with class .head  -> <tr class="rm-head"> with <th> cells
+    --   H3 with class .period -> <tr class="rm-period"> with <td> cells
+    --   H3 with class .tranche -> <tr class="rm-tranche"> with <td> cells
+    --   Bullet list items -> <tr class="rm-item"> rows
+    -- Any bare paragraph content is emitted after the table.
+    --
+    -- Simplified model: we parse each block linearly.
+    -- H3 = new row group. BulletList after a tranche = item rows.
+    local out = { raw('<table class="rm-table">') }
+    local in_tranche = false
+
+    local function cells_from_text(text)
+      -- Split text on " | " to get individual cells
+      local parts = {}
+      for part in (text .. ' | '):gmatch('(.-)%s*|%s*') do
+        table.insert(parts, esc(part))
+      end
+      return parts
+    end
+
+    for _, b in ipairs(el.content) do
+      if b.t == 'Header' and b.level == 3 then
+        local is_head    = b.classes:includes('head')
+        local is_period  = b.classes:includes('period')
+        local is_tranche = b.classes:includes('tranche')
+        local text = inlines_to_text(b.content)
+        local cells = cells_from_text(text)
+        if is_head then
+          in_tranche = false
+          local row = '<tr class="rm-head"><th>' ..
+            table.concat(cells, '</th><th>') .. '</th></tr>'
+          table.insert(out, raw(row))
+        elseif is_period then
+          in_tranche = false
+          local row = '<tr class="rm-period"><td>' ..
+            table.concat(cells, '</td><td>') .. '</td></tr>'
+          table.insert(out, raw(row))
+        elseif is_tranche then
+          in_tranche = true
+          local row = '<tr class="rm-tranche"><td colspan="4">' .. esc(text) .. '</td></tr>'
+          table.insert(out, raw(row))
+        else
+          -- Plain H3: treat like a tranche if no explicit class
+          in_tranche = true
+          local row = '<tr class="rm-tranche"><td colspan="4">' .. esc(text) .. '</td></tr>'
+          table.insert(out, raw(row))
+        end
+      elseif b.t == 'BulletList' and in_tranche then
+        for _, item in ipairs(b.content) do
+          local item_text = inlines_to_text(item)
+          local cells = cells_from_text(item_text)
+          -- Pad to 4 cells
+          while #cells < 4 do table.insert(cells, '') end
+          local row = '<tr class="rm-item"><td>' ..
+            table.concat(cells, '</td><td>') .. '</td></tr>'
+          table.insert(out, raw(row))
+        end
+      else
+        table.insert(out, b)
+      end
+    end
+    table.insert(out, raw('</table>'))
+    return out
+
   elseif has('signature') then
     local name = attrget(el, 'name', '')
     local role = el.attributes['role']

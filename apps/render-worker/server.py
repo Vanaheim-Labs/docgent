@@ -369,6 +369,11 @@ def _run_pandoc(md_path, html_path, brand, brand_id, fm, sheets, source_lines):
     for sheet in sheets:
         cmd += ["--css", str(sheet)]
 
+    # Pandoc resolves relative image src paths against --resource-path so
+    # WeasyPrint receives absolute file:// URLs rather than relative paths
+    # that it cannot resolve from its working directory.
+    cmd += ["--resource-path", str(md_path.parent)]
+
     t0 = time.time()
     proc = subprocess.run(cmd, capture_output=True, timeout=RENDER_TIMEOUT)
     if proc.returncode != 0:
