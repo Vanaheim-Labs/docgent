@@ -908,12 +908,12 @@ function Header(el)
   -- We write the inlines via pandoc.write to get proper inline HTML
   local h1_html
   do
-    local temp_doc = pandoc.Pandoc({pandoc.Plain(el.content)})
+    -- Use Para (not Plain) so pandoc.write wraps in <p>...</p>
+    local temp_doc = pandoc.Pandoc({pandoc.Para(el.content)})
     local html_str = pandoc.write(temp_doc, 'html')
     -- html_str is "<p>...</p>\n"; extract inner content
-    h1_html = html_str:match('<p>(.*)</p>') or esc(inlines_to_text(el.content))
-    -- Replace <em class="accent"> with our styled version (em.accent already styled by CSS)
-    -- No extra transformation needed; CSS handles .accent styling
+    h1_html = html_str:match('<p>(.-)</p>') or esc(inlines_to_text(el.content))
+    -- CSS targets span.accent (from pandoc.write) and em.accent (from Span filter)
   end
   local heading = raw(
     '<h1' .. h1_id .. ' ' .. h1_cls .. nav_attr .. '>' .. h1_html .. '</h1>')
