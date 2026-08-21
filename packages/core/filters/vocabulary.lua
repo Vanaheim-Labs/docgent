@@ -904,9 +904,19 @@ function Header(el)
   if el.attributes['data-nav-title'] then
     nav_attr = ' data-nav-title="' .. esc(el.attributes['data-nav-title']) .. '"'
   end
-  local h1_text = esc(inlines_to_text(el.content))
+  -- Render H1 content as HTML (preserving accent spans, etc.)
+  -- We write the inlines via pandoc.write to get proper inline HTML
+  local h1_html
+  do
+    local temp_doc = pandoc.Pandoc({pandoc.Plain(el.content)})
+    local html_str = pandoc.write(temp_doc, 'html')
+    -- html_str is "<p>...</p>\n"; extract inner content
+    h1_html = html_str:match('<p>(.*)</p>') or esc(inlines_to_text(el.content))
+    -- Replace <em class="accent"> with our styled version (em.accent already styled by CSS)
+    -- No extra transformation needed; CSS handles .accent styling
+  end
   local heading = raw(
-    '<h1' .. h1_id .. ' ' .. h1_cls .. nav_attr .. '>' .. h1_text .. '</h1>')
+    '<h1' .. h1_id .. ' ' .. h1_cls .. nav_attr .. '>' .. h1_html .. '</h1>')
 
   -- Also set string-set on a hidden span so the running header still updates
   -- to the new section title even though the H1 is now raw HTML.
