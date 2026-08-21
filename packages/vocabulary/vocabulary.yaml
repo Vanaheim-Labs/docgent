@@ -160,6 +160,13 @@ blocks:
       state: { type: enum, values: [highlight, anomaly, positive, partial, zero], required: false }
     breakInside: avoid
 
+  - id: timeline
+    syntax: "::: timeline"
+    description: Vertical chronological timeline. Each H3 heading is one event in the format
+      "DD Mon YYYY — Event Title"; the date is extracted and rendered in orange, the title
+      in bold. Body paragraphs and lists after the H3 become the event description.
+    breakInside: auto
+
   - id: tensionbox
     syntax: "::: {.tensionbox title=...}"
     description: Inverted dark callout carrying the single most important

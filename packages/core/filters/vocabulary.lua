@@ -617,6 +617,43 @@ function Div(el)
           '</div>')
     }
 
+  elseif has('timeline') then
+    -- Vertical chronological timeline.
+    -- Each H3 inside the block is one event: the heading text is the date + title.
+    -- Convention: "DD Mon YYYY — Event Title" — split on em/en-dash or plain dash.
+    -- Body content (paragraphs, lists) after each H3 becomes the event description.
+    -- The date is extracted from the heading and rendered in orange; the title in bold.
+    local out = { raw('<div class="timeline">') }
+    local in_event = false
+    local em = string.char(226, 128, 148)
+    local en = string.char(226, 128, 147)
+    for _, b in ipairs(el.content) do
+      if b.t == 'Header' and b.level == 3 then
+        if in_event then table.insert(out, raw('</div></div>')) end
+        local text = inlines_to_text(b.content)
+        -- Split on em-dash, en-dash, or ' - ' to separate date from event title
+        local date_part, title_part = nil, nil
+        for _, sep in ipairs({ em, en, ' %- ' }) do
+          local a, b2 = text:match([[^(.-)%s*]] .. sep .. [[%s*(.+)$]])
+          if a then date_part = a; title_part = b2; break end
+        end
+        if not date_part then date_part = ''; title_part = text end
+        table.insert(out, raw(
+          '<div class="timeline-event">' ..
+          '<div class="timeline-marker"><span class="timeline-dot"></span><span class="timeline-stem"></span></div>' ..
+          '<div class="timeline-body">' ..
+          '<div class="timeline-date">' .. esc(date_part) .. '</div>' ..
+          '<div class="timeline-title">' .. esc(title_part) .. '</div>'
+        ))
+        in_event = true
+      else
+        table.insert(out, b)
+      end
+    end
+    if in_event then table.insert(out, raw('</div></div>')) end
+    table.insert(out, raw('</div>'))
+    return out
+
   elseif has('tensionbox') then
     local title = attrget(el, 'title', '')
     local out = { raw('<div class="tension-box">') }
