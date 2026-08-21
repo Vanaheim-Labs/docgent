@@ -51,6 +51,8 @@ MICROTYPE_FILTER = PIPELINE_DIR / "core" / "filters" / "microtype.lua"
 BASE_CSS = PIPELINE_DIR / "core" / "css" / "base.css"
 BRANDS_DIR = PIPELINE_DIR / "brands"
 
+# Disable tex_math_dollars so $ currency signs in table cells aren't parsed as LaTeX math
+# (the default markdown reader includes tex_math_dollars which causes garbled table output)
 PANDOC_EXTENSIONS = (
     "markdown"
     "+yaml_metadata_block"
@@ -63,6 +65,7 @@ PANDOC_EXTENSIONS = (
     "+table_attributes"
     "+link_attributes"
     "+smart"
+    "-tex_math_dollars"
 )
 
 logging.basicConfig(
@@ -531,9 +534,14 @@ def pandoc_supports_extensions() -> bool:
     except Exception:
         return False
     available = {line[1:] for line in out.splitlines() if line[:1] in "+-"}
-    required = {
-        e for e in PANDOC_EXTENSIONS.split("+")[1:]
-    }
+    # Parse extension tokens: split by '+', each token may itself contain '-' for
+    # disabling sub-extensions (e.g. 'smart-tex_math_dollars' = +smart -tex_math_dollars).
+    # Expand these into individual extension names for the availability check.
+    required = set()
+    for token in PANDOC_EXTENSIONS.split("+")[1:]:
+        for part in token.split("-"):
+            if part:
+                required.add(part)
     missing = required - available
     if missing:
         jlog("pandoc.missing_extensions", missing=sorted(missing))
