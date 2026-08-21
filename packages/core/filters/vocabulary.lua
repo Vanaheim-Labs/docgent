@@ -992,10 +992,47 @@ local function wrap_struck_sections(blocks)
 end
 
 -- Stamps top-level blocks with their originating source line.
+-- Also injects the brand logo into .section-opener divs if brandlogo is available.
 --
 -- Document-level pass so doc.meta is readable before blocks are emitted.
 function Pandoc(doc)
-  local blocks = wrap_struck_sections(doc.blocks)
+  -- Inject brand logo into section opener divs (if brandlogo metadata present)
+  local logo_src = nil
+  if doc.meta and doc.meta.brandlogo then
+    logo_src = pandoc.utils.stringify(doc.meta.brandlogo)
+  end
+
+  local function inject_logo_into_blocks(blocks_list)
+    if not logo_src then return blocks_list end
+    local result = {}
+    local i = 1
+    while i <= #blocks_list do
+      local b = blocks_list[i]
+      -- Check if this RawBlock opens a section-opener div
+      if b.t == 'RawBlock' and b.format == 'html' and
+         b.text:match('class="section%-opener"') then
+        -- Found opening <div class="section-opener">
+        -- Next block should be the ghost, then we insert the logo img
+        table.insert(result, b)  -- The <div class="section-opener"> opening
+        i = i + 1
+        -- Insert the ghost (next block)
+        if i <= #blocks_list then
+          table.insert(result, blocks_list[i])
+          i = i + 1
+        end
+        -- Now inject the logo img
+        local logo_img = pandoc.RawBlock('html',
+          '<img class="section-opener-logo" src="' .. logo_src .. '" alt="" aria-hidden="true">')
+        table.insert(result, logo_img)
+      else
+        table.insert(result, b)
+        i = i + 1
+      end
+    end
+    return result
+  end
+
+  local blocks = wrap_struck_sections(inject_logo_into_blocks(doc.blocks))
 
   if not doc.meta or not doc.meta.docforge_source_lines then
     return pandoc.Pandoc(blocks, doc.meta)
