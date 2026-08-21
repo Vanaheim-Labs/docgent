@@ -843,11 +843,16 @@ end
 -- styling .section-number in the brand.
 local H1_SEEN = 0
 local NO_AUTONUMBER = false
+local BRAND_LOGO = nil
 
 -- Called once before any Header; reads brand metadata set by the render pipeline.
 function Meta(meta)
   if meta.docforge_no_autonumber then
     NO_AUTONUMBER = true
+  end
+  -- Capture brandlogo metadata for section opener pages
+  if meta.brandlogo then
+    BRAND_LOGO = pandoc.utils.stringify(meta.brandlogo)
   end
   return meta
 end
@@ -914,7 +919,17 @@ function Header(el)
   local open  = raw('<div class="section-opener">')
   local close = raw('</div>')
 
-  return { open, ghost, string_set, eyebrow, heading, close }
+  -- If brandlogo is available, emit an img tag inside the section opener
+  local logo_el = nil
+  if BRAND_LOGO then
+    logo_el = raw('<img class="section-opener-logo" src="' .. BRAND_LOGO .. '" alt="" aria-hidden="true">')
+  end
+
+  if logo_el then
+    return { open, ghost, logo_el, string_set, eyebrow, heading, close }
+  else
+    return { open, ghost, string_set, eyebrow, heading, close }
+  end
 end
 
 
