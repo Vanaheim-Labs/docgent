@@ -22,8 +22,8 @@ const repo = process.env.DOCGENT_BRANDS_REPO ?? "Vanaheim-Labs/docgent-brands";
 const token = process.env.DOCGENT_BRANDS_TOKEN;
 
 if (!token) {
-  console.error("[clone-brands] DOCGENT_BRANDS_TOKEN is not set — brands/ will be empty");
-  process.exit(1);
+  console.warn("[clone-brands] DOCGENT_BRANDS_TOKEN is not set — brands/ will be empty (preview mode)");
+  process.exit(0);
 }
 
 const url = `https://x-access-token:${token}@github.com/${repo}.git`;
