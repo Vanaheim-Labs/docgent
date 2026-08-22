@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { DocSummary } from "@/lib/store";
 import { LibraryFilterPanel, type LibraryFilters } from "@/components/LibraryFilterPanel";
 import { QueueRow, queueBucket, BUCKET_LABEL, type QueueBucket } from "@/components/QueueRow";
@@ -23,11 +24,31 @@ export function LibraryView({
   documents: DocSummary[];
   userChip: React.ReactNode;
 }) {
+  const searchParams = useSearchParams();
+  const bucketParam = searchParams?.get("bucket") as QueueBucket | null;
+
   const [filters, setFilters] = useState<LibraryFilters>({
     brands: new Set(),
-    statuses: new Set(),
+    statuses: bucketParam ? new Set([`__bucket:${bucketParam}`]) : new Set(),
     search: "",
   });
+
+  // Sync filter state when URL bucket param changes (sidebar nav clicks).
+  useEffect(() => {
+    if (bucketParam) {
+      setFilters((prev) => ({
+        ...prev,
+        statuses: new Set([`__bucket:${bucketParam}`]),
+      }));
+    } else {
+      setFilters((prev) => ({
+        ...prev,
+        statuses: new Set(
+          [...prev.statuses].filter((s) => !s.startsWith("__bucket:"))
+        ),
+      }));
+    }
+  }, [bucketParam]);
 
   const filtered = useMemo(() => {
     const q = filters.search.trim().toLowerCase();

@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useSearchParams, usePathname } from "next/navigation";
 import type { DocSummary } from "@/lib/store";
 
 /**
@@ -30,6 +33,15 @@ export function Sidebar({
     byBrand.get(d.brand)!.push(d);
   }
 
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const isHome = pathname === "/";
+  const bucketParam = searchParams?.get("bucket") ?? null;
+
+  const isReviewActive = isHome && bucketParam === "needs-review";
+  const isAgentActivityActive = isHome && bucketParam === "in-progress";
+  const isAllDocsActive = isHome && !bucketParam;
+
   return (
     <aside className="sidebar">
       <div className="sidebar-head">
@@ -37,6 +49,23 @@ export function Sidebar({
           <img src="/docgent-logo.svg" alt="Docgent" className="wordmark-logo" />
         </Link>
         <div className="wordmark-sub">Studio</div>
+      </div>
+
+      {/* Top navigation sections */}
+      <div className="nav-section">
+        <div className="nav-section-head">Work</div>
+        <Link href="/?bucket=needs-review" className="nav-item" data-active={isReviewActive}>
+          Review
+        </Link>
+        <Link href="/?bucket=in-progress" className="nav-item" data-active={isAgentActivityActive}>
+          Agent activity
+        </Link>
+      </div>
+      <div className="nav-section">
+        <div className="nav-section-head">Library</div>
+        <Link href="/" className="nav-item" data-active={isAllDocsActive}>
+          All documents
+        </Link>
       </div>
 
       {byBrand.size === 0 && errors.length === 0 && (
