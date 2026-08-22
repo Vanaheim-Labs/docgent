@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import MDEditor from "@uiw/react-md-editor";
 import type { Vocabulary } from "@/lib/vocabulary";
 import { validateMarkdown, type Diagnostic } from "@/lib/validate-client";
 import { RewriteBar, type RewriteProposal } from "@/components/RewriteBar";
