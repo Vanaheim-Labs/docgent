@@ -31,6 +31,65 @@ function displaySubject(subject: string): string {
  */
 const WORKFLOW_STATES = ["draft", "review", "approved", "released"] as const;
 
+/** Human-readable label for the transition button. */
+function transitionLabel(from: string, to: string): string {
+  if (from === "draft" && to === "review") return "Request review";
+  if (from === "review" && to === "approved") return "Approve document";
+  if (from === "approved" && to === "released") return "Release";
+  const toLabel = to.charAt(0).toUpperCase() + to.slice(1);
+  return `Move to ${toLabel}`;
+}
+
+/** One-line status summary above the stepper. */
+function statusSummary(status: string): string {
+  switch (status) {
+    case "draft": return "Draft — not yet submitted for review";
+    case "review": return "Pending review";
+    case "approved": return "Approved — ready to release";
+    case "released": return "Released";
+    default: return status;
+  }
+}
+
+/** Group consecutive commits by the same author within a 2-hour window. */
+type TimelineGroup = {
+  key: string;
+  entries: TimelineEntry[];
+};
+
+function groupTimeline(entries: TimelineEntry[]): TimelineGroup[] {
+  if (entries.length === 0) return [];
+  const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+  const groups: TimelineGroup[] = [];
+
+  for (const entry of entries) {
+    const last = groups[groups.length - 1];
+    const lastEntry = last?.entries[last.entries.length - 1];
+    const sameAuthor =
+      last &&
+      lastEntry &&
+      (entry.author.name || "") === (lastEntry.author.name || "") &&
+      (entry.author.email || "") === (lastEntry.author.email || "");
+
+    const withinWindow =
+      last &&
+      lastEntry &&
+      lastEntry.author.date &&
+      entry.author.date &&
+      Math.abs(
+        new Date(lastEntry.author.date).getTime() -
+          new Date(entry.author.date).getTime()
+      ) <= TWO_HOURS_MS;
+
+    if (sameAuthor && withinWindow) {
+      last.entries.push(entry);
+    } else {
+      groups.push({ key: entry.sha, entries: [entry] });
+    }
+  }
+  return groups;
+}
+
 function WorkflowStepper({ current }: { current: string }) {
   const currentIdx = WORKFLOW_STATES.indexOf(current as typeof WORKFLOW_STATES[number]);
   return (
@@ -172,7 +231,9 @@ export function VersionPanel({
 
   const [restoring, setRestoring] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
-  const [diffStats, setDiffStats] = useState<Record<string, { add: number; del: number }>>({});
+  const [diffStats, setDiffStats] = useState<Record<string, { add: number; del: number }>>({}); 
+  // Track which timeline groups are expanded (show all entries)
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (timeline.length < 2) return;
@@ -265,9 +326,10 @@ export function VersionPanel({
 
   return (
     <>
-      <div className="panel">
+      <div className="panel" data-needs-action={status === "review" ? "true" : undefined}>
         <div className="panel-head">Approval</div>
         <div className="panel-body">
+          <div className="approval-status-line">{statusSummary(status)}</div>
           <WorkflowStepper current={status} />
           <div className="meta-row">
             <span className="meta-key">Current status</span>
@@ -285,7 +347,7 @@ export function VersionPanel({
                     disabled={transitioning}
                     onClick={() => transition(next)}
                   >
-                    → Move to {next}
+                    {transitionLabel(status, next)}
                   </button>
                 ))}
               </div>
@@ -373,58 +435,102 @@ export function VersionPanel({
         )}
 
         <div>
-          {timeline.map((t) => {
-            const isViewing = viewingSha ? t.sha === viewingSha : t.isCurrent;
+          {groupTimeline(timeline).map((group) => {
+            const isExpanded = expandedGroups.has(group.key);
+            const entriesToShow =
+              group.entries.length === 1 || isExpanded
+                ? group.entries
+                : [group.entries[0]];
+            const hiddenCount = group.entries.length - 1;
+            const groupAuthor = group.entries[0].author;
+            const isGroupAgent =
+              groupAuthor.email?.includes("[bot]") ||
+              /\bbot\b/i.test(groupAuthor.name || "") ||
+              groupAuthor.name === "Docgent Studio";
+
             return (
-              <div key={t.sha} className="version" data-current={isViewing}>
-                <div className="version-head">
-                  <span className="version-num">r{t.version}</span>
-                  <span className="version-sha">{t.shortSha}</span>
-                  {t.isCurrent && (
-                    <span className="badge" style={{ marginLeft: "auto" }}>current</span>
-                  )}
-                </div>
-                <div className="version-subject" title={t.subject}>
-                  {displaySubject(t.subject)}
-                </div>
-                <div className="version-meta">
-                  {(t.author.email?.includes("[bot]") || /\bbot\b/i.test(t.author.name || "") || t.author.name === "Docgent Studio") ? "🤖 " : ""}
-                  {t.author.name || t.author.login || "unknown"}
-                  {t.author.date &&
-                    ` · ${new Date(t.author.date).toLocaleDateString("en-AU", {
-                      day: "numeric", month: "short", year: "numeric",
-                    })}`}
-                </div>
-                <div className="version-actions">
-                  <a
-                    className="version-action"
-                    href={t.isCurrent ? `/${brand}/${slug}` : `/${brand}/${slug}?v=${t.sha}`}
-                  >
-                    View
-                  </a>
-                  <a className="version-action" href={`/api/render/${brand}/${slug}?ref=${t.sha}`} target="_blank" rel="noreferrer">
-                    PDF
-                  </a>
-                  {!t.isCurrent && (
+              <Fragment key={group.key}>
+                {group.entries.length > 1 && (
+                  <div className="version-group-head">
+                    <span>
+                      {isGroupAgent ? "🤖 " : ""}
+                      {groupAuthor.name || groupAuthor.login || "unknown"}
+                      {groupAuthor.date &&
+                        ` · ${new Date(groupAuthor.date).toLocaleDateString("en-AU", {
+                          day: "numeric", month: "long",
+                        })}`}
+                      {" "}— {group.entries.length} operations
+                    </span>
                     <button
-                      className="version-action"
-                      data-active={comparingSha === t.sha}
-                      onClick={() => onCompare(t.sha, t.version)}
+                      className="version-group-toggle"
+                      onClick={() =>
+                        setExpandedGroups((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(group.key)) next.delete(group.key);
+                          else next.add(group.key);
+                          return next;
+                        })
+                      }
                     >
-                      {comparingSha === t.sha ? "Comparing" : "Compare"}
+                      {isExpanded ? "▴ Collapse" : `▾ Show ${hiddenCount} more`}
                     </button>
-                  )}
-                  {!t.isCurrent && (
-                    <button
-                      className="version-action"
-                      disabled={restoring !== null}
-                      onClick={() => restore(t.sha, t.version)}
-                    >
-                      {restoring === t.sha ? "Restoring…" : "Restore"}
-                    </button>
-                  )}
-                </div>
-              </div>
+                  </div>
+                )}
+                {entriesToShow.map((t) => {
+                  const isViewing = viewingSha ? t.sha === viewingSha : t.isCurrent;
+                  return (
+                    <div key={t.sha} className="version" data-current={isViewing}>
+                      <div className="version-head">
+                        <span className="version-num">r{t.version}</span>
+                        <span className="version-sha">{t.shortSha}</span>
+                        {t.isCurrent && (
+                          <span className="badge" style={{ marginLeft: "auto" }}>current</span>
+                        )}
+                      </div>
+                      <div className="version-subject" title={t.subject}>
+                        {displaySubject(t.subject)}
+                      </div>
+                      <div className="version-meta">
+                        {(t.author.email?.includes("[bot]") || /\bbot\b/i.test(t.author.name || "") || t.author.name === "Docgent Studio") ? "🤖 " : ""}
+                        {t.author.name || t.author.login || "unknown"}
+                        {t.author.date &&
+                          ` · ${new Date(t.author.date).toLocaleDateString("en-AU", {
+                            day: "numeric", month: "short", year: "numeric",
+                          })}`}
+                      </div>
+                      <div className="version-actions">
+                        <a
+                          className="version-action"
+                          href={t.isCurrent ? `/${brand}/${slug}` : `/${brand}/${slug}?v=${t.sha}`}
+                        >
+                          View
+                        </a>
+                        <a className="version-action" href={`/api/render/${brand}/${slug}?ref=${t.sha}`} target="_blank" rel="noreferrer">
+                          PDF
+                        </a>
+                        {!t.isCurrent && (
+                          <button
+                            className="version-action"
+                            data-active={comparingSha === t.sha}
+                            onClick={() => onCompare(t.sha, t.version)}
+                          >
+                            {comparingSha === t.sha ? "Comparing" : "Compare"}
+                          </button>
+                        )}
+                        {!t.isCurrent && (
+                          <button
+                            className="version-action"
+                            disabled={restoring !== null}
+                            onClick={() => restore(t.sha, t.version)}
+                          >
+                            {restoring === t.sha ? "Restoring…" : "Restore"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </Fragment>
             );
           })}
         </div>

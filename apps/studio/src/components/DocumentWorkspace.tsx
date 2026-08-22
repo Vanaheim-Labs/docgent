@@ -5,6 +5,70 @@ import type { TimelineEntry } from "@/lib/store";
 import { VersionPanel } from "@/components/VersionPanel";
 import { DiffView, type DiffResult } from "@/components/DiffView";
 
+/** Strip conventional-commit prefix for display in the banner. */
+function displaySubject(subject: string): string {
+  const m = subject.match(/^[a-z]+(?:\([^)]*\))?!?:\s*(.+)$/);
+  return (m ? m[1] : subject).trim() || subject;
+}
+
+function timeAgo(dateStr: string | undefined): string {
+  if (!dateStr) return "";
+  const diff = Date.now() - new Date(dateStr).getTime();
+  if (diff < 0) return "just now";
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}d ago`;
+  return `${Math.floor(day / 30)}mo ago`;
+}
+
+/**
+ * Banner shown above the PDF when there are multiple timeline entries.
+ * Summarises the latest change and offers a quick path to the diff.
+ */
+function ChangeBanner({
+  timeline,
+  onCompare,
+}: {
+  timeline: TimelineEntry[];
+  onCompare: (baseSha: string, revision?: number) => void;
+}) {
+  if (timeline.length < 2) return null;
+
+  const latest = timeline[0];
+  const previous = timeline[1];
+  const authorName = latest.author.name || latest.author.login || "unknown";
+  const isAgent =
+    latest.author.email?.includes("[bot]") ||
+    /\bbot\b/i.test(latest.author.name || "") ||
+    latest.author.name === "Docgent Studio";
+  const when = timeAgo(latest.author.date);
+  const subject = displaySubject(latest.subject);
+
+  return (
+    <div className="change-banner">
+      <div className="change-banner-info">
+        <span className="change-banner-title">
+          r{latest.version} — {subject}
+        </span>
+        <span className="change-banner-sub">
+          {timeline.length} revisions · last changed by{" "}
+          {isAgent ? "🤖 " : ""}{authorName}{when ? ` ${when}` : ""}
+        </span>
+      </div>
+      <button
+        className="btn btn-secondary"
+        onClick={() => onCompare(previous.sha, previous.version)}
+      >
+        Compare changes
+      </button>
+    </div>
+  );
+}
+
 /**
  * Owns the compare state for a document.
  *
@@ -82,6 +146,11 @@ export function DocumentWorkspace({
 
   return (
     <div className="grid">
+      {!compareBase && timeline.length >= 2 && (
+        <div style={{ gridColumn: "1 / -1" }}>
+          <ChangeBanner timeline={timeline} onCompare={runDiff} />
+        </div>
+      )}
       {compareBase ? (
         <DiffView
           baseLabel={compareLabel}
