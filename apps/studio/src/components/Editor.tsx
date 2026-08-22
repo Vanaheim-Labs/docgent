@@ -754,13 +754,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     const originalText = el.innerText;
     el.contentEditable = "true";
     el.focus();
-    // Place cursor at end.
-    const range = el.ownerDocument.createRange();
-    const sel   = el.ownerDocument.defaultView?.getSelection();
-    range.selectNodeContents(el);
-    range.collapse(false);
-    sel?.removeAllRanges();
-    sel?.addRange(range);
+    // Don't force cursor position — let the browser place it where the user clicked.
 
     const handleKeydown = (ke: KeyboardEvent) => {
       if (ke.key === "Escape") {
