@@ -911,6 +911,25 @@ kbd {
 }
 .version-action:hover { text-decoration: underline; }
 
+.approval-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.approval-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.approval-check-icon {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+}
+
 .approval-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1829,6 +1848,45 @@ kbd {
 .filter-dot-needs-review { background: var(--warning); }
 .filter-dot-in-progress { background: var(--accent); }
 .filter-dot-done { background: var(--success); }
+
+/* For You card (library view summary) */
+.foryou-card {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+}
+.foryou-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+}
+.foryou-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink);
+  text-align: left;
+  width: 100%;
+}
+.foryou-row:hover { text-decoration: underline; }
+.foryou-count {
+  font-weight: 600;
+  min-width: 16px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.foryou-count[data-highlight="true"] { color: var(--accent); }
+.foryou-label { color: var(--ink-soft); }
 
 /* Queue sections replace the brand-grouped card grid. */
 .queue-section { margin-bottom: 28px; }
