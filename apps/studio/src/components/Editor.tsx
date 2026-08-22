@@ -833,16 +833,48 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       const win = frame.contentWindow;
       if (!doc || !win) return;
 
-      // Walk up to find an editable ancestor with data-source-line.
+      // Walk up to find an editable element.
+      //
+      // Two cases:
+      //   1. Headings: data-source-line is stamped directly on the <h1>-<h6>
+      //      element by the Lua filter.
+      //   2. Paragraphs/list items: the Lua filter wraps them in
+      //      <div class="src-anchor" data-source-line="N"> — the <p> or <li>
+      //      inside it never carries the attribute itself.
+      //
+      // So we walk up looking for either:
+      //   a) an editable tag that has data-source-line directly, OR
+      //   b) a src-anchor div that has data-source-line, and grab its first
+      //      editable child as the element to make contenteditable.
+      let editEl: HTMLElement | null = null;
       let el: HTMLElement | null = target;
       while (el && el !== doc.body) {
-        if (INLINE_EDITABLE_TAGS.has(el.tagName) && el.dataset.sourceLine) break;
+        if (INLINE_EDITABLE_TAGS.has(el.tagName) && el.dataset.sourceLine) {
+          // Case (a): heading directly carries source line.
+          editEl = el;
+          break;
+        }
+        if (el.dataset.sourceLine && el.classList.contains("src-anchor")) {
+          // Case (b): paragraph wrapper — find the editable child.
+          const child = el.querySelector<HTMLElement>(
+            "p, li, h1, h2, h3, h4, h5, h6"
+          );
+          if (child) {
+            // Borrow the source line from the wrapper onto the child so
+            // makeEditable can read it via el.dataset.sourceLine.
+            if (!child.dataset.sourceLine) {
+              child.dataset.sourceLine = el.dataset.sourceLine;
+            }
+            editEl = child;
+          }
+          break;
+        }
         el = el.parentElement;
       }
 
-      if (el && el !== doc.body && el.dataset.sourceLine) {
+      if (editEl) {
         e.preventDefault();
-        makeEditableRef.current(el);
+        makeEditableRef.current(editEl);
         return;
       }
 
