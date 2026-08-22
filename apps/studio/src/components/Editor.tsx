@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import MDEditor from "@uiw/react-md-editor";
 import type { Vocabulary } from "@/lib/vocabulary";
 import { validateMarkdown, type Diagnostic } from "@/lib/validate-client";
 import { RewriteBar, type RewriteProposal } from "@/components/RewriteBar";
@@ -448,6 +449,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // preview tracks continuously rather than jumping block to block.
   const syncEditorToPreview = useCallback(() => {
     if (mode !== "html") return;
+    // MDEditor manages its own DOM — textareaRef is not attached. No-op.
+    if (!textareaRef.current) return;
     // An echo from a preview-driven scroll: swallow it and re-arm.
     if (syncLock.current === 2) { releaseSync(); return; }
     const win = frameRef.current?.contentWindow;
@@ -485,6 +488,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // viewport top, then converts that line back to a measured pixel offset.
   const syncPreviewToEditor = useCallback(() => {
     if (mode !== "html") return;
+    // MDEditor manages its own DOM — textareaRef is not attached. No-op.
+    if (!textareaRef.current) return;
     if (syncLock.current === 1) { releaseSync(); return; }
     const el = textareaRef.current;
     const win = frameRef.current?.contentWindow;
@@ -630,6 +635,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         return !(line > h.line && line <= sectionEnd(h));
       })
     );
+    // textareaRef is not attached in MDEditor mode — gracefully no-op.
+    // TODO: reconnect jumpToLine to MDEditor's internal scroll API
     requestAnimationFrame(() => {
       const el = textareaRef.current;
       if (!el) return;
@@ -886,6 +893,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // is already wrapped — or sits immediately inside the marks — the marks are
   // removed instead of nested, because "**\*\*bold\*\***" is the classic way a
   // toolbar silently corrupts a document.
+  // TODO: reconnect format bar to MDEditor selection API
   const toggleInline = useCallback(
     (mark: string, placeholder: string) => {
       const el = textareaRef.current;
@@ -936,6 +944,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // Line-level transforms operate on whole lines, so the selection is first
   // expanded to line boundaries. Without that, applying a heading to a
   // mid-line cursor would inject '#' into the middle of a sentence.
+  // TODO: reconnect format bar to MDEditor selection API
   const transformLines = useCallback(
     (fn: (lines: string[]) => string[]) => {
       const el = textareaRef.current;
@@ -1012,6 +1021,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
 
   // A link keeps whatever the author selected as the visible text and puts the
   // cursor on the URL, which is the part they still have to supply.
+  // TODO: reconnect format bar to MDEditor selection API
   const insertLink = useCallback(() => {
     const el = textareaRef.current;
     if (!el || isFolded) return;
@@ -1024,6 +1034,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     applyEdit(content.slice(0, start) + text + content.slice(end), urlAt, urlAt + 3);
   }, [content, isFolded, applyEdit]);
 
+  // TODO: reconnect format bar to MDEditor selection API
   const insertRule = useCallback(() => {
     const el = textareaRef.current;
     if (!el || isFolded) return;
@@ -1034,6 +1045,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     applyEdit(content.slice(0, start) + text + content.slice(start), pos, pos);
   }, [content, isFolded, applyEdit]);
 
+  // TODO: reconnect format bar to MDEditor selection API
   const insertCodeBlock = useCallback(() => {
     const el = textareaRef.current;
     if (!el || isFolded) return;
@@ -1048,10 +1060,10 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     applyEdit(content.slice(0, start) + text + content.slice(end), bodyAt, bodyAt + body.length);
   }, [content, isFolded, applyEdit]);
 
-  // Keyboard shortcuts for the marks authors reach for most. Registered on the
-  // textarea rather than the window so they cannot hijack typing elsewhere.
+  // Keyboard shortcuts for the marks authors reach for most. Attached to the
+  // wrapper div around MDEditor so events bubble up from MDEditor's internal textarea.
   const onSourceKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    (e: React.KeyboardEvent<HTMLElement>) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
       const k = e.key.toLowerCase();
       if (k === "b") { e.preventDefault(); toggleInline("**", "bold text"); }
@@ -1064,21 +1076,13 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
 
   /* ---------------- snippet insertion ---------------- */
 
+  // TODO: reconnect snippet insertion to MDEditor selection API
   const insertSnippet = useCallback((snippet: string) => {
-    const el = textareaRef.current;
-    if (!el) return;
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const selected = content.slice(start, end);
-    const body = selected || "Content goes here.";
+    const body = "Content goes here.";
     const text = snippet.replace("$BODY$", body);
-    const next = content.slice(0, start) + text + content.slice(end);
+    // Without textarea access, append snippet at end of content
+    const next = content + "\n" + text;
     setContent(next);
-    requestAnimationFrame(() => {
-      el.focus();
-      const cursor = start + text.indexOf(body);
-      el.setSelectionRange(cursor, cursor + body.length);
-    });
     setShowPalette(false);
   }, [content]);
 
@@ -1613,30 +1617,31 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               </div>
             </nav>
           )}
-          <textarea
-            ref={textareaRef}
+          {/* Prototype B — WYSIWYG Markdown panel. textareaRef not attached;
+              scroll sync and format bar operate gracefully with no-op guards.
+              The wrapper carries className="source" so the outline-active grid
+              placement rule (.pane-source[data-outline="true"] .source) still fires. */}
+          <div
             className="source"
-            value={displayContent}
-            spellCheck={false}
-            readOnly={isFolded}
-            title={isFolded ? "Unfold to edit — folding is for navigation" : undefined}
-            // Grammarly attaches to the textarea and nowhere else. It cannot
-            // reach the preview iframe, which is what keeps the layers clean:
-            // AI lifts sections, Grammarly polishes sentences.
-            data-gramm="true"
-            data-gramm_editor="true"
-            data-enable-grammarly="true"
-            onScroll={syncEditorToPreview}
+            style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: 0 }}
             onKeyDown={onSourceKeyDown}
-            onChange={(e) => {
-              // Guarded rather than remapped: while folded the visible string
-              // is a projection, so an offset-based write would corrupt the
-              // buffer. Folding is navigation, not an editing mode.
-              if (isFolded) return;
-              setContent(e.target.value);
-              if (save.kind === "saved") setSave({ kind: "idle" });
-            }}
-          />
+          >
+            <MDEditor
+              value={displayContent}
+              onChange={(val) => {
+                if (isFolded) return;
+                const next = val ?? "";
+                setContent(next);
+                if (save.kind === "saved") setSave({ kind: "idle" });
+              }}
+              preview="edit"
+              hideToolbar={true}
+              visibleDragbar={false}
+              height="100%"
+              style={{ flex: 1, minHeight: 0 }}
+              data-color-mode="light"
+            />
+          </div>
           {diagnostics.length > 0 && (
             <div className="diagnostics">
               {diagnostics.slice(0, 12).map((d, i) => (
