@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import type { TimelineEntry } from "@/lib/store";
 
 /**
@@ -29,11 +29,40 @@ function displaySubject(subject: string): string {
  * Cache-Control the API sets for historical refs, so re-mounting the panel
  * never re-fetches.
  */
+const WORKFLOW_STATES = ["draft", "review", "approved", "released"] as const;
+
+function WorkflowStepper({ current }: { current: string }) {
+  const currentIdx = WORKFLOW_STATES.indexOf(current as typeof WORKFLOW_STATES[number]);
+  return (
+    <div className="workflow-steps" aria-label="Approval workflow">
+      {WORKFLOW_STATES.map((state, idx) => {
+        const isDone = currentIdx > idx;
+        const isActive = currentIdx === idx;
+        return (
+          <Fragment key={state}>
+            {idx > 0 && <span className="workflow-step-arrow" aria-hidden="true">›</span>}
+            <span
+              className="workflow-step"
+              data-active={isActive}
+              data-done={isDone}
+              aria-current={isActive ? "step" : undefined}
+            >
+              <span className="workflow-step-dot" />
+              {state}
+            </span>
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
 function FilmstripFrame({
   brand,
   slug,
   sha,
   version,
+  subject,
   isCurrent,
   active,
   onSelect,
@@ -42,6 +71,7 @@ function FilmstripFrame({
   slug: string;
   sha: string;
   version: number;
+  subject: string;
   isCurrent: boolean;
   active: boolean;
   onSelect: () => void;
@@ -73,7 +103,7 @@ function FilmstripFrame({
       className="filmstrip-frame"
       data-active={active}
       onClick={onSelect}
-      title={`r${version} — ${sha.slice(0, 7)}`}
+      title={`r${version} — ${subject.slice(0, 80)}`}
     >
       {visible && !errored ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -209,6 +239,7 @@ export function VersionPanel({
       <div className="panel">
         <div className="panel-head">Approval</div>
         <div className="panel-body">
+          <WorkflowStepper current={status} />
           <div className="meta-row">
             <span className="meta-key">Current status</span>
             <span className="meta-val">
@@ -216,18 +247,23 @@ export function VersionPanel({
             </span>
           </div>
           {allowed.length > 0 ? (
-            <div className="approval-actions">
-              {allowed.map((next) => (
-                <button
-                  key={next}
-                  className="btn btn-secondary"
-                  disabled={transitioning}
-                  onClick={() => transition(next)}
-                >
-                  Move to {next}
-                </button>
-              ))}
-            </div>
+            <>
+              <div className="approval-actions">
+                {allowed.map((next) => (
+                  <button
+                    key={next}
+                    className="btn btn-secondary"
+                    disabled={transitioning}
+                    onClick={() => transition(next)}
+                  >
+                    → Move to {next}
+                  </button>
+                ))}
+              </div>
+              <div className="approval-note" style={{ marginTop: 6 }}>
+                Changes will be committed immediately.
+              </div>
+            </>
           ) : (
             <div className="approval-note">
               No further transitions from <strong>{status}</strong>.
@@ -238,10 +274,13 @@ export function VersionPanel({
               {statusError}
             </div>
           )}
-          <div className="approval-note" style={{ marginTop: 10 }}>
-            Sign-off is recorded as commit trailers, so the audit trail lives in
-            git rather than a side database.
-          </div>
+          <details className="workflow-disclosure">
+            <summary>How does approval work?</summary>
+            <p>
+              Sign-off is recorded as commit trailers, so the audit trail lives in
+              git rather than a side database.
+            </p>
+          </details>
         </div>
       </div>
 
@@ -264,6 +303,7 @@ export function VersionPanel({
                   slug={slug}
                   sha={t.sha}
                   version={t.version}
+                  subject={t.subject}
                   isCurrent={t.isCurrent}
                   active={isViewing}
                   onSelect={() =>
@@ -318,6 +358,7 @@ export function VersionPanel({
                   {displaySubject(t.subject)}
                 </div>
                 <div className="version-meta">
+                  {(t.author.email?.includes("[bot]") || /\bbot\b/i.test(t.author.name || "") || t.author.name === "Docgent Studio") ? "🤖 " : ""}
                   {t.author.name || t.author.login || "unknown"}
                   {t.author.date &&
                     ` · ${new Date(t.author.date).toLocaleDateString("en-AU", {
