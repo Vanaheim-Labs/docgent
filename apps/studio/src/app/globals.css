@@ -1922,3 +1922,106 @@ kbd {
   .queue-row-touched { display: none; }
 }
 
+/* ================= UX Feedback v1 additions ================= */
+
+/* --- ChangeBanner --- */
+.change-banner {
+  background: var(--accent-soft);
+  border: 1px solid #cfe0ec;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.change-banner-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.change-banner-title {
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--ink);
+}
+.change-banner-sub {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+/* --- Sidebar nav sections --- */
+.nav-section {
+  padding: 16px 0 4px;
+  border-bottom: 1px solid var(--rule);
+}
+.nav-section-head {
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding: 6px 20px;
+}
+.nav-item {
+  display: block;
+  padding: 7px 20px 7px 20px;
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  border-left: 2px solid transparent;
+}
+.nav-item:hover { background: var(--paper-alt); text-decoration: none; color: var(--ink); }
+.nav-item[data-active="true"] {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+  color: var(--accent);
+  font-weight: 550;
+}
+
+/* --- QueueRow CTA --- */
+.queue-row-action {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* --- VersionPanel approval status --- */
+.approval-status-line {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+  font-style: italic;
+}
+.panel[data-needs-action="true"] .panel-head {
+  background: #fff8e6;
+  color: var(--warning);
+}
+
+/* --- Timeline group header --- */
+.version-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 16px 6px;
+  background: var(--paper-alt);
+  border-bottom: 1px solid var(--rule);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.version-group-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  color: var(--accent);
+  padding: 0;
+  flex-shrink: 0;
+}
+.version-group-toggle:hover { text-decoration: underline; }
+
