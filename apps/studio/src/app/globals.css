@@ -707,7 +707,7 @@ kbd {
 }
 
 .pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.pane-source { border-right: 1px solid var(--rule); background: var(--paper); }
+.pane-source { border-right: 1px solid var(--rule); background: var(--paper); position: relative; }
 .pane-preview { background: var(--paper-alt); position: relative; }
 
 .source {
@@ -2025,3 +2025,52 @@ kbd {
 }
 .version-group-toggle:hover { text-decoration: underline; }
 
+
+/* ================= Prototype B — WYSIWYG MDEditor panel ================= */
+.pane-source .w-md-editor {
+  flex: 1;
+  min-height: 0;
+  height: 100% !important;
+  background: var(--surface, var(--paper)) !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+.pane-source .w-md-editor-text {
+  font-family: var(--font-mono, var(--mono, monospace));
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+.pane-source .w-md-editor-preview {
+  display: none !important;
+}
+[data-color-mode="light"] .w-md-editor {
+  --color-canvas-default: var(--surface, var(--paper));
+  --color-fg-default: var(--ink);
+}
+
+/* Prototype C — smart split highlight */
+.source-highlight-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 2;
+}
+.source-highlight-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1.6em;
+  background: rgba(99, 102, 241, 0.15);
+  border-left: 3px solid rgba(99, 102, 241, 0.6);
+  border-radius: 0 2px 2px 0;
+  animation: highlight-fade 1.2s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes highlight-fade {
+  0% { opacity: 1; }
+  60% { opacity: 0.8; }
+  100% { opacity: 0; }
+}
