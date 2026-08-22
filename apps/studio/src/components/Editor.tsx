@@ -846,11 +846,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         return;
       }
 
-      // Non-editable element in review posture — annotate.
-      if (postureRef.current === "review") {
-        openNoteAtRef.current(e.clientY);
-        return;
-      }
+      // Non-editable click — just jump to nearest source line.
+      // (Note composer suppressed while inline editing is the primary mode.)
 
       // Fallback: scroll source to nearest anchor.
       const all = anchorsRef.current();
