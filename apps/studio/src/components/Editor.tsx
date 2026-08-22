@@ -109,6 +109,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // so the programmatic scroll it causes on the other pane does not echo back.
   const syncLock = useRef<0 | 1 | 2>(0);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // True while a preview element is contenteditable — suppresses the debounced
+  // re-render so the iframe doesn’t replace itself while the user is typing.
+  const isEditingPreview = useRef(false);
+  // Scroll position to restore after a preview re-render.
+  const savedPreviewScroll = useRef<number>(0);
 
   const dirty = content !== initialContent || save.kind === "error" || save.kind === "stale";
 
@@ -138,7 +143,13 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
 
   const runHtmlPreview = useCallback(async (src: string) => {
     if (src === lastPreviewed.current) return;
+    // Don't re-render while the user is actively editing in the preview pane.
+    // The edit is already visible in the DOM optimistically; the re-render will
+    // fire on blur when isEditingPreview is cleared.
+    if (isEditingPreview.current) return;
     lastPreviewed.current = src;
+    // Save scroll position so we can restore it after the iframe reloads.
+    savedPreviewScroll.current = frameRef.current?.contentWindow?.scrollY ?? 0;
     setPreviewing(true);
     setPreviewError(null);
     try {
@@ -752,13 +763,24 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const makeEditable = useCallback((el: HTMLElement) => {
     const sourceLine   = Number(el.dataset.sourceLine);
     const originalText = el.innerText;
+
+    // Mark editing active BEFORE focus so the debounced re-render is
+    // suppressed immediately — not after the first timer fires.
+    isEditingPreview.current = true;
+
+    // Prevent focus() from scrolling the element into view, which causes
+    // the page-jump. Save the iframe scroll position, focus, then restore.
+    const win = frameRef.current?.contentWindow;
+    const scrollBefore = win?.scrollY ?? 0;
     el.contentEditable = "true";
-    el.focus();
-    // Don't force cursor position — let the browser place it where the user clicked.
+    el.focus({ preventScroll: true });
+    // preventScroll is not supported in all browsers; belt-and-suspenders.
+    if (win && win.scrollY !== scrollBefore) {
+      win.scrollTo({ top: scrollBefore, behavior: "instant" as ScrollBehavior });
+    }
 
     const handleKeydown = (ke: KeyboardEvent) => {
       if (ke.key === "Escape") {
-        // Revert — restore original text optimistically.
         el.innerText = originalText;
         el.removeEventListener("keydown", handleKeydown);
         el.blur();
@@ -766,7 +788,6 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         ke.key === "Enter" && !ke.shiftKey &&
         el.tagName !== "P" && el.tagName !== "LI"
       ) {
-        // Enter commits on headings; P/LI allow soft returns.
         ke.preventDefault();
         el.removeEventListener("keydown", handleKeydown);
         el.blur();
@@ -776,9 +797,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     const handleBlur = () => {
       el.removeEventListener("keydown", handleKeydown);
       el.contentEditable = "false";
+      isEditingPreview.current = false;
       const edited = el.innerText;
       if (edited.trim() !== originalText.trim()) {
-        // Optimistic update already visible; patch Markdown and queue re-render.
+        // Patch Markdown. The re-render is now unblocked and will fire on
+        // the next debounce cycle triggered by patchMarkdownBlock -> applyEdit.
         patchMarkdownBlock(sourceLine, edited);
       }
     };
@@ -1870,6 +1893,14 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                 srcDoc={previewHtml}
                 title="Live preview"
                 sandbox="allow-same-origin"
+                onLoad={() => {
+                  // Restore scroll position after re-render so the view
+                  // doesn’t jump to the top when the iframe reloads.
+                  const win = frameRef.current?.contentWindow;
+                  if (win && savedPreviewScroll.current > 0) {
+                    win.scrollTo({ top: savedPreviewScroll.current, behavior: "instant" as ScrollBehavior });
+                  }
+                }}
               />
             ) : (
               <div className="empty">Rendering first preview…</div>
