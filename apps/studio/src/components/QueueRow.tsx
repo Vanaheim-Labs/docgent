@@ -67,15 +67,24 @@ function actionText(doc: DocSummary, bucket: QueueBucket): string | null {
   const status = (doc.frontmatter?.status || "draft").toLowerCase();
   const isAgent = doc.lastCommit?.isAgent;
   const subject = doc.lastCommit?.subject;
+  const when = timeAgo(doc.lastCommit?.at);
 
   if (bucket === "needs-review" && isAgent && subject) {
-    return stripConventionalPrefix(subject);
+    const action = stripConventionalPrefix(subject);
+    return when ? `Agent finished ${when} — ${action}` : action;
   }
   if (bucket === "needs-review" && status === "review") {
-    return "Approve or revise";
+    return when ? `Submitted for review ${when}` : "Awaiting review";
+  }
+  if (bucket === "in-progress" && isAgent && subject) {
+    return `Agent working — ${stripConventionalPrefix(subject)}`;
   }
   if (bucket === "in-progress" && !isAgent) {
-    return "Human editing";
+    const name = doc.lastCommit?.name;
+    return name ? `${name} editing${when ? ` · ${when}` : ""}` : "Human editing";
+  }
+  if (bucket === "done") {
+    return status === "released" ? "Released" : "Approved";
   }
   return null;
 }
@@ -128,11 +137,10 @@ export function QueueRow({ doc }: { doc: DocSummary }) {
         </span>
       )}
       <span className="queue-row-touched">
-        {who ? (
+        {action ? null : who ? (
           <>
             <span className={isAgent ? "queue-row-agent" : undefined}>
-              {isAgent ? "🤖 " : ""}
-              {who}
+              {isAgent ? "🤖 " : ""}{who}
             </span>
             {when && <span className="queue-row-when"> · {when}</span>}
           </>

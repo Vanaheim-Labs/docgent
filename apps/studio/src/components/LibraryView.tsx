@@ -1,8 +1,39 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import type { DocSummary } from "@/lib/store";
+
+function ForYouCard({ buckets }: { buckets: Record<QueueBucket, DocSummary[]> }) {
+  const router = useRouter();
+  const reviewCount = buckets["needs-review"].length;
+  const inProgressCount = buckets["in-progress"].length;
+  const doneCount = buckets["done"].length;
+  if (reviewCount + inProgressCount + doneCount === 0) return null;
+  return (
+    <div className="foryou-card">
+      <div className="foryou-card-title">For you</div>
+      {reviewCount > 0 && (
+        <button className="foryou-row" onClick={() => router.push("/?bucket=needs-review")}>
+          <span className="foryou-count" data-highlight="true">{reviewCount}</span>
+          <span className="foryou-label">{reviewCount === 1 ? "document needs" : "documents need"} your review</span>
+        </button>
+      )}
+      {inProgressCount > 0 && (
+        <button className="foryou-row" onClick={() => router.push("/?bucket=in-progress")}>
+          <span className="foryou-count">{inProgressCount}</span>
+          <span className="foryou-label">{inProgressCount === 1 ? "document is" : "documents are"} being worked on</span>
+        </button>
+      )}
+      {doneCount > 0 && (
+        <button className="foryou-row" onClick={() => router.push("/")}>
+          <span className="foryou-count">{doneCount}</span>
+          <span className="foryou-label">{doneCount === 1 ? "document" : "documents"} approved or released</span>
+        </button>
+      )}
+    </div>
+  );
+}
 import { LibraryFilterPanel, type LibraryFilters } from "@/components/LibraryFilterPanel";
 import { QueueRow, queueBucket, BUCKET_LABEL, type QueueBucket } from "@/components/QueueRow";
 import { UserChip } from "@/components/UserChip";
@@ -103,6 +134,10 @@ export function LibraryView({
         </div>
 
         <div className="content">
+          {documents.length > 0 && !bucketParam && (
+            <ForYouCard buckets={buckets} />
+          )}
+
           {documents.length === 0 && (
             <div className="empty">
               No documents yet. Create one with{" "}
