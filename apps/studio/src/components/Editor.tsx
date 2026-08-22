@@ -36,6 +36,13 @@ type Heading = { line: number; level: number; text: string };
 // content is never modified, so a fold can never corrupt a document.
 type Fold = { startLine: number; endLine: number };
 
+const PALETTE_GROUPS: Record<string, string[]> = {
+  All: [],
+  Structure: ["summary", "appendix", "exec-intro", "pagebreak", "landscape", "columns", "toc"],
+  "Data & Figures": ["datatable", "financialtable", "keyfigure", "kpigrid", "kpicard", "figure", "allocation", "funnel", "milestones", "daygrid", "timeseries", "piechart"],
+  Callouts: ["callout", "pullquote", "recommendation", "definition", "signature", "note"],
+};
+
 export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: Props) {
   const [content, setContent] = useState(initialContent);
   const [baseSha, setBaseSha] = useState(initialSha);
@@ -61,6 +68,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [pdfStale, setPdfStale] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
+  const [paletteGroup, setPaletteGroup] = useState("All");
   const [posture, setPosture] = useState<Posture>("edit");
   const [showOutline, setShowOutline] = useState(true);
   const [folded, setFolded] = useState<number[]>([]);
@@ -1091,6 +1099,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           id: b.id,
           description: b.description,
           snippet: selfClosing ? `${opener}\n:::\n` : `${opener}\n$BODY$\n:::\n`,
+          opener,
         };
       }),
     [vocabulary]
@@ -1105,8 +1114,13 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     <div className="editor">
       <div className="editor-toolbar">
         <div className="editor-toolbar-left">
-          <button className="btn btn-secondary" onClick={() => setShowPalette((v) => !v)}>
-            Insert block <kbd>⌘/</kbd>
+          <button
+            className={`btn ${showPalette ? "btn-primary" : "btn-secondary"} palette-trigger`}
+            onClick={() => setShowPalette((v) => !v)}
+            title="Insert a Docgent block (⌘/)"
+            aria-expanded={showPalette}
+          >
+            + Insert block <kbd>⌘/</kbd>
           </button>
           <button
             className="btn btn-secondary"
@@ -1367,13 +1381,31 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           <div className="palette-head">
             Vocabulary — the closed set of blocks you may use
           </div>
-          <div className="palette-grid">
-            {snippets.map((s) => (
-              <button key={s.id} className="palette-item" onClick={() => insertSnippet(s.snippet)}>
-                <span className="palette-item-id">{s.id}</span>
-                <span className="palette-item-desc">{s.description}</span>
+          <div className="palette-groups">
+            {Object.keys(PALETTE_GROUPS).map((g) => (
+              <button
+                key={g}
+                className="palette-group-btn"
+                data-active={paletteGroup === g}
+                onClick={() => setPaletteGroup(g)}
+              >
+                {g}
               </button>
             ))}
+          </div>
+          <div className="palette-grid">
+            {snippets
+              .filter((s) =>
+                paletteGroup === "All" ||
+                (PALETTE_GROUPS[paletteGroup] ?? []).includes(s.id)
+              )
+              .map((s) => (
+                <button key={s.id} className="palette-item" onClick={() => insertSnippet(s.snippet)}>
+                  <span className="palette-item-id">{s.id}</span>
+                  <span className="palette-item-syntax">{s.opener}</span>
+                  <span className="palette-item-desc">{s.description}</span>
+                </button>
+              ))}
           </div>
         </div>
       )}
