@@ -66,6 +66,7 @@ function FilmstripFrame({
   isCurrent,
   active,
   onSelect,
+  diffStat,
 }: {
   brand: string;
   slug: string;
@@ -75,6 +76,7 @@ function FilmstripFrame({
   isCurrent: boolean;
   active: boolean;
   onSelect: () => void;
+  diffStat?: { add: number; del: number };
 }) {
   const [visible, setVisible] = useState(false);
   const [errored, setErrored] = useState(false);
@@ -103,7 +105,7 @@ function FilmstripFrame({
       className="filmstrip-frame"
       data-active={active}
       onClick={onSelect}
-      title={`r${version} — ${subject.slice(0, 80)}`}
+      title={`r${version}${diffStat ? ` · +${diffStat.add}/−${diffStat.del}` : ""} — ${subject.slice(0, 60)}`}
     >
       {visible && !errored ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -117,6 +119,12 @@ function FilmstripFrame({
         <div className="filmstrip-frame-placeholder">
           {errored ? "—" : "r" + version}
         </div>
+      )}
+      {diffStat && (diffStat.add > 0 || diffStat.del > 0) && (
+        <span className="filmstrip-diff-stat">
+          {diffStat.add > 0 && <span data-op="add">+{diffStat.add}</span>}
+          {diffStat.del > 0 && <span data-op="del">−{diffStat.del}</span>}
+        </span>
       )}
       <span className="filmstrip-frame-label">r{version}</span>
     </button>
@@ -164,6 +172,27 @@ export function VersionPanel({
 
   const [restoring, setRestoring] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [diffStats, setDiffStats] = useState<Record<string, { add: number; del: number }>>({});
+
+  useEffect(() => {
+    if (timeline.length < 2) return;
+    const pairs = timeline.slice(0, 7);
+    for (let i = 0; i < pairs.length - 1; i++) {
+      const head = pairs[i].sha;
+      const base = pairs[i + 1].sha;
+      fetch(`/api/diff/${brand}/${slug}?base=${base}&head=${head}&context=0`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data?.unified) {
+            setDiffStats((prev) => ({
+              ...prev,
+              [head]: { add: data.unified.additions, del: data.unified.deletions },
+            }));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [brand, slug, timeline]);
 
   useEffect(() => {
     fetch(`/api/status/${brand}/${slug}`)
@@ -306,6 +335,7 @@ export function VersionPanel({
                   subject={t.subject}
                   isCurrent={t.isCurrent}
                   active={isViewing}
+                  diffStat={diffStats[t.sha]}
                   onSelect={() =>
                     (window.location.href = t.isCurrent
                       ? `/${brand}/${slug}`
