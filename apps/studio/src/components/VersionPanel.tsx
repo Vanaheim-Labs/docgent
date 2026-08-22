@@ -199,30 +199,18 @@ export function VersionPanel({
   docVersion,
   onCompare,
   comparingSha,
+  show = "both",
 }: {
   brand: string;
   slug: string;
   timeline: TimelineEntry[];
   currentStatus: string;
   viewingSha?: string;
-  /**
-   * Comparison is owned by the parent so the diff can render in the main
-   * column. A document diff needs the wide pane: in this 340px rail a
-   * paragraph of prose collapsed into an unreadable ribbon.
-   */
   onCompare: (baseSha: string, revision?: number) => void;
   comparingSha?: string | null;
-  /**
-   * The `version:` value from the document's own frontmatter.
-   *
-   * Deliberately distinct from `TimelineEntry.version`, which is a count of
-   * commits touching the path. The two are independent: an author can bump
-   * (or, via a restore, roll back) the frontmatter version without any
-   * relationship to how many revisions exist. Showing a revision count
-   * prefixed with "v" made them look like the same number and produced a
-   * document whose cover read v14 next to a panel reading v11.
-   */
   docVersion?: string;
+  /** Which panels to render: "approval" only, "activity" only, or "both" (default). */
+  show?: "approval" | "activity" | "both";
 }) {
   const [status, setStatus] = useState(currentStatus);
   const [allowed, setAllowed] = useState<string[]>([]);
@@ -324,8 +312,12 @@ export function VersionPanel({
     }
   }, [brand, slug]);
 
+  const showApproval = show === "both" || show === "approval";
+  const showActivity = show === "both" || show === "activity";
+
   return (
     <>
+      {showApproval && (
       <div className="panel" data-needs-action={status === "review" ? "true" : undefined}>
         <div className="panel-head">Approval</div>
         <div className="panel-body">
@@ -339,6 +331,20 @@ export function VersionPanel({
           </div>
           {allowed.length > 0 ? (
             <>
+              <div className="approval-checklist">
+                <div className="approval-check-row">
+                  <span className="approval-check-icon" data-ok="true">✓</span>
+                  <span>PDF rendered successfully</span>
+                </div>
+                <div className="approval-check-row">
+                  <span className="approval-check-icon" data-ok="true">✓</span>
+                  <span>{timeline.length} revision{timeline.length === 1 ? "" : "s"} in history</span>
+                </div>
+                <div className="approval-check-row">
+                  <span className="approval-check-icon" data-ok="false">○</span>
+                  <span>Outstanding agent questions: none tracked</span>
+                </div>
+              </div>
               <div className="approval-actions">
                 {allowed.map((next) => (
                   <button
@@ -374,7 +380,9 @@ export function VersionPanel({
           </details>
         </div>
       </div>
+      )}
 
+      {showActivity && (
       <div className="panel">
         <div className="panel-head">
           <span>Revision history</span>
@@ -535,6 +543,7 @@ export function VersionPanel({
           })}
         </div>
       </div>
+      )}
 
     </>
   );

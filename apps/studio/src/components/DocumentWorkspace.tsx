@@ -5,6 +5,29 @@ import type { TimelineEntry } from "@/lib/store";
 import { VersionPanel } from "@/components/VersionPanel";
 import { DiffView, type DiffResult } from "@/components/DiffView";
 
+type RailTab = "changes" | "activity" | "details";
+
+type DocMeta = {
+  type?: string;
+  version?: string;
+  date?: string;
+  client?: string;
+  author?: string;
+  reference?: string;
+  status?: string;
+  classification?: string;
+};
+
+function MetaRow({ label, value }: { label: string; value?: string }) {
+  if (!value) return null;
+  return (
+    <div className="meta-row">
+      <span className="meta-key">{label}</span>
+      <span className="meta-val">{value}</span>
+    </div>
+  );
+}
+
 /** Strip conventional-commit prefix for display in the banner. */
 function displaySubject(subject: string): string {
   const m = subject.match(/^[a-z]+(?:\([^)]*\))?!?:\s*(.+)$/);
@@ -86,6 +109,7 @@ export function DocumentWorkspace({
   docVersion,
   pdfUrl,
   canEdit,
+  docMeta,
 }: {
   brand: string;
   slug: string;
@@ -95,7 +119,9 @@ export function DocumentWorkspace({
   docVersion?: string;
   pdfUrl: string;
   canEdit: boolean;
+  docMeta?: DocMeta;
 }) {
+  const [railTab, setRailTab] = useState<RailTab>("changes");
   const [compareBase, setCompareBase] = useState<string | null>(null);
   const [compareLabel, setCompareLabel] = useState<string>("");
   const [diff, setDiff] = useState<DiffResult | null>(null);
@@ -216,17 +242,70 @@ export function DocumentWorkspace({
         </div>
       )}
 
-      <div style={{ display: "grid", gap: 16 }}>
-        <VersionPanel
-          brand={brand}
-          slug={slug}
-          timeline={timeline}
-          currentStatus={currentStatus}
-          viewingSha={viewingSha}
-          docVersion={docVersion}
-          onCompare={runDiff}
-          comparingSha={compareBase}
-        />
+      {/* Tabbed right rail: Changes | Activity | Details */}
+      <div className="rail">
+        <div className="rail-tabs">
+          {(["changes", "activity", "details"] as RailTab[]).map((t) => (
+            <button
+              key={t}
+              className="rail-tab"
+              data-active={railTab === t}
+              onClick={() => setRailTab(t)}
+            >
+              {t.charAt(0).toUpperCase() + t.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        {railTab === "changes" && (
+          <VersionPanel
+            brand={brand}
+            slug={slug}
+            timeline={timeline}
+            currentStatus={currentStatus}
+            viewingSha={viewingSha}
+            docVersion={docVersion}
+            onCompare={runDiff}
+            comparingSha={compareBase}
+            show="approval"
+          />
+        )}
+
+        {railTab === "activity" && (
+          <VersionPanel
+            brand={brand}
+            slug={slug}
+            timeline={timeline}
+            currentStatus={currentStatus}
+            viewingSha={viewingSha}
+            docVersion={docVersion}
+            onCompare={runDiff}
+            comparingSha={compareBase}
+            show="activity"
+          />
+        )}
+
+        {railTab === "details" && (
+          <div className="panel">
+            <div className="panel-head">Details</div>
+            <div className="panel-body">
+              {docMeta ? (
+                <>
+                  <MetaRow label="Type" value={docMeta.type} />
+                  <MetaRow label="Version" value={docMeta.version} />
+                  <MetaRow label="Date" value={docMeta.date} />
+                  <MetaRow label="Client" value={docMeta.client} />
+                  <MetaRow label="Author" value={docMeta.author} />
+                  <MetaRow label="Reference" value={docMeta.reference} />
+                  <MetaRow label="Status" value={docMeta.status} />
+                  <MetaRow label="Classification" value={docMeta.classification} />
+                </>
+              ) : (
+                <div style={{ color: "var(--ink-faint)", fontSize: 13 }}>No metadata available.</div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

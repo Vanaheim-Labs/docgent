@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams, usePathname } from "next/navigation";
 import type { DocSummary } from "@/lib/store";
@@ -27,6 +28,8 @@ export function Sidebar({
   activeSlug?: string;
   errors?: { brand: string; message: string }[];
 }) {
+  const [collapsed, setCollapsed] = useState(false);
+
   const byBrand = new Map<string, DocSummary[]>();
   for (const d of documents) {
     if (!byBrand.has(d.brand)) byBrand.set(d.brand, []);
@@ -43,12 +46,19 @@ export function Sidebar({
   const isAllDocsActive = isHome && !bucketParam;
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" data-collapsed={collapsed}>
       <div className="sidebar-head">
         <Link href="/" className="wordmark" style={{ color: "inherit" }}>
           <img src="/docgent-logo.svg" alt="Docgent" className="wordmark-logo" />
         </Link>
-        <div className="wordmark-sub">Studio</div>
+        {!collapsed && <div className="wordmark-sub">Studio</div>}
+        <button
+          className="sidebar-collapse-btn"
+          onClick={() => setCollapsed((v) => !v)}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? "›" : "‹"}
+        </button>
       </div>
 
       {/* Top navigation sections */}

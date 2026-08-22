@@ -137,7 +137,10 @@ export default async function DocumentPage({ params, searchParams }: Props) {
             <div className="crumb">
               {repoSlug(brand)} · <strong>{brand}</strong>
             </div>
-            <h1 className="doc-title">{fm.title || slug}</h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <h1 className="doc-title" style={{ margin: 0 }}>{fm.title || slug}</h1>
+              <DocStatusPill status={fm.status} timelineLength={timeline.length} />
+            </div>
           </div>
           <UserChip />
         </div>
@@ -159,19 +162,6 @@ export default async function DocumentPage({ params, searchParams }: Props) {
             </div>
           )}
 
-          <div className="doc-meta-strip">
-            <MetaChip k="Type" v={fm.doctype} />
-            <MetaChip k="Version" v={fm.version} />
-            <MetaChip k="Date" v={fm.date} />
-            {fm.client && <MetaChip k="Client" v={fm.client} />}
-            {fm.author && <MetaChip k="Author" v={fm.author} />}
-            {fm.reference && <MetaChip k="Ref" v={fm.reference} />}
-            <span className="badge" data-status={fm.status}>{fm.status || "—"}</span>
-            <span className="badge" data-class={fm.classification}>
-              {fm.classification || "—"}
-            </span>
-          </div>
-
           {timelineError ? (
             <div className="panel">
               <div className="panel-head">Version history</div>
@@ -189,6 +179,16 @@ export default async function DocumentPage({ params, searchParams }: Props) {
               docVersion={fm.version}
               pdfUrl={pdfUrl}
               canEdit={!commitSha}
+              docMeta={{
+                type: fm.doctype,
+                version: fm.version,
+                date: fm.date,
+                client: fm.client,
+                author: fm.author,
+                reference: fm.reference,
+                status: fm.status,
+                classification: fm.classification,
+              }}
             />
           )}
         </div>
@@ -197,25 +197,19 @@ export default async function DocumentPage({ params, searchParams }: Props) {
   );
 }
 
-/** Compact inline metadata, freeing the rail for history and the pane for content. */
-/**
- * One document property in the header strip.
- *
- * The label is set in small caps and the value in normal text weight, so a
- * property reads as a document attribute rather than as escaped CMS data.
- *
- * The value itself is deliberately left verbatim. `doctype: strategic-report`
- * is a vocabulary identifier that selects a template, and it is the string an
- * author edits in frontmatter - prettifying it to "Strategic Report" in the
- * chrome would show a value that exists nowhere in the source, which is the
- * one thing this system is built not to do.
- */
-function MetaChip({ k, v }: { k: string; v?: string }) {
-  if (!v) return null;
+/** Colour-coded status pill shown next to the document title. */
+function DocStatusPill({ status, timelineLength }: { status?: string; timelineLength: number }) {
+  const s = (status || "draft").toLowerCase();
+  const changeCount = Math.max(0, timelineLength - 1);
+  const label = (() => {
+    if (s === "review") return `🟠 Pending review${changeCount > 0 ? ` · ${changeCount} revision${changeCount === 1 ? "" : "s"}` : ""}`;
+    if (s === "approved") return "✅ Approved";
+    if (s === "released") return "🟢 Released";
+    return "🔵 Draft";
+  })();
   return (
-    <span className="meta-chip">
-      <span className="meta-chip-key">{k}</span>
-      <span className="meta-chip-val">{v}</span>
+    <span className="doc-status-pill" data-status={s}>
+      {label}
     </span>
   );
 }
