@@ -813,94 +813,95 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     doc.head.appendChild(style);
   }, []);
 
-  // Ref to track current posture inside iframe click handler (avoids stale closure).
-  const postureRef = useRef<Posture>(posture);
-  useEffect(() => { postureRef.current = posture; }, [posture]);
+  // Stable refs so the iframe click handler never goes stale when React
+  // state changes. Updated synchronously on every render.
+  const postureRef   = useRef<Posture>(posture);
+  const makeEditableRef = useRef(makeEditable);
+  const openNoteAtRef   = useRef(openNoteAt);
+  const anchorsRef      = useRef(anchors);
+  const docTopRef       = useRef(docTop);
+  const jumpToLineRef   = useRef(jumpToLine);
+  postureRef.current    = posture;
+  makeEditableRef.current = makeEditable;
+  openNoteAtRef.current   = openNoteAt;
+  anchorsRef.current      = anchors;
+  docTopRef.current       = docTop;
+  jumpToLineRef.current   = jumpToLine;
 
-  // Attach click handler directly inside the iframe so events fire on the
-  // actual elements rather than bubbling up through the sandbox boundary.
-  // This is the fix for elementFromPoint missing when the iframe is scrolled.
-  useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame) return;
-
-    const attach = () => {
+  // Stable click handler — created once, reads current values via refs.
+  const iframeClickHandler = useRef<((e: MouseEvent) => void) | null>(null);
+  if (!iframeClickHandler.current) {
+    iframeClickHandler.current = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      const frame  = frameRef.current;
+      if (!target || !frame) return;
       const doc = frame.contentDocument;
       const win = frame.contentWindow;
       if (!doc || !win) return;
 
-      // Inject hover cursor styles.
-      injectEditCursor();
+      // Walk up to find an editable ancestor with data-source-line.
+      let el: HTMLElement | null = target;
+      while (el && el !== doc.body) {
+        if (INLINE_EDITABLE_TAGS.has(el.tagName) && el.dataset.sourceLine) break;
+        el = el.parentElement;
+      }
 
-      const handleClick = (e: MouseEvent) => {
-        const target = e.target as HTMLElement | null;
-        if (!target) return;
+      if (el && el !== doc.body && el.dataset.sourceLine) {
+        e.preventDefault();
+        makeEditableRef.current(el);
+        return;
+      }
 
-        // Walk up to editable ancestor.
-        let el: HTMLElement | null = target;
-        while (el && el !== doc.body) {
-          if (INLINE_EDITABLE_TAGS.has(el.tagName) && el.dataset.sourceLine) break;
-          el = el.parentElement;
-        }
+      // Non-editable element in review posture — annotate.
+      if (postureRef.current === "review") {
+        openNoteAtRef.current(e.clientY);
+        return;
+      }
 
-        if (el && el !== doc.body && el.dataset.sourceLine) {
-          e.preventDefault();
-          makeEditable(el);
-          return;
-        }
-
-        // Non-editable click in review posture — annotate.
-        if (postureRef.current === "review") {
-          const frame = frameRef.current;
-          if (!frame) return;
-          const rect = frame.getBoundingClientRect();
-          const localY = e.clientY;
-          openNoteAt(localY);
-          return;
-        }
-
-        // Fallback: jump to nearest source line.
-        const all = anchors();
-        if (all.length === 0) return;
-        const y = e.clientY + win.scrollY;
-        let nearest = all[0];
-        let best = Infinity;
-        for (const a of all) {
-          const d = Math.abs(docTop(a.el, win) - y);
-          if (d < best) { best = d; nearest = a; }
-        }
-        jumpToLine(nearest.line);
-      };
-
-      doc.addEventListener("click", handleClick);
-      return () => doc.removeEventListener("click", handleClick);
+      // Fallback: scroll source to nearest anchor.
+      const all = anchorsRef.current();
+      if (all.length === 0) return;
+      const y = e.clientY + win.scrollY;
+      let nearest = all[0];
+      let best = Infinity;
+      for (const a of all) {
+        const d = Math.abs(docTopRef.current(a.el, win) - y);
+        if (d < best) { best = d; nearest = a; }
+      }
+      jumpToLineRef.current(nearest.line);
     };
+  }
 
-    let cleanup: (() => void) | undefined;
-    const onLoad = () => {
-      if (cleanup) cleanup();
-      cleanup = attach() ?? undefined;
-    };
-    frame.addEventListener("load", onLoad);
-    // Attach immediately if already loaded.
-    cleanup = attach() ?? undefined;
-    return () => {
-      frame.removeEventListener("load", onLoad);
-      if (cleanup) cleanup();
-    };
-  }, [previewHtml, injectEditCursor, makeEditable, openNoteAt, anchors, docTop, jumpToLine]);
-
-  // Re-inject edit cursor styles whenever the preview HTML reloads.
+  // Attach the stable click handler and cursor styles once when the iframe
+  // loads, and re-attach after each full preview HTML reload.
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
-    const onLoad = () => injectEditCursor();
-    frame.addEventListener("load", onLoad);
-    injectEditCursor();
-    return () => frame.removeEventListener("load", onLoad);
-  }, [previewHtml, injectEditCursor]);
+    const handler = iframeClickHandler.current!;
 
-  // Wrapper div click — no-op now that events are handled inside the iframe.
+    const attach = () => {
+      const doc = frame.contentDocument;
+      if (!doc) return;
+      // Remove any prior copy before adding (idempotent).
+      doc.removeEventListener("click", handler);
+      doc.addEventListener("click", handler);
+      injectEditCursor();
+    };
+
+    // Re-attach every time the iframe navigates to new HTML.
+    frame.addEventListener("load", attach);
+    // Also attach immediately if already loaded.
+    attach();
+
+    return () => {
+      frame.removeEventListener("load", attach);
+      frame.contentDocument?.removeEventListener("click", handler);
+    };
+  // Only re-run when the iframe element itself changes or HTML reloads.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewHtml]);
+
+  // Wrapper div click — events are handled inside the iframe directly.
   const onPreviewClick = useCallback(
     (_e: React.MouseEvent<HTMLDivElement>) => { /* handled by iframe listener */ },
     []
