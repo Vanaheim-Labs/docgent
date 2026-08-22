@@ -211,6 +211,33 @@ a:hover { text-decoration: underline; }
   background: var(--paper-alt);
 }
 
+/* ---------- pdf panel states ---------- */
+.pdf-panel-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pdf-loading {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; background: var(--paper); color: var(--ink-faint); font-size: 13px;
+  z-index: 1;
+}
+.pdf-loading-spinner {
+  width: 24px; height: 24px; border: 2px solid var(--rule);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.pdf-error {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; background: var(--paper); color: var(--ink);
+  z-index: 1;
+}
+
 /* ---------- meta list ---------- */
 .meta-row {
   display: flex; justify-content: space-between; gap: 12px;
@@ -833,6 +860,27 @@ kbd {
   color: var(--ink-faint);
   line-height: 1.45;
 }
+
+/* ---------- workflow stepper ---------- */
+.workflow-steps {
+  display: flex; align-items: center; gap: 0; margin-bottom: 14px; font-size: 11px;
+  flex-wrap: nowrap;
+}
+.workflow-step {
+  display: flex; align-items: center; gap: 4px;
+  color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.05em;
+}
+.workflow-step[data-active="true"] { color: var(--accent); font-weight: 600; }
+.workflow-step[data-done="true"] { color: var(--ink-soft); }
+.workflow-step-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--rule); flex-shrink: 0;
+}
+.workflow-step[data-active="true"] .workflow-step-dot { background: var(--accent); }
+.workflow-step[data-done="true"] .workflow-step-dot { background: var(--ink-soft); }
+.workflow-step-arrow { color: var(--rule); margin: 0 4px; }
+.workflow-disclosure { font-size: 12px; color: var(--ink-faint); margin-top: 10px; }
+.workflow-disclosure summary { cursor: pointer; }
+.workflow-disclosure p { margin: 6px 0 0; line-height: 1.45; }
 
 /* ------------------------------------------------------------------ *
  * Diff view
@@ -1792,6 +1840,16 @@ kbd {
 }
 .queue-row-agent { color: var(--accent); font-weight: 600; }
 .queue-row-when { color: var(--ink-faint); }
+.queue-row-render-error {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--risk);
+  background: #fef2f2;
+  border-radius: 4px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
 
 @media (max-width: 900px) {
   .queue-row {

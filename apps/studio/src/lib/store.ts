@@ -60,6 +60,12 @@ export type DocSummary = {
      *  clone and mirror the same way the rest of the history does. */
     isAgent: boolean;
   };
+  /**
+   * Stub for future render health surfacing. Populated by the render worker
+   * when it records a failed or degraded render; null when health is unknown
+   * or the field has not been set by the render pipeline yet.
+   */
+  renderError?: string;
 };
 
 /**

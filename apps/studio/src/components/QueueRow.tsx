@@ -74,7 +74,12 @@ export function QueueRow({ doc }: { doc: DocSummary }) {
     <Link href={`/${doc.brand}/${doc.slug}`} className="queue-row">
       <span className="queue-row-status" data-status={status?.toLowerCase()} aria-hidden="true" />
       <span className="queue-row-main">
-        <span className="queue-row-title">{doc.title}</span>
+        <span className="queue-row-title" title={doc.title}>
+          {doc.title}
+          {doc.renderError && (
+            <span className="queue-row-render-error" title={doc.renderError}>⚠ render failed</span>
+          )}
+        </span>
         {fm.subtitle && <span className="queue-row-sub">{String(fm.subtitle)}</span>}
       </span>
       <span className="queue-row-brand">{doc.brandName}</span>

@@ -115,6 +115,16 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     if (diagnostics.length === 0) setShowErrors(false);
   }, [diagnostics.length]);
 
+  // Auto-open on mount if there are diagnostics — surfaces them immediately
+  // so authors don't have to hunt for the pill after loading a document.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (diagnostics.length > 0) setShowErrors(true);
+    }, 500);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty — runs once on mount
+
   /* ---------------- preview ---------------- */
 
   const runHtmlPreview = useCallback(async (src: string) => {
@@ -1418,7 +1428,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       )}
 
       {showErrors && diagnostics.length > 0 && (
-        <div className="errors-panel" role="dialog" aria-label="Document diagnostics">
+        <div className="errors-panel" role="alert" aria-label="Document diagnostics">
           <div className="errors-panel-header">
             <span className="errors-panel-title">
               {errors.length > 0 ? (
