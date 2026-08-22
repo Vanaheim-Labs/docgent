@@ -813,77 +813,97 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     doc.head.appendChild(style);
   }, []);
 
+  // Ref to track current posture inside iframe click handler (avoids stale closure).
+  const postureRef = useRef<Posture>(posture);
+  useEffect(() => { postureRef.current = posture; }, [posture]);
+
+  // Attach click handler directly inside the iframe so events fire on the
+  // actual elements rather than bubbling up through the sandbox boundary.
+  // This is the fix for elementFromPoint missing when the iframe is scrolled.
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+
+    const attach = () => {
+      const doc = frame.contentDocument;
+      const win = frame.contentWindow;
+      if (!doc || !win) return;
+
+      // Inject hover cursor styles.
+      injectEditCursor();
+
+      const handleClick = (e: MouseEvent) => {
+        const target = e.target as HTMLElement | null;
+        if (!target) return;
+
+        // Walk up to editable ancestor.
+        let el: HTMLElement | null = target;
+        while (el && el !== doc.body) {
+          if (INLINE_EDITABLE_TAGS.has(el.tagName) && el.dataset.sourceLine) break;
+          el = el.parentElement;
+        }
+
+        if (el && el !== doc.body && el.dataset.sourceLine) {
+          e.preventDefault();
+          makeEditable(el);
+          return;
+        }
+
+        // Non-editable click in review posture — annotate.
+        if (postureRef.current === "review") {
+          const frame = frameRef.current;
+          if (!frame) return;
+          const rect = frame.getBoundingClientRect();
+          const localY = e.clientY;
+          openNoteAt(localY);
+          return;
+        }
+
+        // Fallback: jump to nearest source line.
+        const all = anchors();
+        if (all.length === 0) return;
+        const y = e.clientY + win.scrollY;
+        let nearest = all[0];
+        let best = Infinity;
+        for (const a of all) {
+          const d = Math.abs(docTop(a.el, win) - y);
+          if (d < best) { best = d; nearest = a; }
+        }
+        jumpToLine(nearest.line);
+      };
+
+      doc.addEventListener("click", handleClick);
+      return () => doc.removeEventListener("click", handleClick);
+    };
+
+    let cleanup: (() => void) | undefined;
+    const onLoad = () => {
+      if (cleanup) cleanup();
+      cleanup = attach() ?? undefined;
+    };
+    frame.addEventListener("load", onLoad);
+    // Attach immediately if already loaded.
+    cleanup = attach() ?? undefined;
+    return () => {
+      frame.removeEventListener("load", onLoad);
+      if (cleanup) cleanup();
+    };
+  }, [previewHtml, injectEditCursor, makeEditable, openNoteAt, anchors, docTop, jumpToLine]);
+
   // Re-inject edit cursor styles whenever the preview HTML reloads.
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
     const onLoad = () => injectEditCursor();
     frame.addEventListener("load", onLoad);
-    // Also inject immediately if the frame is already loaded.
     injectEditCursor();
     return () => frame.removeEventListener("load", onLoad);
   }, [previewHtml, injectEditCursor]);
 
-  // Preview-pane click — always tries inline editing first; falls back to
-  // jump-to-source for non-editable elements. Review posture still annotates.
+  // Wrapper div click — no-op now that events are handled inside the iframe.
   const onPreviewClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const frame = frameRef.current;
-      if (!frame || mode !== "html") return;
-      const rect = frame.getBoundingClientRect();
-      const win  = frame.contentWindow;
-      const doc  = frame.contentDocument;
-      if (!win || !doc) return;
-      const localY = e.clientY - rect.top;
-
-      // Review posture: annotation flow (unchanged).
-      if (posture === "review") {
-        // Check for editable element first — if clicked on one, edit it.
-        const iframeX = e.clientX - rect.left;
-        const iframeY = e.clientY - rect.top;
-        const target = doc.elementFromPoint(iframeX, iframeY) as HTMLElement | null;
-        let el: HTMLElement | null = target;
-        while (el && el !== doc.body) {
-          if (INLINE_EDITABLE_TAGS.has(el.tagName) && el.dataset.sourceLine) break;
-          el = el.parentElement;
-        }
-        if (el && el !== doc.body && el.dataset.sourceLine) {
-          makeEditable(el);
-          return;
-        }
-        // Otherwise annotate (existing review behaviour).
-        openNoteAt(localY);
-        return;
-      }
-
-      // Edit posture: try to find an editable element.
-      const iframeX = e.clientX - rect.left;
-      const iframeY = e.clientY - rect.top;
-      const target = doc.elementFromPoint(iframeX, iframeY) as HTMLElement | null;
-      let el: HTMLElement | null = target;
-      while (el && el !== doc.body) {
-        if (INLINE_EDITABLE_TAGS.has(el.tagName) && el.dataset.sourceLine) break;
-        el = el.parentElement;
-      }
-
-      if (el && el !== doc.body && el.dataset.sourceLine) {
-        makeEditable(el);
-        return;
-      }
-
-      // Fallback: jump to nearest source line.
-      const all = anchors();
-      if (all.length === 0) return;
-      const y = localY + win.scrollY;
-      let nearest = all[0];
-      let best = Infinity;
-      for (const a of all) {
-        const d = Math.abs(docTop(a.el, win) - y);
-        if (d < best) { best = d; nearest = a; }
-      }
-      jumpToLine(nearest.line);
-    },
-    [posture, mode, openNoteAt, anchors, docTop, jumpToLine, makeEditable]
+    (_e: React.MouseEvent<HTMLDivElement>) => { /* handled by iframe listener */ },
+    []
   );
 
   /* ---------------- directed rewrite ---------------- */
