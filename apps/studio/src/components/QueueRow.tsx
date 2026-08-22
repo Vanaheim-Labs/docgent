@@ -1,6 +1,13 @@
 import Link from "next/link";
 import type { DocSummary } from "@/lib/store";
 
+/** Strip conventional-commit prefix and return the meaningful part, max 60 chars. */
+function stripConventionalPrefix(subject: string): string {
+  const m = subject.match(/^[a-z]+(?:\([^)]*\))?!?:\s*(.+)$/);
+  const stripped = (m ? m[1] : subject).trim() || subject;
+  return stripped.length > 60 ? stripped.slice(0, 60) + "…" : stripped;
+}
+
 /**
  * Where a document sits in the review cycle, derived from frontmatter status
  * plus who touched it last.
@@ -55,6 +62,30 @@ function timeAgo(ms: number | null | undefined): string | null {
   return `${Math.floor(mo / 12)}y ago`;
 }
 
+/** Derive a human-readable action description from the document state. */
+function actionText(doc: DocSummary, bucket: QueueBucket): string | null {
+  const status = (doc.frontmatter?.status || "draft").toLowerCase();
+  const isAgent = doc.lastCommit?.isAgent;
+  const subject = doc.lastCommit?.subject;
+
+  if (bucket === "needs-review" && isAgent && subject) {
+    return stripConventionalPrefix(subject);
+  }
+  if (bucket === "needs-review" && status === "review") {
+    return "Approve or revise";
+  }
+  if (bucket === "in-progress" && !isAgent) {
+    return "Human editing";
+  }
+  return null;
+}
+
+/** Call-to-action label for the right rail, shown only for needs-review. */
+function ctaLabel(bucket: QueueBucket): string | null {
+  if (bucket === "needs-review") return "Review →";
+  return null;
+}
+
 /**
  * One row in the work queue.
  *
@@ -69,6 +100,9 @@ export function QueueRow({ doc }: { doc: DocSummary }) {
   const who = doc.lastCommit?.name;
   const when = timeAgo(doc.lastCommit?.at);
   const isAgent = doc.lastCommit?.isAgent;
+  const bucket = queueBucket(doc);
+  const action = actionText(doc, bucket);
+  const cta = ctaLabel(bucket);
 
   return (
     <Link href={`/${doc.brand}/${doc.slug}`} className="queue-row">
@@ -80,7 +114,11 @@ export function QueueRow({ doc }: { doc: DocSummary }) {
             <span className="queue-row-render-error" title={doc.renderError}>⚠ render failed</span>
           )}
         </span>
-        {fm.subtitle && <span className="queue-row-sub">{String(fm.subtitle)}</span>}
+        {action ? (
+          <span className="queue-row-sub">{action}</span>
+        ) : fm.subtitle ? (
+          <span className="queue-row-sub">{String(fm.subtitle)}</span>
+        ) : null}
       </span>
       <span className="queue-row-brand">{doc.brandName}</span>
       {fm.doctype && <span className="queue-row-fact">{label(fm.doctype)}</span>}
@@ -102,6 +140,7 @@ export function QueueRow({ doc }: { doc: DocSummary }) {
           <span className="queue-row-when">—</span>
         )}
       </span>
+      {cta && <span className="queue-row-action">{cta}</span>}
     </Link>
   );
 }
