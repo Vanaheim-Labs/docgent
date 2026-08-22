@@ -98,6 +98,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
    */
   const [noteTarget, setNoteTarget] = useState<{ line: number; top: number } | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
+  const [highlightLine, setHighlightLine] = useState<number | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
