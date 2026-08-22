@@ -69,7 +69,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [pdfStale, setPdfStale] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const [paletteGroup, setPaletteGroup] = useState("All");
-  const [posture, setPosture] = useState<Posture>("edit");
+  // Default to review posture — preview pane is the primary editing surface.
+  const [posture, setPosture] = useState<Posture>("review");
   const [showOutline, setShowOutline] = useState(true);
   const [folded, setFolded] = useState<number[]>([]);
   const [showErrors, setShowErrors] = useState(false);
@@ -710,17 +711,27 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     closeNote();
   }, [noteTarget, noteDraft, content, applyEdit, offsetForLine, closeNote]);
 
-  /* ---------------- inline preview editing (Prototype A) ----------------
-   * Edit posture: clicking a p/h1-h6/li element in the preview makes it
-   * contenteditable. On blur the new text is patched back into the Markdown
-   * buffer. Tables, fenced divs, and other complex blocks fall back to
-   * jumpToLine so the author can edit in the source textarea.
+  /* ---------------- inline preview editing --------------------------------
+   * The preview pane is the primary editing surface. Clicking any rendered
+   * paragraph, heading or list item makes it contenteditable in place.
    *
-   * The iframe has sandbox="allow-same-origin" so we can read/write its DOM
-   * from the parent frame but cannot inject scripts. All listeners are
-   * attached from this React component. */
+   * On blur:
+   *   1. The DOM element text is updated immediately (optimistic — already
+   *      visible since the user just typed it).
+   *   2. patchMarkdownBlock writes the new text back to the Markdown buffer,
+   *      which triggers the debounced re-render and the dirty/save flow.
+   *   3. The full re-render from the worker arrives ~1.2 s later and replaces
+   *      the iframe content, catching any Markdown formatting side-effects.
+   *
+   * Tables, fenced divs, and code blocks are not directly editable — clicking
+   * them scrolls the source textarea to that line instead so the author can
+   * edit the raw Markdown. */
   const INLINE_EDITABLE_TAGS = new Set(["P", "H1", "H2", "H3", "H4", "H5", "H6", "LI"]);
 
+  // Patch a single rendered element's text back into the Markdown buffer.
+  // Handles headings (preserves hashes), bullets, numbered lists, and plain
+  // paragraphs. For multi-line Markdown paragraphs the rendered element maps
+  // to the first source line — the full paragraph text replaces that one line.
   const patchMarkdownBlock = useCallback((sourceLine: number, newText: string) => {
     const lines = content.split("\n");
     const idx = sourceLine - 1;
@@ -737,7 +748,84 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     applyEdit(lines.join("\n"), 0, 0);
   }, [content, applyEdit]);
 
-  // Preview-pane click — dispatches to Edit or Review posture handling.
+  // Make a rendered preview element editable. Called on click.
+  const makeEditable = useCallback((el: HTMLElement) => {
+    const sourceLine   = Number(el.dataset.sourceLine);
+    const originalText = el.innerText;
+    el.contentEditable = "true";
+    el.focus();
+    // Place cursor at end.
+    const range = el.ownerDocument.createRange();
+    const sel   = el.ownerDocument.defaultView?.getSelection();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    const handleKeydown = (ke: KeyboardEvent) => {
+      if (ke.key === "Escape") {
+        // Revert — restore original text optimistically.
+        el.innerText = originalText;
+        el.removeEventListener("keydown", handleKeydown);
+        el.blur();
+      } else if (
+        ke.key === "Enter" && !ke.shiftKey &&
+        el.tagName !== "P" && el.tagName !== "LI"
+      ) {
+        // Enter commits on headings; P/LI allow soft returns.
+        ke.preventDefault();
+        el.removeEventListener("keydown", handleKeydown);
+        el.blur();
+      }
+    };
+
+    const handleBlur = () => {
+      el.removeEventListener("keydown", handleKeydown);
+      el.contentEditable = "false";
+      const edited = el.innerText;
+      if (edited.trim() !== originalText.trim()) {
+        // Optimistic update already visible; patch Markdown and queue re-render.
+        patchMarkdownBlock(sourceLine, edited);
+      }
+    };
+
+    el.addEventListener("blur",    handleBlur,    { once: true });
+    el.addEventListener("keydown", handleKeydown);
+  }, [patchMarkdownBlock]);
+
+  // Inject a hover cursor into the iframe document so editable elements show
+  // a text cursor on mouseover, making the surface discoverable.
+  const injectEditCursor = useCallback(() => {
+    const doc = frameRef.current?.contentDocument;
+    if (!doc || doc.getElementById("__docgent_edit_cursor")) return;
+    const style = doc.createElement("style");
+    style.id = "__docgent_edit_cursor";
+    style.textContent = [
+      "p[data-source-line], h1[data-source-line], h2[data-source-line],",
+      "h3[data-source-line], h4[data-source-line], h5[data-source-line],",
+      "h6[data-source-line], li[data-source-line] { cursor: text; }",
+      "p[data-source-line]:hover, h1[data-source-line]:hover, h2[data-source-line]:hover,",
+      "h3[data-source-line]:hover, h4[data-source-line]:hover, h5[data-source-line]:hover,",
+      "h6[data-source-line]:hover, li[data-source-line]:hover {",
+      "  background: rgba(99,102,241,0.06); border-radius: 3px; outline: 1px solid rgba(99,102,241,0.2);",
+      "}",
+    ].join(" ");
+    doc.head.appendChild(style);
+  }, []);
+
+  // Re-inject edit cursor styles whenever the preview HTML reloads.
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    const onLoad = () => injectEditCursor();
+    frame.addEventListener("load", onLoad);
+    // Also inject immediately if the frame is already loaded.
+    injectEditCursor();
+    return () => frame.removeEventListener("load", onLoad);
+  }, [previewHtml, injectEditCursor]);
+
+  // Preview-pane click — always tries inline editing first; falls back to
+  // jump-to-source for non-editable elements. Review posture still annotates.
   const onPreviewClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const frame = frameRef.current;
@@ -750,68 +838,52 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
 
       // Review posture: annotation flow (unchanged).
       if (posture === "review") {
+        // Check for editable element first — if clicked on one, edit it.
+        const iframeX = e.clientX - rect.left;
+        const iframeY = e.clientY - rect.top;
+        const target = doc.elementFromPoint(iframeX, iframeY) as HTMLElement | null;
+        let el: HTMLElement | null = target;
+        while (el && el !== doc.body) {
+          if (INLINE_EDITABLE_TAGS.has(el.tagName) && el.dataset.sourceLine) break;
+          el = el.parentElement;
+        }
+        if (el && el !== doc.body && el.dataset.sourceLine) {
+          makeEditable(el);
+          return;
+        }
+        // Otherwise annotate (existing review behaviour).
         openNoteAt(localY);
         return;
       }
 
-      // Edit posture: inline editing.
+      // Edit posture: try to find an editable element.
       const iframeX = e.clientX - rect.left;
       const iframeY = e.clientY - rect.top;
       const target = doc.elementFromPoint(iframeX, iframeY) as HTMLElement | null;
-
-      // Walk up to find an editable ancestor with data-source-line.
       let el: HTMLElement | null = target;
       while (el && el !== doc.body) {
         if (INLINE_EDITABLE_TAGS.has(el.tagName) && el.dataset.sourceLine) break;
         el = el.parentElement;
       }
 
-      if (!el || el === doc.body || !el.dataset.sourceLine) {
-        // Non-editable element — jump to nearest source line as fallback.
-        const all = anchors();
-        if (all.length === 0) return;
-        const y = localY + win.scrollY;
-        let nearest = all[0];
-        let best = Infinity;
-        for (const a of all) {
-          const d = Math.abs(docTop(a.el, win) - y);
-          if (d < best) { best = d; nearest = a; }
-        }
-        jumpToLine(nearest.line);
+      if (el && el !== doc.body && el.dataset.sourceLine) {
+        makeEditable(el);
         return;
       }
 
-      const sourceLine   = Number(el.dataset.sourceLine);
-      const originalText = el.innerText;
-
-      el.contentEditable = "true";
-      el.focus();
-
-      const handleKeydown = (ke: KeyboardEvent) => {
-        if (ke.key === "Escape") {
-          el!.innerText = originalText;
-          el!.removeEventListener("keydown", handleKeydown);
-          el!.blur();
-        } else if (ke.key === "Enter" && !ke.shiftKey && el!.tagName !== "P" && el!.tagName !== "LI") {
-          ke.preventDefault();
-          el!.removeEventListener("keydown", handleKeydown);
-          el!.blur();
-        }
-      };
-
-      const handleBlur = () => {
-        el!.removeEventListener("keydown", handleKeydown);
-        const edited = el!.innerText;
-        el!.contentEditable = "false";
-        if (edited.trim() !== originalText.trim()) {
-          patchMarkdownBlock(sourceLine, edited);
-        }
-      };
-
-      el.addEventListener("blur",    handleBlur,    { once: true });
-      el.addEventListener("keydown", handleKeydown);
+      // Fallback: jump to nearest source line.
+      const all = anchors();
+      if (all.length === 0) return;
+      const y = localY + win.scrollY;
+      let nearest = all[0];
+      let best = Infinity;
+      for (const a of all) {
+        const d = Math.abs(docTop(a.el, win) - y);
+        if (d < best) { best = d; nearest = a; }
+      }
+      jumpToLine(nearest.line);
     },
-    [posture, mode, openNoteAt, anchors, docTop, jumpToLine, patchMarkdownBlock]
+    [posture, mode, openNoteAt, anchors, docTop, jumpToLine, makeEditable]
   );
 
   /* ---------------- directed rewrite ---------------- */
@@ -1220,19 +1292,19 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           <div className="mode-toggle" role="group" aria-label="Working posture">
             <button
               className="mode-btn"
-              data-active={posture === "edit"}
-              onClick={() => setPosture("edit")}
-              title="Authoring — source takes the space"
+              data-active={posture === "review"}
+              onClick={() => setPosture("review")}
+              title="Edit in the preview — click any paragraph or heading to edit it directly"
             >
               Edit
             </button>
             <button
               className="mode-btn"
-              data-active={posture === "review"}
-              onClick={() => setPosture("review")}
-              title="Judgement — read it as the reader will"
+              data-active={posture === "edit"}
+              onClick={() => setPosture("edit")}
+              title="Source — edit raw Markdown in the left pane"
             >
-              Review
+              Source
             </button>
           </div>
           <span className="editor-stat">{lineCount} lines · {wordCount} words</span>
