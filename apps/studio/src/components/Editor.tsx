@@ -144,12 +144,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const runHtmlPreview = useCallback(async (src: string) => {
     if (src === lastPreviewed.current) return;
     // Don't re-render while the user is actively editing in the preview pane.
-    // The edit is already visible in the DOM optimistically; the re-render will
-    // fire on blur when isEditingPreview is cleared.
     if (isEditingPreview.current) return;
     lastPreviewed.current = src;
-    // Save scroll position so we can restore it after the iframe reloads.
-    savedPreviewScroll.current = frameRef.current?.contentWindow?.scrollY ?? 0;
     setPreviewing(true);
     setPreviewError(null);
     try {
@@ -162,13 +158,43 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         setPreviewError((await res.text()).slice(0, 400));
         return;
       }
-      setPreviewHtml(await res.text());
+      const html = await res.text();
+      const frame = frameRef.current;
+      const win   = frame?.contentWindow;
+      const doc   = frame?.contentDocument;
+      // Write directly into the existing iframe document instead of swapping
+      // srcDoc. This avoids a full iframe reload and keeps the scroll position
+      // exactly where it is — no jump, no flash.
+      if (doc && win) {
+        const scrollY = win.scrollY;
+        doc.open();
+        doc.write(html);
+        doc.close();
+        // Restore scroll synchronously after write (doc.write resets to 0).
+        win.scrollTo({ top: scrollY, behavior: "instant" as ScrollBehavior });
+        // Re-attach our click handler and cursor styles since the document
+        // was replaced by doc.write.
+        if (iframeClickHandler.current) {
+          doc.removeEventListener("click", iframeClickHandler.current);
+          doc.addEventListener("click", iframeClickHandler.current);
+        }
+        injectEditCursor();
+        // Keep previewHtml in sync for the first load (srcDoc) and for any
+        // code that reads it, but don't update it on re-renders to avoid
+        // triggering React’s iframe srcDoc swap.
+        if (!lastPreviewed.current || lastPreviewed.current === src) {
+          setPreviewHtml(html);
+        }
+      } else {
+        // First load — no iframe doc yet, fall back to setting state.
+        setPreviewHtml(html);
+      }
     } catch (e) {
       setPreviewError(e instanceof Error ? e.message : String(e));
     } finally {
       setPreviewing(false);
     }
-  }, [brand, slug]);
+  }, [brand, slug, injectEditCursor]);
 
   // PDF is an explicit action: it is the slow, faithful path, so it renders on
   // demand rather than on every keystroke.
