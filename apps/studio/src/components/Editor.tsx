@@ -23,10 +23,14 @@ type Props = {
 
 const PREVIEW_DEBOUNCE_MS = 1200;
 
-type PreviewMode = "html" | "pdf";
+// Unified editor mode:
+//   edit   = inline editing surface (preview as primary, both panes)
+//   pages  = PDF paginated view (full width)
+//   source = raw Markdown editor, source pane full width (power mode)
+type EditorMode = "edit" | "pages" | "source";
 
-// Edit weights the source; Review weights the preview. Editing only ever
-// happens in the source, so this changes proportions, never affordances.
+// Keep internal types for legacy compatibility in scroll sync logic
+type PreviewMode = "html" | "pdf";
 type Posture = "edit" | "review";
 
 type Heading = { line: number; level: number; text: string };
@@ -63,15 +67,19 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [summary, setSummary] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
-  const [mode, setMode] = useState<PreviewMode>("html");
+  // Unified editor mode. Replaces separate posture + previewMode.
+  const [editorMode, setEditorMode] = useState<EditorMode>("edit");
+  // Derived internal state for existing scroll sync / preview logic.
+  const mode: PreviewMode = editorMode === "pages" ? "pdf" : "html";
+  const posture: Posture = editorMode === "source" ? "edit" : "review";
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [pdfStale, setPdfStale] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const [paletteGroup, setPaletteGroup] = useState("All");
-  // Default to review posture — preview pane is the primary editing surface.
-  const [posture, setPosture] = useState<Posture>("review");
-  const [showOutline, setShowOutline] = useState(true);
+  // Split-screen toggle (Phase 2c): show both panes side-by-side in Edit mode.
+  const [splitView, setSplitView] = useState(false);
+  const [showOutline, setShowOutline] = useState(false);
   const [folded, setFolded] = useState<number[]>([]);
   const [showErrors, setShowErrors] = useState(false);
 
@@ -236,14 +244,14 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Switching to PDF renders on demand if the buffer moved since the last one.
+  // Switching to Pages mode renders PDF on demand if the buffer moved since the last one.
   useEffect(() => {
-    if (mode !== "pdf") return;
+    if (editorMode !== "pages") return;
     if (errors.length > 0) return;
     if (content === lastPdfRendered.current && previewUrl) return;
     runPdfPreview(content);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, [editorMode]);
 
   /* ---------------- save ---------------- */
 
@@ -1509,24 +1517,44 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             data-active={showOutline}
             title="Toggle document outline"
           >
-            Outline
+            ☰ Outline
           </button>
-          <div className="mode-toggle" role="group" aria-label="Working posture">
+          {/* Phase 2c: split-screen toggle in Edit mode */}
+          {editorMode === "edit" && (
+            <button
+              className="btn btn-secondary"
+              onClick={() => setSplitView((v) => !v)}
+              data-active={splitView}
+              title="Toggle split source/preview view"
+            >
+              ⋯ Split
+            </button>
+          )}
+          {/* Unified 3-button mode switcher */}
+          <div className="mode-toggle" role="group" aria-label="Editor mode">
             <button
               className="mode-btn"
-              data-active={posture === "review"}
-              onClick={() => setPosture("review")}
+              data-active={editorMode === "edit"}
+              onClick={() => setEditorMode("edit")}
               title="Edit in the preview — click any paragraph or heading to edit it directly"
             >
               Edit
             </button>
             <button
               className="mode-btn"
-              data-active={posture === "edit"}
-              onClick={() => setPosture("edit")}
-              title="Source — edit raw Markdown in the left pane"
+              data-active={editorMode === "pages"}
+              onClick={() => setEditorMode("pages")}
+              title="Paginated PDF — exact print fidelity"
             >
-              Source
+              Pages{pdfStale && editorMode === "pages" ? " •" : ""}
+            </button>
+            <button
+              className="mode-btn source-mode-btn"
+              data-active={editorMode === "source"}
+              onClick={() => setEditorMode("source")}
+              title="Source — edit raw Markdown directly (power mode)"
+            >
+              ‹› Source
             </button>
           </div>
           <span className="editor-stat">{lineCount} lines · {wordCount} words</span>
@@ -1538,32 +1566,23 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
 
         <div className="editor-toolbar-right">
-          <div className="mode-toggle" role="group" aria-label="Preview mode">
-            <button
-              className="mode-btn"
-              data-active={mode === "html"}
-              onClick={() => setMode("html")}
-              title="Fast preview with synchronised scrolling"
-            >
-              Preview
-            </button>
-            <button
-              className="mode-btn"
-              data-active={mode === "pdf"}
-              onClick={() => setMode("pdf")}
-              title="Paginated PDF — exact print fidelity"
-            >
-              PDF{pdfStale && mode === "pdf" ? " •" : ""}
-            </button>
-          </div>
-          {mode === "pdf" && (
-            <button
-              className="btn btn-secondary"
-              onClick={() => runPdfPreview(content)}
-              disabled={previewing || errors.length > 0}
-            >
-              {previewing ? "Rendering…" : pdfStale ? "Refresh PDF" : "Export PDF"}
-            </button>
+          {editorMode === "pages" && (
+            <>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setEditorMode("edit")}
+                title="Return to editing"
+              >
+                ← Edit document
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => runPdfPreview(content)}
+                disabled={previewing || errors.length > 0}
+              >
+                {previewing ? "Rendering…" : pdfStale ? "Refresh PDF" : "Export PDF"}
+              </button>
+            </>
           )}
           {previewing && <span className="editor-stat">rendering…</span>}
           {errors.length > 0 && (
@@ -1923,83 +1942,100 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
       )}
 
-      <div className="editor-panes" data-posture={posture}>
-        <div className="pane pane-source" data-outline={showOutline && headings.length > 0}>
-          {showOutline && headings.length > 0 && (
-            <nav className="outline" aria-label="Document outline">
-              <div className="outline-head">
-                <span>Outline</span>
-                <span className="outline-count">{headings.length}</span>
-              </div>
-              <div className="outline-list">
-                {headings.map((h) => {
-                  const foldable = sectionEnd(h) > h.line;
-                  const isOpen = !folded.includes(h.line);
-                  const struck = isStruck(h);
-                  return (
-                    <div
-                      key={h.line}
-                      className="outline-row"
-                      data-level={h.level}
-                      data-struck={struck}
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData("text/x-docgent-line", String(h.line));
-                        e.dataTransfer.setData("text/x-docgent-level", String(h.level));
-                        e.dataTransfer.effectAllowed = "move";
-                      }}
-                      onDragOver={(e) => {
-                        if (e.dataTransfer.types.includes("text/x-docgent-line")) {
-                          e.preventDefault();
-                          e.dataTransfer.dropEffect = "move";
-                        }
-                      }}
-                      onDrop={(e) => {
-                        const fromLine = Number(e.dataTransfer.getData("text/x-docgent-line"));
-                        if (!Number.isFinite(fromLine) || fromLine === h.line) return;
+      <div
+        className="editor-panes"
+        data-posture={posture}
+        data-mode={editorMode}
+        data-split={splitView && editorMode === "edit"}
+      >
+        {/* Collapsible outline sidebar (Phase 2b) */}
+        {showOutline && headings.length > 0 && (
+          <nav
+            className="outline-sidebar"
+            data-open="true"
+            aria-label="Document outline"
+          >
+            <div className="outline-head" style={{ position: "sticky", top: 0, zIndex: 1 }}>
+              <span>Outline</span>
+              <span className="outline-count">{headings.length}</span>
+            </div>
+            <div className="outline-list">
+              {headings.map((h) => {
+                const foldable = sectionEnd(h) > h.line;
+                const isOpen = !folded.includes(h.line);
+                const struck = isStruck(h);
+                return (
+                  <div
+                    key={h.line}
+                    className="outline-row"
+                    data-level={h.level}
+                    data-struck={struck}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("text/x-docgent-line", String(h.line));
+                      e.dataTransfer.setData("text/x-docgent-level", String(h.level));
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragOver={(e) => {
+                      if (e.dataTransfer.types.includes("text/x-docgent-line")) {
                         e.preventDefault();
-                        moveSection(fromLine, h.line);
-                      }}
-                      title="Drag to reorder"
+                        e.dataTransfer.dropEffect = "move";
+                      }
+                    }}
+                    onDrop={(e) => {
+                      const fromLine = Number(e.dataTransfer.getData("text/x-docgent-line"));
+                      if (!Number.isFinite(fromLine) || fromLine === h.line) return;
+                      e.preventDefault();
+                      moveSection(fromLine, h.line);
+                    }}
+                    title="Drag to reorder"
+                  >
+                    <button
+                      className="outline-fold"
+                      onClick={() => toggleFold(h.line)}
+                      disabled={!foldable}
+                      aria-label={isOpen ? "Fold section" : "Unfold section"}
+                      title={foldable ? (isOpen ? "Fold section" : "Unfold section") : "Nothing to fold"}
                     >
-                      <button
-                        className="outline-fold"
-                        onClick={() => toggleFold(h.line)}
-                        disabled={!foldable}
-                        aria-label={isOpen ? "Fold section" : "Unfold section"}
-                        title={foldable ? (isOpen ? "Fold section" : "Unfold section") : "Nothing to fold"}
-                      >
-                        {foldable ? (isOpen ? "▾" : "▸") : "·"}
-                      </button>
-                      <button
-                        className="outline-link"
-                        onClick={() => jumpToLine(h.line)}
-                        title={`${h.text} — line ${h.line}`}
-                      >
-                        {h.text}
-                      </button>
-                      <button
-                        className="outline-strike"
-                        onClick={() => toggleStrike(h)}
-                        data-active={struck}
-                        title={struck ? "Unstrike section" : "Strike section"}
-                        aria-label={struck ? `Unstrike ${h.text}` : `Strike ${h.text}`}
-                      >
-                        S
-                      </button>
-                      <button
-                        className="outline-direct"
-                        onClick={() => openSectionRewrite(h)}
-                        title={`Direct a rewrite of "${h.text}"`}
-                        aria-label={`Direct a rewrite of ${h.text}`}
-                      >
-                        ✨
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </nav>
+                      {foldable ? (isOpen ? "▾" : "▸") : "·"}
+                    </button>
+                    <button
+                      className="outline-link"
+                      onClick={() => jumpToLine(h.line)}
+                      title={`${h.text} — line ${h.line}`}
+                    >
+                      {h.text}
+                    </button>
+                    <button
+                      className="outline-strike"
+                      onClick={() => toggleStrike(h)}
+                      data-active={struck}
+                      title={struck ? "Unstrike section" : "Strike section"}
+                      aria-label={struck ? `Unstrike ${h.text}` : `Strike ${h.text}`}
+                    >
+                      S
+                    </button>
+                    <button
+                      className="outline-direct"
+                      onClick={() => openSectionRewrite(h)}
+                      title={`Direct a rewrite of "${h.text}"`}
+                      aria-label={`Direct a rewrite of ${h.text}`}
+                    >
+                      ✨
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </nav>
+        )}
+        {/* Source pane: shown in Source mode always, in Edit+split mode when split is on */}
+        {(editorMode === "source" || (editorMode === "edit" && splitView)) && (
+        <div className="pane pane-source">
+          {editorMode === "source" && (
+            <div className="source-mode-banner">
+              ‹› You are editing the document source
+            </div>
           )}
           <textarea
             ref={textareaRef}
@@ -2036,7 +2072,10 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             </div>
           )}
         </div>
+        )}
 
+        {/* Preview/Pages pane: shown in Edit mode always, Pages mode full-width */}
+        {editorMode !== "source" && (
         <div
           className="pane pane-preview"
           data-annotatable={posture === "review" && mode === "html"}
@@ -2057,7 +2096,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                 sandbox="allow-same-origin"
                 onLoad={() => {
                   // Restore scroll position after re-render so the view
-                  // doesn’t jump to the top when the iframe reloads.
+                  // doesn't jump to the top when the iframe reloads.
                   const win = frameRef.current?.contentWindow;
                   if (win && savedPreviewScroll.current > 0) {
                     win.scrollTo({ top: savedPreviewScroll.current, behavior: "instant" as ScrollBehavior });
@@ -2085,6 +2124,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   );

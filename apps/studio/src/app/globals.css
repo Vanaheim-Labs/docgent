@@ -593,26 +593,54 @@ kbd {
 }
 
 /* ---- split panes ---- */
-/* ---------- Phase 9: posture, outline, tinting ---------- */
+/* ---------- Phase 9 + Phase 2: posture, outline, mode ---------- */
 
-/* Edit weights the source; Review weights the preview. Editing only ever
-   happens in the source, so this shifts proportion, never capability. */
-.editor-panes[data-posture="edit"] { grid-template-columns: 6fr 4fr; }
-.editor-panes[data-posture="review"] { grid-template-columns: 3fr 7fr; }
+/* Phase 2: Mode-based layouts.
+   edit (default): preview takes all width (source hidden unless split)
+   pages: single pane (PDF, full width)
+   source: single pane (source textarea, full width)
+   split (edit + data-split): 40/60 source/preview
+*/
+.editor-panes[data-mode="edit"] { grid-template-columns: 1fr; }
+.editor-panes[data-mode="edit"][data-split="true"] { grid-template-columns: 4fr 6fr; }
+.editor-panes[data-mode="pages"] { grid-template-columns: 1fr; }
+.editor-panes[data-mode="source"] { grid-template-columns: 1fr; }
 @media (max-width: 900px) {
-  .editor-panes[data-posture="edit"],
-  .editor-panes[data-posture="review"] { grid-template-columns: 1fr; }
+  .editor-panes { grid-template-columns: 1fr !important; }
 }
 
-/* The outline sits inside the source pane, so navigation and the text it
-   navigates never separate. */
-.pane-source[data-outline="true"] {
-  display: grid;
-  grid-template-columns: minmax(160px, 232px) 1fr;
-  grid-template-rows: 1fr auto;
+/* Phase 2b: Collapsible outline sidebar — overlays left edge of editor-panes */
+.outline-sidebar {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 260px;
+  background: var(--paper);
+  border-right: 1px solid var(--rule);
+  box-shadow: 2px 0 12px rgba(0,0,0,0.08);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateX(-100%);
+  transition: transform 0.2s ease;
 }
-.pane-source[data-outline="true"] .source { grid-column: 2; grid-row: 1; }
-.pane-source[data-outline="true"] .diagnostics { grid-column: 1 / -1; grid-row: 2; }
+.outline-sidebar[data-open="true"] { transform: translateX(0); }
+.outline-sidebar .outline-list { overflow-y: auto; flex: 1; padding: 4px 0 12px; }
+
+/* Phase 2a: Source mode banner */
+.source-mode-banner {
+  padding: 6px 16px;
+  background: var(--paper-alt);
+  border-bottom: 1px solid var(--rule);
+  font-size: 11.5px;
+  font-family: var(--mono);
+  color: var(--ink-faint);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+/* Phase 2a: source-mode-btn uses monospace to signal technical mode */
+.source-mode-btn { font-family: var(--mono) !important; font-size: 11.5px !important; }
 
 .outline {
   grid-column: 1; grid-row: 1;
