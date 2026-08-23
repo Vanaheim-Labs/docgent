@@ -110,10 +110,15 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const syncLock = useRef<0 | 1 | 2>(0);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // True while a preview element is contenteditable — suppresses the debounced
-  // re-render so the iframe doesn’t replace itself while the user is typing.
+  // re-render so the iframe doesn't replace itself while the user is typing.
   const isEditingPreview = useRef(false);
   // Scroll position to restore after a preview re-render.
   const savedPreviewScroll = useRef<number>(0);
+  // Autosave: fires 3 seconds after last content change, only when dirty and no errors.
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Controls whether the "Saved ✓" indicator is visible (fades after 3s).
+  const [savedVisible, setSavedVisible] = useState(false);
+  const savedFadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dirty = content !== initialContent || save.kind === "error" || save.kind === "stale";
 
@@ -294,6 +299,30 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       setSave({ kind: "error", message: e instanceof Error ? e.message : String(e) });
     }
   }, [brand, slug, content, baseSha, errors.length, summary]);
+
+  // Autosave: 3 seconds after last content change, when dirty and no errors.
+  useEffect(() => {
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    if (!dirty || errors.length > 0 || save.kind === "saving") return;
+    autoSaveTimer.current = setTimeout(() => {
+      doSave();
+    }, 3000);
+    return () => {
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content, dirty, errors.length]);
+
+  // Show "Saved ✓" indicator for 3 seconds after a successful save.
+  useEffect(() => {
+    if (save.kind === "saved") {
+      setSavedVisible(true);
+      if (savedFadeTimer.current) clearTimeout(savedFadeTimer.current);
+      savedFadeTimer.current = setTimeout(() => setSavedVisible(false), 3000);
+    } else {
+      setSavedVisible(false);
+    }
+  }, [save.kind]);
 
   // Cmd/Ctrl+S saves. Authors expect it; without it they will use the browser
   // save dialog and lose work.
@@ -1472,7 +1501,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             title="Insert a Docgent block (⌘/)"
             aria-expanded={showPalette}
           >
-            + Insert block <kbd>⌘/</kbd>
+            + Add <kbd>⌘/</kbd>
           </button>
           <button
             className="btn btn-secondary"
@@ -1533,7 +1562,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               onClick={() => runPdfPreview(content)}
               disabled={previewing || errors.length > 0}
             >
-              {previewing ? "Rendering…" : pdfStale ? "Re-render PDF" : "Render PDF"}
+              {previewing ? "Rendering…" : pdfStale ? "Refresh PDF" : "Export PDF"}
             </button>
           )}
           {previewing && <span className="editor-stat">rendering…</span>}
@@ -1560,7 +1589,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             </button>
           )}
           {errors.length === 0 && warnings.length === 0 && (
-            <span className="diag-pill" data-severity="ok" onClick={() => setShowErrors(false)}>valid ✓</span>
+            <span className="diag-pill" data-severity="ok" onClick={() => setShowErrors(false)}>✓ healthy</span>
           )}
           {/* Shown only once there is something to describe. An empty field
               sitting beside an unmodified document is a demand for input the
@@ -1582,13 +1611,24 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               }}
             />
           )}
-          <button
-            className="btn"
-            onClick={doSave}
-            disabled={save.kind === "saving" || errors.length > 0 || !dirty}
-          >
-            {save.kind === "saving" ? "Saving…" : "Save"} <kbd>⌘S</kbd>
-          </button>
+          {/* Autosave status indicator — replaces the manual Save button.
+              ⌘S still works as a manual trigger via the keydown handler. */}
+          {save.kind === "saving" && (
+            <span className="autosave-status" data-state="saving">Saving…</span>
+          )}
+          {save.kind !== "saving" && savedVisible && (
+            <span className="autosave-status" data-state="saved">Saved ✓</span>
+          )}
+          {save.kind === "error" && (
+            <button className="autosave-status" data-state="error" onClick={doSave}>
+              ⚠ Save failed — Retry
+            </button>
+          )}
+          {save.kind === "stale" && (
+            <button className="autosave-status" data-state="stale" onClick={() => window.location.reload()}>
+              ⚠ Conflict — Reload
+            </button>
+          )}
         </div>
       </div>
 
@@ -1731,7 +1771,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       {showPalette && (
         <div className="palette">
           <div className="palette-head">
-            Vocabulary — the closed set of blocks you may use
+            Insert block
           </div>
           <div className="palette-groups">
             {Object.keys(PALETTE_GROUPS).map((g) => (
@@ -1776,11 +1816,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       {save.kind === "error" && (
         <div className="banner" data-kind="error">{save.message}</div>
       )}
-      {save.kind === "saved" && (
-        <div className="banner" data-kind="ok">
-          Saved{save.commit?.sha ? ` as ${save.commit.sha.slice(0, 7)}` : ""}.
-        </div>
-      )}
+      {/* Saved confirmation is now shown inline in the toolbar as autosave-status. */}
       {acceptedNote && (
         <div className="banner" data-kind="ok">
           {acceptedNote} — committed. Save is not needed for this change.
