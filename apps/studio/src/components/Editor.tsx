@@ -135,6 +135,10 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
+  // Tracks the contenteditable element currently being edited in the iframe.
+  // Set by makeEditable, cleared on blur. Lets format bar buttons operate on
+  // the inline edit surface instead of the hidden textarea.
+  const activeEditEl = useRef<HTMLElement | null>(null);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPreviewed = useRef<string>("");
   const lastPdfRendered = useRef<string>("");
@@ -887,6 +891,52 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     applyEdit(lines.join("\n"), 0, 0);
   }, [content, applyEdit]);
 
+  // Get the character offset of a DOM node+offset within a contenteditable
+  // element, using a Range to measure the text length before the point.
+  // Works in same-origin iframes by accepting the iframe window's document.
+  const getTextOffset = useCallback((doc: Document, el: HTMLElement, node: Node, offset: number): number => {
+    const range = doc.createRange();
+    range.setStart(el, 0);
+    range.setEnd(node, offset);
+    return range.toString().length;
+  }, []);
+
+  // Returns { start, end } character offsets of the current selection inside
+  // activeEditEl, using the iframe window's getSelection(). Returns null if
+  // there is no active edit element or no selection.
+  const getIframeSelection = useCallback((): { start: number; end: number } | null => {
+    const el = activeEditEl.current;
+    if (!el) return null;
+    const win = frameRef.current?.contentWindow;
+    const doc = frameRef.current?.contentDocument;
+    if (!win || !doc) return null;
+    const sel = win.getSelection();
+    if (!sel || sel.rangeCount === 0) return null;
+    const range = sel.getRangeAt(0);
+    const start = getTextOffset(doc, el, range.startContainer, range.startOffset);
+    const end   = getTextOffset(doc, el, range.endContainer,   range.endOffset);
+    return { start, end };
+  }, [getTextOffset]);
+
+  // Restore the selection inside a contenteditable element after its innerText
+  // has been replaced. innerText sets a single text node as the only child,
+  // so we can directly address it.
+  const restoreIframeSelection = useCallback((el: HTMLElement, start: number, end: number) => {
+    const win = frameRef.current?.contentWindow;
+    const doc = frameRef.current?.contentDocument;
+    if (!win || !doc) return;
+    const textNode = el.firstChild;
+    if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return;
+    const len = (textNode as Text).length;
+    const sel = win.getSelection();
+    if (!sel) return;
+    const range = doc.createRange();
+    range.setStart(textNode, Math.min(start, len));
+    range.setEnd(textNode, Math.min(end, len));
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }, []);
+
   // Make a rendered preview element editable. Called on click.
   const makeEditable = useCallback((el: HTMLElement) => {
     const sourceLine   = Number(el.dataset.sourceLine);
@@ -895,6 +945,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     // Mark editing active BEFORE focus so the debounced re-render is
     // suppressed immediately — not after the first timer fires.
     isEditingPreview.current = true;
+    // Track this element so format bar buttons can operate on it.
+    activeEditEl.current = el;
 
     // Prevent focus() from scrolling the element into view, which causes
     // the page-jump. Save the iframe scroll position, focus, then restore.
@@ -926,6 +978,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       el.removeEventListener("keydown", handleKeydown);
       el.contentEditable = "false";
       el.contentEditable = "false";
+      // Clear the active edit element reference on blur.
+      activeEditEl.current = null;
       const edited = el.innerText;
       if (edited.trim() !== originalText.trim()) {
         // Set the flag BEFORE clearing isEditingPreview so that
@@ -1479,10 +1533,71 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // is already wrapped — or sits immediately inside the marks — the marks are
   // removed instead of nested, because "**\*\*bold\*\***" is the classic way a
   // toolbar silently corrupts a document.
+  //
+  // In Edit mode with an active contenteditable element, operates directly on
+  // the element's innerText using the iframe's selection (not the textarea).
+  // The existing blur → patchMarkdownBlock flow then syncs it back to the
+  // Markdown buffer when focus leaves the element.
   const toggleInline = useCallback(
     (mark: string, placeholder: string) => {
+      if (isFolded) return;
+
+      // --- Contenteditable path (Edit mode, user has clicked a block) ---
+      const editEl = activeEditEl.current;
+      if (editEl) {
+        const ifrSel = getIframeSelection();
+        const text = editEl.innerText;
+        const len = mark.length;
+
+        if (ifrSel && ifrSel.start !== ifrSel.end) {
+          // We have a selection inside the contenteditable element.
+          const { start, end } = ifrSel;
+          const selected = text.slice(start, end);
+
+          // Marks inside the selection — remove them.
+          if (
+            selected.length >= len * 2 &&
+            selected.startsWith(mark) &&
+            selected.endsWith(mark)
+          ) {
+            const inner = selected.slice(len, -len);
+            editEl.innerText = text.slice(0, start) + inner + text.slice(end);
+            restoreIframeSelection(editEl, start, start + inner.length);
+            return;
+          }
+
+          // Marks just outside the selection — remove them.
+          const before = text.slice(Math.max(0, start - len), start);
+          const after  = text.slice(end, end + len);
+          if (before === mark && after === mark) {
+            editEl.innerText = text.slice(0, start - len) + selected + text.slice(end + len);
+            restoreIframeSelection(editEl, start - len, start - len + selected.length);
+            return;
+          }
+
+          // Wrap selection with marks.
+          const newText = mark + selected + mark;
+          editEl.innerText = text.slice(0, start) + newText + text.slice(end);
+          restoreIframeSelection(editEl, start + len, start + len + selected.length);
+        } else {
+          // No selection — insert placeholder with marks, select the placeholder.
+          const win = frameRef.current?.contentWindow;
+          const doc = frameRef.current?.contentDocument;
+          if (!win || !doc) return;
+          const sel = win.getSelection();
+          const cursorPos = sel && sel.rangeCount > 0
+            ? getTextOffset(doc, editEl, sel.getRangeAt(0).startContainer, sel.getRangeAt(0).startOffset)
+            : text.length;
+          const inserted = mark + placeholder + mark;
+          editEl.innerText = text.slice(0, cursorPos) + inserted + text.slice(cursorPos);
+          restoreIframeSelection(editEl, cursorPos + len, cursorPos + len + placeholder.length);
+        }
+        return;
+      }
+
+      // --- Textarea path (Source mode or no active contenteditable) ---
       const el = textareaRef.current;
-      if (!el || isFolded) return;
+      if (!el) return;
       const start = el.selectionStart;
       const end = el.selectionEnd;
       const selected = content.slice(start, end);
@@ -1523,16 +1638,53 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         start + len + body.length
       );
     },
-    [content, isFolded, applyEdit]
+    [content, isFolded, applyEdit, getIframeSelection, restoreIframeSelection, getTextOffset]
   );
 
   // Line-level transforms operate on whole lines, so the selection is first
   // expanded to line boundaries. Without that, applying a heading to a
   // mid-line cursor would inject '#' into the middle of a sentence.
+  //
+  // In Edit mode with an active contenteditable element, the element maps to
+  // a single source line. Apply the transform to that line directly via
+  // patchMarkdownBlock, which is simpler and avoids needing cursor offsets
+  // across the whole buffer.
   const transformLines = useCallback(
     (fn: (lines: string[]) => string[]) => {
+      if (isFolded) return;
+
+      // --- Contenteditable path ---
+      const editEl = activeEditEl.current;
+      if (editEl) {
+        const sourceLine = Number(editEl.dataset.sourceLine);
+        if (!sourceLine) return;
+        const lines = content.split("\n");
+        const idx = sourceLine - 1;
+        if (idx < 0 || idx >= lines.length) return;
+        const transformed = fn([lines[idx]]);
+        if (transformed.length > 0 && transformed[0] !== lines[idx]) {
+          lines[idx] = transformed[0];
+          // Update the buffer. Don't go through applyEdit's rAF focus-steal;
+          // call setContent directly and let the existing blur handler
+          // catch any inline text change when focus eventually leaves.
+          setContent(lines.join("\n"));
+          setSave((s) => (s.kind === "saved" ? { kind: "idle" } : s));
+          // Also update the displayed element text to reflect the new prefix
+          // (e.g. heading level change) so the author sees it immediately.
+          // Strip the new line prefix — patchMarkdownBlock re-adds it on blur.
+          const newLine = transformed[0];
+          const headingM  = newLine.match(/^(#{1,6}\s+)/);
+          const bulletM   = newLine.match(/^(\s*[-*+]\s+)/);
+          const numberedM = newLine.match(/^(\s*\d+\.\s+)/);
+          const prefix = headingM?.[1] ?? bulletM?.[1] ?? numberedM?.[1] ?? "";
+          editEl.innerText = newLine.slice(prefix.length);
+        }
+        return;
+      }
+
+      // --- Textarea path ---
       const el = textareaRef.current;
-      if (!el || isFolded) return;
+      if (!el) return;
       const start = el.selectionStart;
       const end = el.selectionEnd;
       const from = content.lastIndexOf("\n", start - 1) + 1;
