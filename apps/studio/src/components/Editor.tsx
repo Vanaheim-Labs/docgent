@@ -128,6 +128,19 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [savedVisible, setSavedVisible] = useState(false);
   const savedFadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Phase 3a: slash command palette state
+  type SlashCmd = {
+    open: boolean;
+    query: string;
+    top: number;
+    left: number;
+    selectedIdx: number;
+  };
+  const [slashCmd, setSlashCmd] = useState<SlashCmd>({
+    open: false, query: "", top: 0, left: 0, selectedIdx: 0,
+  });
+  const slashCmdRef = useRef(slashCmd);
+
   const dirty = content !== initialContent || save.kind === "error" || save.kind === "stale";
 
   const diagnostics = useMemo(
@@ -1437,40 +1450,6 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     applyEdit(content.slice(0, start) + text + content.slice(end), bodyAt, bodyAt + body.length);
   }, [content, isFolded, applyEdit]);
 
-  // Keyboard shortcuts for the marks authors reach for most. Registered on the
-  // textarea rather than the window so they cannot hijack typing elsewhere.
-  const onSourceKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
-      const k = e.key.toLowerCase();
-      if (k === "b") { e.preventDefault(); toggleInline("**", "bold text"); }
-      else if (k === "i") { e.preventDefault(); toggleInline("*", "italic text"); }
-      else if (k === "e") { e.preventDefault(); toggleInline("\`", "code"); }
-      else if (k === "k") { e.preventDefault(); insertLink(); }
-    },
-    [toggleInline, insertLink]
-  );
-
-  /* ---------------- snippet insertion ---------------- */
-
-  const insertSnippet = useCallback((snippet: string) => {
-    const el = textareaRef.current;
-    if (!el) return;
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const selected = content.slice(start, end);
-    const body = selected || "Content goes here.";
-    const text = snippet.replace("$BODY$", body);
-    const next = content.slice(0, start) + text + content.slice(end);
-    setContent(next);
-    requestAnimationFrame(() => {
-      el.focus();
-      const cursor = start + text.indexOf(body);
-      el.setSelectionRange(cursor, cursor + body.length);
-    });
-    setShowPalette(false);
-  }, [content]);
-
   const snippets = useMemo(
     () =>
       vocabulary.blocks.map((b) => {
@@ -1493,6 +1472,133 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       }),
     [vocabulary]
   );
+
+  // Keep slashCmdRef in sync so keydown handler reads current value.
+  slashCmdRef.current = slashCmd;
+
+  /* Phase 3a: slash command helpers */
+
+  // Compute approximate {top, left} of cursor in the textarea using a mirror div.
+  const getCursorPos = useCallback((): { top: number; left: number } => {
+    const el = textareaRef.current;
+    if (!el) return { top: 0, left: 0 };
+    const pos = el.selectionStart;
+    const cs = getComputedStyle(el);
+    const mirror = document.createElement("div");
+    Object.assign(mirror.style, {
+      position: "absolute", visibility: "hidden", pointerEvents: "none",
+      top: "0", left: "-9999px", whiteSpace: "pre-wrap",
+      wordBreak: cs.wordBreak, overflowWrap: cs.overflowWrap,
+      font: cs.font, fontFamily: cs.fontFamily, fontSize: cs.fontSize,
+      lineHeight: cs.lineHeight, letterSpacing: cs.letterSpacing,
+      tabSize: cs.tabSize, padding: cs.padding,
+      boxSizing: cs.boxSizing, width: `${el.offsetWidth}px`,
+    });
+    const before = document.createElement("span");
+    before.textContent = el.value.slice(0, pos);
+    const cursor = document.createElement("span");
+    cursor.textContent = "|";
+    mirror.appendChild(before);
+    mirror.appendChild(cursor);
+    document.body.appendChild(mirror);
+    const rect = cursor.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    document.body.removeChild(mirror);
+    return {
+      top: rect.top - elRect.top - el.scrollTop + rect.height,
+      left: rect.left - elRect.left,
+    };
+  }, []);
+
+  // Close slash menu.
+  const closeSlashMenu = useCallback(() => {
+    setSlashCmd((s) => ({ ...s, open: false, query: "", selectedIdx: 0 }));
+  }, []);
+
+  // Filter snippets by slash query.
+  const slashFiltered = useMemo(() => {
+    if (!slashCmd.query) return snippets;
+    const q = slashCmd.query.toLowerCase();
+    return snippets.filter(
+      (s) => s.id.includes(q) || s.description.toLowerCase().includes(q)
+    );
+  }, [snippets, slashCmd.query]);
+
+  // Insert a snippet from the slash menu, removing the slash trigger.
+  const insertFromSlash = useCallback((s: { snippet: string }) => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const pos = el.selectionStart;
+    // Find start of current "/query" on the current line.
+    const lineStart = content.lastIndexOf("\n", pos - 1) + 1;
+    const lineText = content.slice(lineStart, pos);
+    const slashIdx = lineText.lastIndexOf("/");
+    const removeFrom = lineStart + (slashIdx >= 0 ? slashIdx : 0);
+    const body = "Content goes here.";
+    const text = s.snippet.replace("$BODY$", body);
+    const next = content.slice(0, removeFrom) + text + content.slice(pos);
+    setContent(next);
+    closeSlashMenu();
+    requestAnimationFrame(() => {
+      el.focus();
+      const cursor = removeFrom + text.indexOf(body);
+      el.setSelectionRange(cursor, cursor + body.length);
+    });
+  }, [content, closeSlashMenu]);
+
+  // Keyboard shortcuts for the marks authors reach for most. Registered on the
+  // textarea rather than the window so they cannot hijack typing elsewhere.
+  const onSourceKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // Phase 3a: slash menu navigation takes priority.
+      if (slashCmdRef.current.open) {
+        if (e.key === "Escape") { e.preventDefault(); closeSlashMenu(); return; }
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setSlashCmd((s) => ({ ...s, selectedIdx: Math.min(s.selectedIdx + 1, slashFiltered.length - 1) }));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setSlashCmd((s) => ({ ...s, selectedIdx: Math.max(0, s.selectedIdx - 1) }));
+          return;
+        }
+        if (e.key === "Enter" || e.key === "Tab") {
+          e.preventDefault();
+          const item = slashFiltered[slashCmdRef.current.selectedIdx];
+          if (item) insertFromSlash(item);
+          return;
+        }
+      }
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === "b") { e.preventDefault(); toggleInline("**", "bold text"); }
+      else if (k === "i") { e.preventDefault(); toggleInline("*", "italic text"); }
+      else if (k === "e") { e.preventDefault(); toggleInline("\`", "code"); }
+      else if (k === "k") { e.preventDefault(); insertLink(); }
+    },
+    [toggleInline, insertLink, closeSlashMenu, insertFromSlash, slashFiltered]
+  );
+
+  /* ---------------- snippet insertion ---------------- */
+
+  const insertSnippet = useCallback((snippet: string) => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const selected = content.slice(start, end);
+    const body = selected || "Content goes here.";
+    const text = snippet.replace("$BODY$", body);
+    const next = content.slice(0, start) + text + content.slice(end);
+    setContent(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      const cursor = start + text.indexOf(body);
+      el.setSelectionRange(cursor, cursor + body.length);
+    });
+    setShowPalette(false);
+  }, [content]);
 
   /* ---------------- render ---------------- */
 
@@ -2057,8 +2163,22 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               // is a projection, so an offset-based write would corrupt the
               // buffer. Folding is navigation, not an editing mode.
               if (isFolded) return;
-              setContent(e.target.value);
+              const val = e.target.value;
+              setContent(val);
               if (save.kind === "saved") setSave({ kind: "idle" });
+              // Phase 3a: slash command detection.
+              // Detect "/" followed by optional query on the current line.
+              const el = e.target;
+              const pos = el.selectionStart;
+              const lineStart = val.lastIndexOf("\n", pos - 1) + 1;
+              const lineText = val.slice(lineStart, pos);
+              const slashMatch = lineText.match(/^\/([a-zA-Z0-9_-]*)$/);
+              if (slashMatch) {
+                const { top, left } = getCursorPos();
+                setSlashCmd({ open: true, query: slashMatch[1], top, left, selectedIdx: 0 });
+              } else {
+                setSlashCmd((s) => s.open ? { ...s, open: false, query: "", selectedIdx: 0 } : s);
+              }
             }}
           />
           {diagnostics.length > 0 && (
@@ -2068,6 +2188,34 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                   <span className="diagnostic-line">L{d.line}</span>
                   <span>{d.message}</span>
                 </div>
+              ))}
+            </div>
+          )}
+          {/* Phase 3a: slash command palette */}
+          {slashCmd.open && slashFiltered.length > 0 && (
+            <div
+              className="slash-menu"
+              style={{ top: slashCmd.top, left: Math.max(0, slashCmd.left) }}
+              role="listbox"
+              aria-label="Insert block"
+            >
+              {slashCmd.query && (
+                <div className="slash-menu-search">
+                  Searching: /{slashCmd.query}
+                </div>
+              )}
+              {slashFiltered.slice(0, 20).map((s, i) => (
+                <button
+                  key={s.id}
+                  className="slash-menu-item"
+                  data-selected={i === slashCmd.selectedIdx}
+                  role="option"
+                  aria-selected={i === slashCmd.selectedIdx}
+                  onMouseDown={(e) => { e.preventDefault(); insertFromSlash(s); }}
+                >
+                  <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--accent)", minWidth: 100 }}>{s.id}</span>
+                  <span style={{ fontSize: 12, color: "var(--ink-faint)" }}>{s.description}</span>
+                </button>
               ))}
             </div>
           )}
