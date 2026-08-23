@@ -75,13 +75,6 @@ type Heading = { line: number; level: number; text: string };
 // content is never modified, so a fold can never corrupt a document.
 type Fold = { startLine: number; endLine: number };
 
-const PALETTE_GROUPS: Record<string, string[]> = {
-  All: [],
-  Structure: ["summary", "appendix", "exec-intro", "pagebreak", "landscape", "columns", "toc"],
-  "Data & Figures": ["datatable", "financialtable", "keyfigure", "kpigrid", "kpicard", "figure", "allocation", "funnel", "milestones", "daygrid", "timeseries", "piechart"],
-  Callouts: ["callout", "pullquote", "recommendation", "definition", "signature", "note"],
-};
-
 export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: Props) {
   const [content, setContent] = useState(initialContent);
   const [baseSha, setBaseSha] = useState(initialSha);
@@ -110,8 +103,6 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [pdfStale, setPdfStale] = useState(false);
-  const [showPalette, setShowPalette] = useState(false);
-  const [paletteGroup, setPaletteGroup] = useState("All");
   // Split-screen toggle (Phase 2c): show both panes side-by-side in Edit mode.
   const [splitView, setSplitView] = useState(false);
   const [showOutline, setShowOutline] = useState(false);
@@ -400,10 +391,6 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
         doSave();
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "/") {
-        e.preventDefault();
-        setShowPalette((v) => !v);
       }
       // Phase 4b: ⌘K opens command palette.
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -1755,24 +1742,6 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
 
   /* ---------------- snippet insertion ---------------- */
 
-  const insertSnippet = useCallback((snippet: string) => {
-    const el = textareaRef.current;
-    if (!el) return;
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const selected = content.slice(start, end);
-    const body = selected || "Content goes here.";
-    const text = snippet.replace("$BODY$", body);
-    const next = content.slice(0, start) + text + content.slice(end);
-    setContent(next);
-    requestAnimationFrame(() => {
-      el.focus();
-      const cursor = start + text.indexOf(body);
-      el.setSelectionRange(cursor, cursor + body.length);
-    });
-    setShowPalette(false);
-  }, [content]);
-
   /* ---------------- render ---------------- */
 
   const lineCount = content.split("\n").length;
@@ -1782,14 +1751,6 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     <div className="editor">
       <div className="editor-toolbar">
         <div className="editor-toolbar-left">
-          <button
-            className={`btn ${showPalette ? "btn-primary" : "btn-secondary"} palette-trigger`}
-            onClick={() => setShowPalette((v) => !v)}
-            title="Insert a Docgent block (⌘/)"
-            aria-expanded={showPalette}
-          >
-            + Add <kbd>⌘/</kbd>
-          </button>
           <button
             className="btn btn-secondary"
             onClick={() => setShowOutline((v) => !v)}
@@ -2108,39 +2069,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         )}
       </div>
 
-      {showPalette && (
-        <div className="palette">
-          <div className="palette-head">
-            Insert block
-          </div>
-          <div className="palette-groups">
-            {Object.keys(PALETTE_GROUPS).map((g) => (
-              <button
-                key={g}
-                className="palette-group-btn"
-                data-active={paletteGroup === g}
-                onClick={() => setPaletteGroup(g)}
-              >
-                {g}
-              </button>
-            ))}
-          </div>
-          <div className="palette-grid">
-            {snippets
-              .filter((s) =>
-                paletteGroup === "All" ||
-                (PALETTE_GROUPS[paletteGroup] ?? []).includes(s.id)
-              )
-              .map((s) => (
-                <button key={s.id} className="palette-item" onClick={() => insertSnippet(s.snippet)}>
-                  <span className="palette-item-id">{s.id}</span>
-                  <span className="palette-item-syntax">{s.opener}</span>
-                  <span className="palette-item-desc">{s.description}</span>
-                </button>
-              ))}
-          </div>
-        </div>
-      )}
+
 
       {save.kind === "stale" && (
         <div className="banner" data-kind="stale">
@@ -2564,7 +2493,6 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                     { label: "Export PDF", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
                     { label: "Open Source view", action: () => { setEditorMode("source"); setCmdPalette(false); } },
                     { label: "Toggle Outline", action: () => { setShowOutline((v) => !v); setCmdPalette(false); } },
-                    { label: "Insert block (palette)", action: () => { setShowPalette((v) => !v); setCmdPalette(false); } },
                     { label: "Edit mode", action: () => { setEditorMode("edit"); setCmdPalette(false); } },
                     { label: "Pages mode", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
                   ];
@@ -2581,7 +2509,6 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                 { label: "Export PDF", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
                 { label: "Open Source view", action: () => { setEditorMode("source"); setCmdPalette(false); } },
                 { label: "Toggle Outline", action: () => { setShowOutline((v) => !v); setCmdPalette(false); } },
-                { label: "Insert block (palette)", action: () => { setShowPalette((v) => !v); setCmdPalette(false); } },
                 { label: "Edit mode", action: () => { setEditorMode("edit"); setCmdPalette(false); } },
                 { label: "Pages mode", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
               ] as Array<{label:string;action:()=>void}>)
