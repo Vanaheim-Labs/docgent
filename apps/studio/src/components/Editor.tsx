@@ -6,6 +6,40 @@ import { validateMarkdown, type Diagnostic } from "@/lib/validate-client";
 import { RewriteBar, type RewriteProposal } from "@/components/RewriteBar";
 import { ProposalReview } from "@/components/ProposalReview";
 
+/**
+ * Auto-generate a meaningful commit message by diffing two Markdown buffers.
+ * Finds which heading sections were touched and describes the change concisely.
+ */
+function generateCommitMessage(before: string, after: string, brand: string, slug: string): string {
+  const bLines = before.split("\n");
+  const aLines = after.split("\n");
+  const touched = new Set<string>();
+  let currentHeading = "";
+  const maxLen = Math.max(bLines.length, aLines.length);
+  // Walk through all lines; track headings and collect those whose content changed.
+  let i = 0;
+  while (i < maxLen) {
+    const aLine = aLines[i] ?? "";
+    const bLine = bLines[i] ?? "";
+    const hm = aLine.match(/^(#{1,3})\s+(.+)/);
+    if (hm) currentHeading = hm[2].replace(/\{[^}]*\}/g, "").trim();
+    if (aLine !== bLine && currentHeading) touched.add(currentHeading);
+    i++;
+  }
+  const added = aLines.length - bLines.length;
+  const changed = [...touched].slice(0, 3);
+  let desc: string;
+  if (changed.length > 0) {
+    desc = `edited ${changed.map((h) => `"${h}"`).join(", ")}`;
+    if (touched.size > 3) desc += ` +${touched.size - 3} more`;
+  } else {
+    desc = added > 0 ? `added ${added} line${added !== 1 ? "s" : ""}` :
+           added < 0 ? `removed ${-added} line${-added !== 1 ? "s" : ""}` :
+           "minor edit";
+  }
+  return `docs(${brand}/${slug}): ${desc}`;
+}
+
 type SaveState =
   | { kind: "idle" }
   | { kind: "saving" }
@@ -65,7 +99,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
    * Not mandatory. A blocked save is worse than a vague one, and an author
    * fixing a typo should not owe anyone a sentence.
    */
-  const [summary, setSummary] = useState("");
+  // summary removed — commit messages are auto-generated from the diff
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   // Unified editor mode. Replaces separate posture + previewMode.
@@ -296,9 +330,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           // Prefixed here rather than in the field so the author writes prose,
           // not conventional-commit syntax. VersionPanel strips this same
           // prefix back off for display.
-          message: summary.trim()
-            ? `docs(${brand}/${slug}): ${summary.trim()}`
-            : undefined,
+          message: generateCommitMessage(initialContent, content, brand, slug),
         }),
       });
       const data = await res.json();
@@ -324,14 +356,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       }
 
       setBaseSha(data.sha);
-      // Cleared on success so the next edit does not silently reuse the last
-      // edit's description, which would be worse than no description at all.
-      setSummary("");
       setSave({ kind: "saved", sha: data.sha, commit: data.commit });
     } catch (e) {
       setSave({ kind: "error", message: e instanceof Error ? e.message : String(e) });
     }
-  }, [brand, slug, content, baseSha, errors.length, summary]);
+  }, [brand, slug, content, baseSha, errors.length, initialContent]);
 
   // Autosave: 3 seconds after last content change, when dirty and no errors.
   useEffect(() => {
@@ -1783,69 +1812,45 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             </button>
           )}
           {previewing && editorMode === "pages" && <span className="editor-stat">generating PDF…</span>}
-          {errors.length > 0 && (
+          {/* Health pill — collapses to one item, always right of Export */}
+          {errors.length > 0 ? (
             <button
-              className={`diag-pill diag-pill-btn${showErrors ? " diag-pill-active" : ""}`}
+              className="diag-pill diag-pill-btn"
               data-severity="error"
               onClick={() => setShowErrors((v) => !v)}
               title={showErrors ? "Hide errors" : "Show all errors"}
               aria-expanded={showErrors}
             >
-              {errors.length} error{errors.length > 1 ? "s" : ""} {showErrors ? "▲" : "▼"}
+              ✕ {errors.length} error{errors.length > 1 ? "s" : ""}
             </button>
-          )}
-          {errors.length === 0 && warnings.length > 0 && (
+          ) : warnings.length > 0 ? (
             <button
-              className={`diag-pill diag-pill-btn${showErrors ? " diag-pill-active" : ""}`}
+              className="diag-pill diag-pill-btn"
               data-severity="warning"
               onClick={() => setShowErrors((v) => !v)}
               title={showErrors ? "Hide warnings" : "Show all warnings"}
               aria-expanded={showErrors}
             >
-              {warnings.length} warning{warnings.length > 1 ? "s" : ""} {showErrors ? "▲" : "▼"}
+              ⚠ {warnings.length} warning{warnings.length > 1 ? "s" : ""}
             </button>
+          ) : (
+            <span className="diag-pill" data-severity="ok">✓ healthy</span>
           )}
-          {errors.length === 0 && warnings.length === 0 && (
-            <span className="diag-pill" data-severity="ok" onClick={() => setShowErrors(false)}>✓ healthy</span>
-          )}
-          {/* Shown only once there is something to describe. An empty field
-              sitting beside an unmodified document is a demand for input the
-              author does not owe yet. */}
-          {dirty && (
-            <input
-              className="commit-summary"
-              type="text"
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-              placeholder="What changed? (optional)"
-              aria-label="Describe this revision"
-              maxLength={72}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void doSave();
-                }
-              }}
-            />
-          )}
-          {/* Autosave status indicator — replaces the manual Save button.
-              ⌘S still works as a manual trigger via the keydown handler. */}
-          {save.kind === "saving" && (
+
+          {/* Autosave status — replaces the Save button entirely */}
+          {save.kind === "saving" ? (
             <span className="autosave-status" data-state="saving">Saving…</span>
-          )}
-          {save.kind !== "saving" && savedVisible && (
-            <span className="autosave-status" data-state="saved">Saved ✓</span>
-          )}
-          {save.kind === "error" && (
-            <button className="autosave-status" data-state="error" onClick={doSave}>
-              ⚠ Save failed — Retry
+          ) : save.kind === "error" ? (
+            <button className="autosave-status" data-state="error" onClick={doSave} title="Click to retry">
+              ⚠ Save failed
             </button>
-          )}
-          {save.kind === "stale" && (
+          ) : save.kind === "stale" ? (
             <button className="autosave-status" data-state="stale" onClick={() => window.location.reload()}>
-              ⚠ Conflict — Reload
+              ⚠ Conflict
             </button>
-          )}
+          ) : savedVisible ? (
+            <span className="autosave-status" data-state="saved">Saved ✓</span>
+          ) : null}
         </div>
       </div>
 
