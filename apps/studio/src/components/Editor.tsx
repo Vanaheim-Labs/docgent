@@ -141,6 +141,17 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   });
   const slashCmdRef = useRef(slashCmd);
 
+  // Phase 4a: floating agent toolbar on selection
+  const [selectionToolbar, setSelectionToolbar] = useState<{
+    visible: boolean; top: number; left: number;
+    selectedText: string;
+  }>({ visible: false, top: 0, left: 0, selectedText: "" });
+
+  // Phase 4b: command palette state
+  const [cmdPalette, setCmdPalette] = useState(false);
+  const [cmdQuery, setCmdQuery] = useState("");
+  const [cmdSelectedIdx, setCmdSelectedIdx] = useState(0);
+
   const dirty = content !== initialContent || save.kind === "error" || save.kind === "stale";
 
   const diagnostics = useMemo(
@@ -356,6 +367,17 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       if ((e.metaKey || e.ctrlKey) && e.key === "/") {
         e.preventDefault();
         setShowPalette((v) => !v);
+      }
+      // Phase 4b: ⌘K opens command palette.
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setCmdPalette((v) => !v);
+        setCmdQuery("");
+        setCmdSelectedIdx(0);
+      }
+      // Escape closes command palette.
+      if (e.key === "Escape") {
+        setCmdPalette(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1128,6 +1150,48 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     (_e: React.MouseEvent<HTMLDivElement>) => { /* handled by iframe listener */ },
     []
   );
+
+  // Phase 4a: selection toolbar — show floating toolbar when text is selected in preview.
+  useEffect(() => {
+    if (editorMode !== "edit") return;
+    const frame = frameRef.current;
+    if (!frame) return;
+
+    const handleSelection = () => {
+      const win = frame.contentWindow;
+      if (!win) return;
+      const sel = win.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+        setSelectionToolbar((s) => s.visible ? { ...s, visible: false } : s);
+        return;
+      }
+      const text = sel.toString().trim();
+      if (!text) { setSelectionToolbar((s) => s.visible ? { ...s, visible: false } : s); return; }
+      const range = sel.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      const frameRect = frame.getBoundingClientRect();
+      setSelectionToolbar({
+        visible: true,
+        // Position above the selection, relative to the viewport
+        top: frameRect.top + rect.top - 44,
+        left: frameRect.left + rect.left + rect.width / 2,
+        selectedText: text,
+      });
+    };
+
+    const attach = () => {
+      const doc = frame.contentDocument;
+      if (!doc) return;
+      doc.addEventListener("selectionchange", handleSelection);
+    };
+    attach();
+    frame.addEventListener("load", attach);
+    return () => {
+      frame.removeEventListener("load", attach);
+      frame.contentDocument?.removeEventListener("selectionchange", handleSelection);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewHtml, editorMode]);
 
   /* ---------------- directed rewrite ---------------- */
 
@@ -2274,6 +2338,111 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
         )}
       </div>
+
+      {/* Phase 4a: Floating agent toolbar on text selection in preview */}
+      {selectionToolbar.visible && editorMode === "edit" && (
+        <div
+          className="selection-toolbar"
+          style={{
+            position: "fixed",
+            top: Math.max(8, selectionToolbar.top),
+            left: selectionToolbar.left,
+            transform: "translateX(-50%)",
+            zIndex: 200,
+          }}
+        >
+          <button
+            className="selection-toolbar-btn"
+            onClick={() => {
+              const top = offsetForLine(1);
+              setRewriteTarget({ kind: "range", start: 0, end: 0, label: selectionToolbar.selectedText.slice(0, 60), top });
+              setSelectionToolbar((s) => ({ ...s, visible: false }));
+            }}
+            title="Rewrite selected text"
+          >Rewrite</button>
+          <button
+            className="selection-toolbar-btn"
+            onClick={() => {
+              const top = offsetForLine(1);
+              setRewriteTarget({ kind: "range", start: 0, end: 0, label: "Shorten: " + selectionToolbar.selectedText.slice(0, 40), top });
+              setSelectionToolbar((s) => ({ ...s, visible: false }));
+            }}
+            title="Make it shorter"
+          >Shorten</button>
+          <button
+            className="selection-toolbar-btn"
+            onClick={() => {
+              const top = offsetForLine(1);
+              setRewriteTarget({ kind: "range", start: 0, end: 0, label: "Strengthen: " + selectionToolbar.selectedText.slice(0, 40), top });
+              setSelectionToolbar((s) => ({ ...s, visible: false }));
+            }}
+            title="Make it stronger"
+          >Strengthen</button>
+          <button
+            className="selection-toolbar-btn"
+            onClick={() => setSelectionToolbar((s) => ({ ...s, visible: false }))}
+            title="Dismiss"
+          >×</button>
+        </div>
+      )}
+
+      {/* Phase 4b: Command palette ⌘K */}
+      {cmdPalette && (
+        <div
+          className="cmd-palette-overlay"
+          onClick={(e) => { if (e.target === e.currentTarget) setCmdPalette(false); }}
+        >
+          <div className="cmd-palette">
+            <div className="cmd-palette-search">
+              <span className="cmd-palette-icon">⌘</span>
+              <input
+                className="cmd-palette-input"
+                autoFocus
+                placeholder="Type a command…"
+                value={cmdQuery}
+                onChange={(e) => { setCmdQuery(e.target.value); setCmdSelectedIdx(0); }}
+                onKeyDown={(e) => {
+                  const cmds = [
+                    { label: "Export PDF", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
+                    { label: "Open Source view", action: () => { setEditorMode("source"); setCmdPalette(false); } },
+                    { label: "Toggle Outline", action: () => { setShowOutline((v) => !v); setCmdPalette(false); } },
+                    { label: "Insert block (palette)", action: () => { setShowPalette((v) => !v); setCmdPalette(false); } },
+                    { label: "Edit mode", action: () => { setEditorMode("edit"); setCmdPalette(false); } },
+                    { label: "Pages mode", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
+                  ];
+                  const filtered = cmds.filter((c) => !cmdQuery || c.label.toLowerCase().includes(cmdQuery.toLowerCase()));
+                  if (e.key === "Escape") { setCmdPalette(false); }
+                  else if (e.key === "ArrowDown") { e.preventDefault(); setCmdSelectedIdx((i) => Math.min(i + 1, filtered.length - 1)); }
+                  else if (e.key === "ArrowUp") { e.preventDefault(); setCmdSelectedIdx((i) => Math.max(0, i - 1)); }
+                  else if (e.key === "Enter") { e.preventDefault(); filtered[cmdSelectedIdx]?.action(); }
+                }}
+              />
+            </div>
+            <div className="cmd-palette-list">
+              {([
+                { label: "Export PDF", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
+                { label: "Open Source view", action: () => { setEditorMode("source"); setCmdPalette(false); } },
+                { label: "Toggle Outline", action: () => { setShowOutline((v) => !v); setCmdPalette(false); } },
+                { label: "Insert block (palette)", action: () => { setShowPalette((v) => !v); setCmdPalette(false); } },
+                { label: "Edit mode", action: () => { setEditorMode("edit"); setCmdPalette(false); } },
+                { label: "Pages mode", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
+              ] as Array<{label:string;action:()=>void}>)
+                .filter((c) => !cmdQuery || c.label.toLowerCase().includes(cmdQuery.toLowerCase()))
+                .map((c, i) => (
+                  <button
+                    key={c.label}
+                    className="cmd-palette-item"
+                    data-selected={i === cmdSelectedIdx}
+                    onClick={c.action}
+                  >
+                    {c.label}
+                  </button>
+                ))
+              }
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

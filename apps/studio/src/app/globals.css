@@ -642,6 +642,88 @@ kbd {
 /* Phase 2a: source-mode-btn uses monospace to signal technical mode */
 .source-mode-btn { font-family: var(--mono) !important; font-size: 11.5px !important; }
 
+/* Phase 4a: floating selection toolbar */
+.selection-toolbar {
+  display: flex;
+  gap: 4px;
+  background: var(--ink);
+  border-radius: 6px;
+  padding: 4px 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  pointer-events: auto;
+}
+.selection-toolbar-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.selection-toolbar-btn:hover { background: rgba(255,255,255,0.15); }
+
+/* Phase 4b: command palette overlay */
+.cmd-palette-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  z-index: 300;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+}
+.cmd-palette {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.2);
+  width: 520px;
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+}
+.cmd-palette-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+.cmd-palette-icon {
+  font-size: 16px;
+  color: var(--ink-faint);
+  flex-shrink: 0;
+  font-family: var(--mono);
+}
+.cmd-palette-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: none;
+}
+.cmd-palette-list { padding: 6px 0 8px; max-height: 320px; overflow-y: auto; }
+.cmd-palette-item {
+  display: block;
+  width: 100%;
+  padding: 9px 16px;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.cmd-palette-item:hover,
+.cmd-palette-item[data-selected="true"] { background: var(--accent-soft); color: var(--accent); }
+
 /* Phase 3a: slash command palette */
 .slash-menu {
   position: absolute;
