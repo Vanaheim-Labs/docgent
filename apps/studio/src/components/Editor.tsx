@@ -673,6 +673,21 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     });
   }, [headings, sectionEnd, lineOffsets, content, syncEditorToPreview]);
 
+  // Unfold only — same fold-removal logic as jumpToLine but without stealing
+  // focus or scrolling the source textarea. Used by the preview click handler
+  // so clicking a contenteditable element in a folded section doesn't hand
+  // focus back to the textarea the moment the author starts typing.
+  const unfoldLine = useCallback((line: number) => {
+    setFolded((prev) =>
+      prev.filter((f) => {
+        const h = headings.find((x) => x.line === f);
+        if (!h) return false;
+        if (h.line === line) return false;
+        return !(line > h.line && line <= sectionEnd(h));
+      })
+    );
+  }, [headings, sectionEnd]);
+
   /* ---------------- markdown formatting ---------------- */
 
   // All formatting rewrites the buffer through a single primitive: replace a
@@ -858,18 +873,20 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
 
   // Stable refs so the iframe click handler never goes stale when React
   // state changes. Updated synchronously on every render.
-  const postureRef   = useRef<Posture>(posture);
+  const postureRef    = useRef<Posture>(posture);
   const makeEditableRef = useRef(makeEditable);
   const openNoteAtRef   = useRef(openNoteAt);
   const anchorsRef      = useRef(anchors);
   const docTopRef       = useRef(docTop);
   const jumpToLineRef   = useRef(jumpToLine);
+  const unfoldLineRef   = useRef(unfoldLine);
   postureRef.current    = posture;
   makeEditableRef.current = makeEditable;
   openNoteAtRef.current   = openNoteAt;
   anchorsRef.current      = anchors;
   docTopRef.current       = docTop;
   jumpToLineRef.current   = jumpToLine;
+  unfoldLineRef.current   = unfoldLine;
 
   // Stable click handler — created once, reads current values via refs.
   const iframeClickHandler = useRef<((e: MouseEvent) => void) | null>(null);
@@ -940,10 +957,13 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
 
       if (editEl) {
         e.preventDefault();
-        // If a section containing this line is folded, unfold it first so the
-        // source textarea is no longer read-only before makeEditable runs.
+        // If a section containing this line is folded, remove the fold so the
+        // source textarea is no longer read-only. Use unfoldLine (not
+        // jumpToLine) so focus is NOT moved to the textarea — jumpToLine calls
+        // el.focus() in a rAF, which would steal focus back from the
+        // contenteditable element the moment the author starts typing.
         const srcLine = Number(editEl.dataset.sourceLine);
-        if (srcLine > 0) jumpToLineRef.current(srcLine);
+        if (srcLine > 0) unfoldLineRef.current(srcLine);
         makeEditableRef.current(editEl);
         return;
       }
