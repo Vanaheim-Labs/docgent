@@ -880,6 +880,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const docTopRef       = useRef(docTop);
   const jumpToLineRef   = useRef(jumpToLine);
   const unfoldLineRef   = useRef(unfoldLine);
+  const doSaveRef       = useRef(doSave);
   postureRef.current    = posture;
   makeEditableRef.current = makeEditable;
   openNoteAtRef.current   = openNoteAt;
@@ -887,6 +888,19 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   docTopRef.current       = docTop;
   jumpToLineRef.current   = jumpToLine;
   unfoldLineRef.current   = unfoldLine;
+  doSaveRef.current       = doSave;
+
+  // Stable keydown handler for the iframe document — intercepts ⌘S/Ctrl+S so
+  // the browser's native Save dialog never appears when focus is in the preview.
+  const iframeSaveHandler = useRef<((e: KeyboardEvent) => void) | null>(null);
+  if (!iframeSaveHandler.current) {
+    iframeSaveHandler.current = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        doSaveRef.current();
+      }
+    };
+  }
 
   // Stable click handler — created once, reads current values via refs.
   const iframeClickHandler = useRef<((e: MouseEvent) => void) | null>(null);
