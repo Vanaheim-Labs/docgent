@@ -2359,19 +2359,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               <div className="empty">Rendering first preview…</div>
             )
           ) : previewUrl ? (
-            <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column" }}>
-              <iframe className="preview-frame" src={previewUrl} title="PDF preview" style={{ flex: 1 }} />
-              {/* Phase 5a: overlay to return to edit mode on double-click */}
-              {editorMode === "pages" && (
-                <div
-                  className="pdf-edit-overlay"
-                  onDoubleClick={() => setEditorMode("edit")}
-                  title="Double-click to return to Edit mode"
-                >
-                  <span className="pdf-edit-overlay-hint">Double-click to edit</span>
-                </div>
-              )}
-            </div>
+            <iframe className="preview-frame" src={previewUrl} title="PDF preview" style={{ flex: 1 }} />
           ) : (
             <div className="empty">
               {previewing ? "Rendering PDF…" : "Render the PDF to see paginated output."}
