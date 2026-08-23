@@ -751,10 +751,10 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
    *   3. The full re-render from the worker arrives ~1.2 s later and replaces
    *      the iframe content, catching any Markdown formatting side-effects.
    *
-   * Tables, fenced divs, and code blocks are not directly editable — clicking
-   * them scrolls the source textarea to that line instead so the author can
-   * edit the raw Markdown. */
-  const INLINE_EDITABLE_TAGS = new Set(["P", "H1", "H2", "H3", "H4", "H5", "H6", "LI"]);
+   * Code blocks are not directly editable — clicking them jumps the source
+   * textarea to that line instead. Tables, callout boxes, and list items are
+   * all editable in place via makeEditable. */
+  const INLINE_EDITABLE_TAGS = new Set(["P", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "TD", "TH"]);
 
   // Patch a single rendered element's text back into the Markdown buffer.
   // Handles headings (preserves hashes), bullets, numbered lists, and plain
@@ -845,12 +845,13 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     style.textContent = [
       "p[data-source-line], h1[data-source-line], h2[data-source-line],",
       "h3[data-source-line], h4[data-source-line], h5[data-source-line],",
-      "h6[data-source-line], li[data-source-line] { cursor: text; }",
+      "h6[data-source-line], li[data-source-line], td, th { cursor: text; }",
       "p[data-source-line]:hover, h1[data-source-line]:hover, h2[data-source-line]:hover,",
       "h3[data-source-line]:hover, h4[data-source-line]:hover, h5[data-source-line]:hover,",
-      "h6[data-source-line]:hover, li[data-source-line]:hover {",
+      "h6[data-source-line]:hover, li[data-source-line]:hover, td:hover, th:hover {",
       "  background: rgba(99,102,241,0.06); border-radius: 3px; outline: 1px solid rgba(99,102,241,0.2);",
       "}",
+      ".src-anchor:hover > p, .src-anchor:hover > li { background: rgba(99,102,241,0.06); border-radius: 3px; outline: 1px solid rgba(99,102,241,0.2); }",
     ].join(" ");
     doc.head.appendChild(style);
   }, []);
@@ -883,33 +884,33 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
 
       // Walk up to find an editable element.
       //
-      // Two cases:
-      //   1. Headings: data-source-line is stamped directly on the <h1>-<h6>
+      // Cases:
+      //   1. Headings / TD / TH: data-source-line is stamped directly on the
       //      element by the Lua filter.
       //   2. Paragraphs/list items: the Lua filter wraps them in
       //      <div class="src-anchor" data-source-line="N"> — the <p> or <li>
       //      inside it never carries the attribute itself.
-      //
-      // So we walk up looking for either:
-      //   a) an editable tag that has data-source-line directly, OR
-      //   b) a src-anchor div that has data-source-line, and grab its first
-      //      editable child as the element to make contenteditable.
+      //   3. Callout boxes / fenced divs: the Lua filter wraps the block in a
+      //      div that carries data-source-line. The paragraph(s) inside may
+      //      not carry it directly, so we look for the nearest src-anchor
+      //      ancestor (same as case 2), then fall back to any p inside it.
+      //   4. Table cells: TD/TH are added to INLINE_EDITABLE_TAGS so they
+      //      match case 1 when stamped, or we find the nearest TR/TABLE
+      //      that carries data-source-line and borrow it onto the clicked TD.
       let editEl: HTMLElement | null = null;
       let el: HTMLElement | null = target;
       while (el && el !== doc.body) {
         if (INLINE_EDITABLE_TAGS.has(el.tagName) && el.dataset.sourceLine) {
-          // Case (a): heading directly carries source line.
+          // Case (1): element directly carries source line.
           editEl = el;
           break;
         }
         if (el.dataset.sourceLine && el.classList.contains("src-anchor")) {
-          // Case (b): paragraph wrapper — find the editable child.
+          // Case (2)/(3): wrapper div — find the first editable child.
           const child = el.querySelector<HTMLElement>(
             "p, li, h1, h2, h3, h4, h5, h6"
           );
           if (child) {
-            // Borrow the source line from the wrapper onto the child so
-            // makeEditable can read it via el.dataset.sourceLine.
             if (!child.dataset.sourceLine) {
               child.dataset.sourceLine = el.dataset.sourceLine;
             }
@@ -917,11 +918,32 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           }
           break;
         }
+        // Case (4): table cell — walk up to the TABLE that has data-source-line
+        // and borrow it onto the clicked TD/TH so makeEditable can patch the
+        // right source line.
+        if ((el.tagName === "TD" || el.tagName === "TH") && !el.dataset.sourceLine) {
+          let ancestor: HTMLElement | null = el.parentElement;
+          while (ancestor && ancestor !== doc.body) {
+            if (ancestor.dataset.sourceLine) {
+              el.dataset.sourceLine = ancestor.dataset.sourceLine;
+              break;
+            }
+            ancestor = ancestor.parentElement;
+          }
+          if (el.dataset.sourceLine) {
+            editEl = el;
+            break;
+          }
+        }
         el = el.parentElement;
       }
 
       if (editEl) {
         e.preventDefault();
+        // If a section containing this line is folded, unfold it first so the
+        // source textarea is no longer read-only before makeEditable runs.
+        const srcLine = Number(editEl.dataset.sourceLine);
+        if (srcLine > 0) jumpToLineRef.current(srcLine);
         makeEditableRef.current(editEl);
         return;
       }

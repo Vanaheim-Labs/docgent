@@ -47,3 +47,4 @@ documents/
 # local credentials (never commit)
 .secrets/
 *.token
+.env*
