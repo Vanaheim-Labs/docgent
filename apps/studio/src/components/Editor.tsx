@@ -141,10 +141,23 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
 
   /* ---------------- preview ---------------- */
 
+  // Tracks whether a preview re-render was triggered by an inline edit blur.
+  // Used to skip the re-render entirely and just leave the DOM as-is.
+  const pendingPreviewAfterEdit = useRef(false);
+
   const runHtmlPreview = useCallback(async (src: string) => {
     if (src === lastPreviewed.current) return;
-    // Don't re-render while the user is actively editing in the preview pane.
+    // While the user is actively typing in the preview, suppress all re-renders.
     if (isEditingPreview.current) return;
+    // If this re-render was triggered by an inline edit blur, skip it entirely.
+    // The DOM already shows the correct text optimistically; a full re-render
+    // would replace the iframe document and cause a scroll jump. We only do a
+    // full re-render on the NEXT content change (e.g. source pane edit) or save.
+    if (pendingPreviewAfterEdit.current) {
+      pendingPreviewAfterEdit.current = false;
+      lastPreviewed.current = src; // Mark as seen so we don’t re-render again.
+      return;
+    }
     lastPreviewed.current = src;
     setPreviewing(true);
     setPreviewError(null);
@@ -159,42 +172,13 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         return;
       }
       const html = await res.text();
-      const frame = frameRef.current;
-      const win   = frame?.contentWindow;
-      const doc   = frame?.contentDocument;
-      // Write directly into the existing iframe document instead of swapping
-      // srcDoc. This avoids a full iframe reload and keeps the scroll position
-      // exactly where it is — no jump, no flash.
-      if (doc && win) {
-        const scrollY = win.scrollY;
-        doc.open();
-        doc.write(html);
-        doc.close();
-        // Restore scroll synchronously after write (doc.write resets to 0).
-        win.scrollTo({ top: scrollY, behavior: "instant" as ScrollBehavior });
-        // Re-attach our click handler and cursor styles since the document
-        // was replaced by doc.write.
-        if (iframeClickHandler.current) {
-          doc.removeEventListener("click", iframeClickHandler.current);
-          doc.addEventListener("click", iframeClickHandler.current);
-        }
-        injectEditCursor();
-        // Keep previewHtml in sync for the first load (srcDoc) and for any
-        // code that reads it, but don't update it on re-renders to avoid
-        // triggering React’s iframe srcDoc swap.
-        if (!lastPreviewed.current || lastPreviewed.current === src) {
-          setPreviewHtml(html);
-        }
-      } else {
-        // First load — no iframe doc yet, fall back to setting state.
-        setPreviewHtml(html);
-      }
+      setPreviewHtml(html);
     } catch (e) {
       setPreviewError(e instanceof Error ? e.message : String(e));
     } finally {
       setPreviewing(false);
     }
-  }, [brand, slug, injectEditCursor]);
+  }, [brand, slug]);
 
   // PDF is an explicit action: it is the slow, faithful path, so it renders on
   // demand rather than on every keystroke.
@@ -826,8 +810,10 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       isEditingPreview.current = false;
       const edited = el.innerText;
       if (edited.trim() !== originalText.trim()) {
-        // Patch Markdown. The re-render is now unblocked and will fire on
-        // the next debounce cycle triggered by patchMarkdownBlock -> applyEdit.
+        // Tell runHtmlPreview to skip the next re-render triggered by this
+        // edit. The DOM already shows the correct text; a full re-render
+        // would replace the iframe and cause a scroll jump.
+        pendingPreviewAfterEdit.current = true;
         patchMarkdownBlock(sourceLine, edited);
       }
     };
