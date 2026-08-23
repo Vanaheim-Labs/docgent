@@ -810,15 +810,21 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     const handleBlur = () => {
       el.removeEventListener("keydown", handleKeydown);
       el.contentEditable = "false";
-      isEditingPreview.current = false;
+      el.contentEditable = "false";
       const edited = el.innerText;
       if (edited.trim() !== originalText.trim()) {
-        // Tell runHtmlPreview to skip the next re-render triggered by this
-        // edit. The DOM already shows the correct text; a full re-render
-        // would replace the iframe and cause a scroll jump.
+        // Set the flag BEFORE clearing isEditingPreview so that
+        // syncEditorToPreview stays suppressed through the entire
+        // applyEdit -> textarea scroll -> sync cycle.
         pendingPreviewAfterEdit.current = true;
         patchMarkdownBlock(sourceLine, edited);
       }
+      // Clear AFTER patchMarkdownBlock so syncEditorToPreview is still
+      // blocked when applyEdit triggers the textarea scroll event.
+      // Use rAF to let the scroll event fire and be swallowed first.
+      requestAnimationFrame(() => {
+        isEditingPreview.current = false;
+      });
     };
 
     el.addEventListener("blur",    handleBlur,    { once: true });
