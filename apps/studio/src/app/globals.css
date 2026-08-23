@@ -596,13 +596,15 @@ kbd {
 /* ---------- Phase 9 + Phase 2: posture, outline, mode ---------- */
 
 /* Phase 2: Mode-based layouts.
-   edit (default): preview takes all width (source hidden unless split)
+   edit / review (default): preview takes all width (source hidden unless split)
    pages: single pane (PDF, full width)
    source: single pane (source textarea, full width)
-   split (edit + data-split): 40/60 source/preview
+   split (edit/review + data-split): 40/60 source/preview
 */
-.editor-panes[data-mode="edit"] { grid-template-columns: 1fr; }
-.editor-panes[data-mode="edit"][data-split="true"] { grid-template-columns: 4fr 6fr; }
+.editor-panes[data-mode="edit"],
+.editor-panes[data-mode="review"] { grid-template-columns: 1fr; }
+.editor-panes[data-mode="edit"][data-split="true"],
+.editor-panes[data-mode="review"][data-split="true"] { grid-template-columns: 4fr 6fr; }
 .editor-panes[data-mode="pages"] { grid-template-columns: 1fr; }
 .editor-panes[data-mode="source"] { grid-template-columns: 1fr; }
 @media (max-width: 900px) {
@@ -641,6 +643,40 @@ kbd {
 
 /* Phase 2a: source-mode-btn uses monospace to signal technical mode */
 .source-mode-btn { font-family: var(--mono) !important; font-size: 11.5px !important; }
+
+/* Phase 5b: Review mode banner */
+.review-mode-banner {
+  padding: 8px 16px;
+  background: var(--accent-soft);
+  border-bottom: 1px solid #cfe0ec;
+  font-size: 12.5px;
+  color: var(--accent);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+/* Phase 5a: Pages mode PDF edit overlay */
+.pdf-edit-overlay {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 20px;
+  pointer-events: all;
+  background: transparent;
+}
+.pdf-edit-overlay-hint {
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.pdf-edit-overlay:hover .pdf-edit-overlay-hint { opacity: 1; }
 
 /* Phase 4a: floating selection toolbar */
 .selection-toolbar {

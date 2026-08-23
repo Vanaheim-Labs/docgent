@@ -27,7 +27,8 @@ const PREVIEW_DEBOUNCE_MS = 1200;
 //   edit   = inline editing surface (preview as primary, both panes)
 //   pages  = PDF paginated view (full width)
 //   source = raw Markdown editor, source pane full width (power mode)
-type EditorMode = "edit" | "pages" | "source";
+//   review = like edit but shows ProposalReview + comments prominently
+type EditorMode = "edit" | "pages" | "source" | "review";
 
 // Keep internal types for legacy compatibility in scroll sync logic
 type PreviewMode = "html" | "pdf";
@@ -71,7 +72,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [editorMode, setEditorMode] = useState<EditorMode>("edit");
   // Derived internal state for existing scroll sync / preview logic.
   const mode: PreviewMode = editorMode === "pages" ? "pdf" : "html";
-  const posture: Posture = editorMode === "source" ? "edit" : "review";
+  const posture: Posture = editorMode === "source" ? "edit" : "review";  // review/edit/pages all use review posture for preview
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [pdfStale, setPdfStale] = useState(false);
@@ -1689,8 +1690,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           >
             ☰ Outline
           </button>
-          {/* Phase 2c: split-screen toggle in Edit mode */}
-          {editorMode === "edit" && (
+          {/* Phase 2c: split-screen toggle in Edit and Review mode */}
+          {(editorMode === "edit" || editorMode === "review") && (
             <button
               className="btn btn-secondary"
               onClick={() => setSplitView((v) => !v)}
@@ -1700,7 +1701,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               ⋯ Split
             </button>
           )}
-          {/* Unified 3-button mode switcher */}
+          {/* Unified 4-button mode switcher (Phase 5b adds Review) */}
           <div className="mode-toggle" role="group" aria-label="Editor mode">
             <button
               className="mode-btn"
@@ -1709,6 +1710,14 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               title="Edit in the preview — click any paragraph or heading to edit it directly"
             >
               Edit
+            </button>
+            <button
+              className="mode-btn"
+              data-active={editorMode === "review"}
+              onClick={() => setEditorMode("review")}
+              title="Review — agent suggestions, comments and diff review"
+            >
+              Review
             </button>
             <button
               className="mode-btn"
@@ -2116,7 +2125,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         className="editor-panes"
         data-posture={posture}
         data-mode={editorMode}
-        data-split={splitView && editorMode === "edit"}
+        data-split={(splitView && editorMode === "edit") || (splitView && editorMode === "review")}
       >
         {/* Collapsible outline sidebar (Phase 2b) */}
         {showOutline && headings.length > 0 && (
@@ -2200,7 +2209,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           </nav>
         )}
         {/* Source pane: shown in Source mode always, in Edit+split mode when split is on */}
-        {(editorMode === "source" || (editorMode === "edit" && splitView)) && (
+        {/* Source pane: shown in Source mode always, in Edit+split mode when split is on */}
+        {(editorMode === "source" || (editorMode === "edit" && splitView) || (editorMode === "review" && splitView)) && (
         <div className="pane pane-source">
           {editorMode === "source" && (
             <div className="source-mode-banner">
@@ -2286,13 +2296,19 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
         )}
 
-        {/* Preview/Pages pane: shown in Edit mode always, Pages mode full-width */}
+        {/* Preview/Pages pane: shown in Edit, Review, Pages modes */}
         {editorMode !== "source" && (
         <div
           className="pane pane-preview"
           data-annotatable={posture === "review" && mode === "html"}
           onClick={onPreviewClick}
         >
+          {/* Phase 5b: Review mode banner */}
+          {editorMode === "review" && (
+            <div className="review-mode-banner">
+              🔍 Review mode — agent suggestions and comments. Click any note to jump to source.
+            </div>
+          )}
           {previewError ? (
             <div className="banner" data-kind="error" style={{ margin: 12 }}>
               <strong>Preview failed.</strong>
@@ -2319,7 +2335,19 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               <div className="empty">Rendering first preview…</div>
             )
           ) : previewUrl ? (
-            <iframe className="preview-frame" src={previewUrl} title="PDF preview" />
+            <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column" }}>
+              <iframe className="preview-frame" src={previewUrl} title="PDF preview" style={{ flex: 1 }} />
+              {/* Phase 5a: overlay to return to edit mode on double-click */}
+              {editorMode === "pages" && (
+                <div
+                  className="pdf-edit-overlay"
+                  onDoubleClick={() => setEditorMode("edit")}
+                  title="Double-click to return to Edit mode"
+                >
+                  <span className="pdf-edit-overlay-hint">Double-click to edit</span>
+                </div>
+              )}
+            </div>
           ) : (
             <div className="empty">
               {previewing ? "Rendering PDF…" : "Render the PDF to see paginated output."}
