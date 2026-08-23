@@ -1155,6 +1155,37 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             }
           }
         }
+        // Case (7): bare <p> with no data-source-line (e.g. paragraphs starting
+        // with **bold** inline where an older Lua filter omitted the src-anchor
+        // wrapper). Borrow the source line from the nearest preceding src-anchor
+        // sibling so the paragraph is still editable.
+        if (el.tagName === "P" && !el.dataset.sourceLine && !clickedLi) {
+          let sib = el.previousElementSibling as HTMLElement | null;
+          while (sib) {
+            if (sib.dataset.sourceLine) {
+              // Use the sibling's line as an approximation — close enough for
+              // source-panel navigation and contenteditable editing.
+              el.dataset.sourceLine = sib.dataset.sourceLine;
+              break;
+            }
+            sib = sib.previousElementSibling as HTMLElement | null;
+          }
+          if (!el.dataset.sourceLine) {
+            // Try next sibling as fallback.
+            let nsib = el.nextElementSibling as HTMLElement | null;
+            while (nsib) {
+              if (nsib.dataset.sourceLine) {
+                el.dataset.sourceLine = nsib.dataset.sourceLine;
+                break;
+              }
+              nsib = nsib.nextElementSibling as HTMLElement | null;
+            }
+          }
+          if (el.dataset.sourceLine) {
+            editEl = el;
+            break;
+          }
+        }
         // Case (6): table cell — borrow data-source-line from nearest ancestor.
         if ((el.tagName === "TD" || el.tagName === "TH") && !el.dataset.sourceLine) {
           let ancestor: HTMLElement | null = el.parentElement;

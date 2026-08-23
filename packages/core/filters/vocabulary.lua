@@ -1052,6 +1052,13 @@ function Pandoc(doc)
   for _, b in ipairs(blocks) do
     local text = pandoc.utils.stringify(b)
     local line = find_line(text, cursor)
+    -- Fallback for paragraphs that begin with a Strong inline (e.g. **Bold intro.**
+    -- rest of sentence). stringify strips the ** markers so find_line fails.
+    -- Try again by prefixing the probe with ** to match the raw source.
+    if not line and b.t == 'Para' and b.content and b.content[1] and b.content[1].t == 'Strong' then
+      local strong_text = pandoc.utils.stringify(b.content[1].content)
+      line = find_line('**' .. strong_text, cursor)
+    end
     if line then cursor = line end
     if line and (b.t == 'Div' or b.t == 'Header') then
       b.attributes['data-source-line'] = tostring(line)
