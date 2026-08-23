@@ -926,20 +926,21 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         return;
       }
 
-      // Non-editable click — just jump to nearest source line.
-      // (Note composer suppressed while inline editing is the primary mode.)
-
-      // Fallback: scroll source to nearest anchor.
-      const all = anchorsRef.current();
-      if (all.length === 0) return;
-      const y = e.clientY + win.scrollY;
-      let nearest = all[0];
-      let best = Infinity;
-      for (const a of all) {
-        const d = Math.abs(docTopRef.current(a.el, win) - y);
-        if (d < best) { best = d; nearest = a; }
+      // Non-editable click — in review posture just ignore it (clicking a
+      // table or figure shouldn't move anything). In source posture, jump
+      // to the nearest source line so the textarea scrolls to context.
+      if (postureRef.current === "edit") {
+        const all = anchorsRef.current();
+        if (all.length === 0) return;
+        const y = e.clientY + win.scrollY;
+        let nearest = all[0];
+        let best = Infinity;
+        for (const a of all) {
+          const d = Math.abs(docTopRef.current(a.el, win) - y);
+          if (d < best) { best = d; nearest = a; }
+        }
+        jumpToLineRef.current(nearest.line);
       }
-      jumpToLineRef.current(nearest.line);
     };
   }
 
