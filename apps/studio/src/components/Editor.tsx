@@ -1845,20 +1845,44 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
 
         <div className="editor-toolbar-right">
-          {/* Zoom indicator — only in HTML preview modes */}
-          {editorMode !== "pages" && editorMode !== "source" && previewZoom !== 100 && (
-            <button
-              className="zoom-indicator"
-              onClick={() => {
-                previewZoomRef.current = 100;
-                setPreviewZoom(100);
-                const doc = frameRef.current?.contentDocument;
-                if (doc?.body) doc.body.style.zoom = "1";
-              }}
-              title="Reset zoom to 100%"
-            >
-              {previewZoom}% ↺
-            </button>
+          {/* Zoom stepper — only in HTML preview modes */}
+          {editorMode !== "pages" && editorMode !== "source" && (
+            <div className="zoom-stepper">
+              <button
+                className="zoom-step-btn"
+                onClick={() => {
+                  const next = Math.max(50, previewZoomRef.current - 10);
+                  previewZoomRef.current = next;
+                  setPreviewZoom(next);
+                  const doc = frameRef.current?.contentDocument;
+                  if (doc?.body) doc.body.style.zoom = String(next / 100);
+                }}
+                title="Zoom out"
+                disabled={previewZoom <= 50}
+              >−</button>
+              <button
+                className="zoom-pct"
+                onClick={() => {
+                  previewZoomRef.current = 100;
+                  setPreviewZoom(100);
+                  const doc = frameRef.current?.contentDocument;
+                  if (doc?.body) doc.body.style.zoom = "1";
+                }}
+                title="Reset to 100%"
+              >{previewZoom}%</button>
+              <button
+                className="zoom-step-btn"
+                onClick={() => {
+                  const next = Math.min(200, previewZoomRef.current + 10);
+                  previewZoomRef.current = next;
+                  setPreviewZoom(next);
+                  const doc = frameRef.current?.contentDocument;
+                  if (doc?.body) doc.body.style.zoom = String(next / 100);
+                }}
+                title="Zoom in"
+                disabled={previewZoom >= 200}
+              >+</button>
+            </div>
           )}
           {editorMode === "pages" ? (
             <>
