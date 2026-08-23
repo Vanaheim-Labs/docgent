@@ -180,7 +180,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [selectionToolbar, setSelectionToolbar] = useState<{
     visible: boolean; top: number; left: number;
     selectedText: string;
-  }>({ visible: false, top: 0, left: 0, selectedText: "" });
+    selStart: number; selEnd: number;
+  }>({ visible: false, top: 0, left: 0, selectedText: "", selStart: 0, selEnd: 0 });
 
   // Phase 4b: command palette state
   const [cmdPalette, setCmdPalette] = useState(false);
@@ -1271,12 +1272,19 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       const range = sel.getRangeAt(0);
       const rect = range.getBoundingClientRect();
       const frameRect = frame.getBoundingClientRect();
+      // Resolve character offsets by searching source content for the selected text.
+      // indexOf gives us the first occurrence; this is best-effort for the preview
+      // selection path (the textarea path always has exact offsets from selectionStart/End).
+      const srcStart = content.indexOf(text);
+      const srcEnd = srcStart >= 0 ? srcStart + text.length : 0;
       setSelectionToolbar({
         visible: true,
         // Position above the selection, relative to the viewport
         top: frameRect.top + rect.top - 44,
         left: frameRect.left + rect.left + rect.width / 2,
         selectedText: text,
+        selStart: srcStart >= 0 ? srcStart : 0,
+        selEnd: srcStart >= 0 ? srcEnd : 0,
       });
     };
 
@@ -2505,7 +2513,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             className="selection-toolbar-btn"
             onClick={() => {
               const top = offsetForLine(1);
-              setRewriteTarget({ kind: "range", start: 0, end: 0, label: selectionToolbar.selectedText.slice(0, 60), top });
+              setRewriteTarget({ kind: "range", start: selectionToolbar.selStart, end: selectionToolbar.selEnd, label: selectionToolbar.selectedText.slice(0, 60), top });
               setSelectionToolbar((s) => ({ ...s, visible: false }));
             }}
             title="Rewrite selected text"
@@ -2514,7 +2522,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             className="selection-toolbar-btn"
             onClick={() => {
               const top = offsetForLine(1);
-              setRewriteTarget({ kind: "range", start: 0, end: 0, label: "Shorten: " + selectionToolbar.selectedText.slice(0, 40), top });
+              setRewriteTarget({ kind: "range", start: selectionToolbar.selStart, end: selectionToolbar.selEnd, label: "Shorten: " + selectionToolbar.selectedText.slice(0, 40), top });
               setSelectionToolbar((s) => ({ ...s, visible: false }));
             }}
             title="Make it shorter"
@@ -2523,7 +2531,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             className="selection-toolbar-btn"
             onClick={() => {
               const top = offsetForLine(1);
-              setRewriteTarget({ kind: "range", start: 0, end: 0, label: "Strengthen: " + selectionToolbar.selectedText.slice(0, 40), top });
+              setRewriteTarget({ kind: "range", start: selectionToolbar.selStart, end: selectionToolbar.selEnd, label: "Strengthen: " + selectionToolbar.selectedText.slice(0, 40), top });
               setSelectionToolbar((s) => ({ ...s, visible: false }));
             }}
             title="Make it stronger"
