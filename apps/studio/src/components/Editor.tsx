@@ -916,18 +916,33 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       // Walk up to find an editable element.
       //
       // Cases:
-      //   1. Headings / TD / TH: data-source-line is stamped directly on the
-      //      element by the Lua filter.
-      //   2. Paragraphs/list items: the Lua filter wraps them in
-      //      <div class="src-anchor" data-source-line="N"> — the <p> or <li>
-      //      inside it never carries the attribute itself.
-      //   3. Callout boxes / fenced divs: the Lua filter wraps the block in a
-      //      div that carries data-source-line. The paragraph(s) inside may
-      //      not carry it directly, so we look for the nearest src-anchor
-      //      ancestor (same as case 2), then fall back to any p inside it.
-      //   4. Table cells: TD/TH are added to INLINE_EDITABLE_TAGS so they
-      //      match case 1 when stamped, or we find the nearest TR/TABLE
-      //      that carries data-source-line and borrow it onto the clicked TD.
+      //   1. Headings (h2–h6) / TD / TH: data-source-line is stamped directly
+      //      on the element by the Lua filter.
+      //   2. Paragraphs: the Lua filter wraps them in a src-anchor div.
+      //   3. List items: the Lua filter wraps the entire <ul>/<ol> in a single
+      //      src-anchor div, so we must resolve to the specific <li> clicked,
+      //      not the first child of the wrapper.
+      //   4. Callout boxes / fenced divs: inner paragraphs are wrapped in
+      //      src-anchor divs inside the callout — same as case 2.
+      //   5. h1 headings: the Lua filter wraps them in a section-opener div
+      //      with no data-source-line on the <h1> itself. We detect the
+      //      section-opener parent and use the nearest heading as the edit
+      //      target, borrowing the line from the next src-anchor sibling.
+      //   6. Table cells: borrow data-source-line from nearest TR/TABLE
+      //      ancestor when the cell itself has no line stamp.
+
+      // Pre-pass: if we clicked inside a <li>, resolve it first (case 3) so
+      // the upward walk doesn’t accidentally grab a src-anchor before we
+      // identify the right list item.
+      let clickedLi: HTMLElement | null = null;
+      {
+        let t: HTMLElement | null = target;
+        while (t && t !== doc.body) {
+          if (t.tagName === "LI") { clickedLi = t; break; }
+          t = t.parentElement;
+        }
+      }
+
       let editEl: HTMLElement | null = null;
       let el: HTMLElement | null = target;
       while (el && el !== doc.body) {
@@ -937,21 +952,50 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           break;
         }
         if (el.dataset.sourceLine && el.classList.contains("src-anchor")) {
-          // Case (2)/(3): wrapper div — find the first editable child.
-          const child = el.querySelector<HTMLElement>(
-            "p, li, h1, h2, h3, h4, h5, h6"
-          );
-          if (child) {
-            if (!child.dataset.sourceLine) {
-              child.dataset.sourceLine = el.dataset.sourceLine;
+          if (clickedLi) {
+            // Case (3): list item — use the specific <li> clicked, not the
+            // first child of the wrapper.
+            if (!clickedLi.dataset.sourceLine) {
+              clickedLi.dataset.sourceLine = el.dataset.sourceLine;
             }
-            editEl = child;
+            editEl = clickedLi;
+          } else {
+            // Case (2)/(4): paragraph / callout — first editable child.
+            const child = el.querySelector<HTMLElement>(
+              "p, h1, h2, h3, h4, h5, h6"
+            );
+            if (child) {
+              if (!child.dataset.sourceLine) {
+                child.dataset.sourceLine = el.dataset.sourceLine;
+              }
+              editEl = child;
+            }
           }
           break;
         }
-        // Case (4): table cell — walk up to the TABLE that has data-source-line
-        // and borrow it onto the clicked TD/TH so makeEditable can patch the
-        // right source line.
+        // Case (5): h1 inside a section-opener div. The Lua filter generates
+        //   <div class="section-opener">...<h1 class="section-h1">...</h1></div>
+        // with no data-source-line on the h1. Find the source line from the
+        // next sibling src-anchor after the section-opener.
+        if (el.classList.contains("section-opener")) {
+          const h1 = el.querySelector<HTMLElement>("h1");
+          if (h1) {
+            // Look for the nearest following src-anchor sibling to borrow its line.
+            let sib = el.nextElementSibling as HTMLElement | null;
+            while (sib) {
+              if (sib.dataset.sourceLine) {
+                h1.dataset.sourceLine = sib.dataset.sourceLine;
+                break;
+              }
+              sib = sib.nextElementSibling as HTMLElement | null;
+            }
+            if (h1.dataset.sourceLine) {
+              editEl = h1;
+              break;
+            }
+          }
+        }
+        // Case (6): table cell — borrow data-source-line from nearest ancestor.
         if ((el.tagName === "TD" || el.tagName === "TH") && !el.dataset.sourceLine) {
           let ancestor: HTMLElement | null = el.parentElement;
           while (ancestor && ancestor !== doc.body) {
