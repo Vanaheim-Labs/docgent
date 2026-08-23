@@ -13,6 +13,10 @@
 
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* editor sticky stack heights */
+  --topbar-h: 56px;   /* .editor-topbar */
+  --toolbar-h: 49px;  /* .editor-toolbar (10px top+bottom padding + ~29px button) */
 }
 
 * { box-sizing: border-box; }
@@ -423,7 +427,7 @@ a:hover { text-decoration: underline; }
   background: var(--paper);
   border-bottom: 1px solid var(--rule);
   position: sticky;
-  top: 0;
+  top: var(--topbar-h); /* sits flush below .editor-topbar */
   z-index: 8;
 }
 .editor-toolbar-left,
@@ -649,7 +653,7 @@ kbd {
   background: var(--paper-alt);
   border-bottom: 1px solid var(--rule);
   position: sticky;
-  top: 45px;
+  top: calc(var(--topbar-h) + var(--toolbar-h)); /* stacks below topbar + toolbar */
   z-index: 7;
 }
 .format-group {
