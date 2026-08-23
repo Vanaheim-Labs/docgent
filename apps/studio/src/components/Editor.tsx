@@ -511,6 +511,9 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // viewport top, then converts that line back to a measured pixel offset.
   const syncPreviewToEditor = useCallback(() => {
     if (mode !== "html") return;
+    // In review posture the preview is the primary surface; don't sync it
+    // back to the source pane position.
+    if (posture === "review") return;
     if (syncLock.current === 1) { releaseSync(); return; }
     const el = textareaRef.current;
     const win = frameRef.current?.contentWindow;
