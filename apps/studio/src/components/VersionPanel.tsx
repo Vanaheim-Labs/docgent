@@ -332,16 +332,16 @@ export function VersionPanel({
           {allowed.length > 0 ? (
             <>
               <div className="approval-checklist">
-                <div className="approval-check-row">
-                  <span className="approval-check-icon" data-ok="true">✓</span>
+                <div className="approval-check-row" style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                  <span className="approval-check-icon" data-ok="true" style={{ flexShrink: 0, width: 16, textAlign: "center" }}>✓</span>
                   <span>PDF rendered successfully</span>
                 </div>
-                <div className="approval-check-row">
-                  <span className="approval-check-icon" data-ok="true">✓</span>
+                <div className="approval-check-row" style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                  <span className="approval-check-icon" data-ok="true" style={{ flexShrink: 0, width: 16, textAlign: "center" }}>✓</span>
                   <span>{timeline.length} revision{timeline.length === 1 ? "" : "s"} in history</span>
                 </div>
-                <div className="approval-check-row">
-                  <span className="approval-check-icon" data-ok="false">○</span>
+                <div className="approval-check-row" style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                  <span className="approval-check-icon" data-ok="false" style={{ flexShrink: 0, width: 16, textAlign: "center" }}>○</span>
                   <span>Outstanding agent questions: none tracked</span>
                 </div>
               </div>

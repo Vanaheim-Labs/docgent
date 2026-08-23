@@ -14,20 +14,20 @@ function ForYouCard({ buckets }: { buckets: Record<QueueBucket, DocSummary[]> })
     <div className="foryou-card">
       <div className="foryou-card-title">For you</div>
       {reviewCount > 0 && (
-        <button className="foryou-row" onClick={() => router.push("/?bucket=needs-review")}>
-          <span className="foryou-count" data-highlight="true">{reviewCount}</span>
+        <button className="foryou-row" style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: "4px 0", width: "100%", textAlign: "left", fontSize: 13 }} onClick={() => router.push("/?bucket=needs-review")}>
+          <span className="foryou-count" data-highlight="true" style={{ fontWeight: 600, flexShrink: 0 }}>{reviewCount}</span>
           <span className="foryou-label">{reviewCount === 1 ? "document needs" : "documents need"} your review</span>
         </button>
       )}
       {inProgressCount > 0 && (
-        <button className="foryou-row" onClick={() => router.push("/?bucket=in-progress")}>
-          <span className="foryou-count">{inProgressCount}</span>
+        <button className="foryou-row" style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: "4px 0", width: "100%", textAlign: "left", fontSize: 13 }} onClick={() => router.push("/?bucket=in-progress")}>
+          <span className="foryou-count" style={{ fontWeight: 600, flexShrink: 0 }}>{inProgressCount}</span>
           <span className="foryou-label">{inProgressCount === 1 ? "document is" : "documents are"} being worked on</span>
         </button>
       )}
       {doneCount > 0 && (
-        <button className="foryou-row" onClick={() => router.push("/")}>
-          <span className="foryou-count">{doneCount}</span>
+        <button className="foryou-row" style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: "4px 0", width: "100%", textAlign: "left", fontSize: 13 }} onClick={() => router.push("/")}>
+          <span className="foryou-count" style={{ fontWeight: 600, flexShrink: 0 }}>{doneCount}</span>
           <span className="foryou-label">{doneCount === 1 ? "document" : "documents"} approved or released</span>
         </button>
       )}
