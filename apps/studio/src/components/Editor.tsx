@@ -1745,7 +1745,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
 
         <div className="editor-toolbar-right">
-          {editorMode === "pages" && (
+          {editorMode === "pages" ? (
             <>
               <button
                 className="btn btn-secondary"
@@ -1759,11 +1759,30 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                 onClick={() => runPdfPreview(content)}
                 disabled={previewing || errors.length > 0}
               >
-                {previewing ? "Rendering…" : pdfStale ? "Refresh PDF" : "Export PDF"}
+                {previewing ? "Generating…" : pdfStale ? "Refresh PDF" : "Refresh PDF"}
               </button>
+              {previewUrl && !previewing && (
+                <a
+                  className="btn"
+                  href={previewUrl}
+                  download={`${slug}.pdf`}
+                  title="Download PDF"
+                >
+                  ↓ Download PDF
+                </a>
+              )}
             </>
+          ) : (
+            <button
+              className="btn btn-secondary"
+              onClick={() => setEditorMode("pages")}
+              title="Generate and download PDF"
+              disabled={errors.length > 0}
+            >
+              Export PDF
+            </button>
           )}
-          {previewing && <span className="editor-stat">rendering…</span>}
+          {previewing && editorMode === "pages" && <span className="editor-stat">generating PDF…</span>}
           {errors.length > 0 && (
             <button
               className={`diag-pill diag-pill-btn${showErrors ? " diag-pill-active" : ""}`}
