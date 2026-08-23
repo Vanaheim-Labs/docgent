@@ -1127,6 +1127,30 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       const win = frame.contentWindow;
       if (!doc || !win) return;
 
+      // Fix: intercept <a href="…"> clicks inside the preview so TOC links
+      // scroll within the document rather than navigating the iframe to the
+      // Studio edit URL (which loads the full app inside the preview frame).
+      {
+        let t: HTMLElement | null = target;
+        while (t && t !== doc.body) {
+          if (t.tagName === "A") {
+            const href = (t as HTMLAnchorElement).getAttribute("href") ?? "";
+            if (href.startsWith("#")) {
+              e.preventDefault();
+              const id = href.slice(1);
+              const dest = doc.getElementById(id) ||
+                (doc.querySelector(`[name="${id}"]`) as HTMLElement | null);
+              if (dest) dest.scrollIntoView({ behavior: "smooth", block: "start" });
+              return;
+            }
+            // Any other link inside the preview — prevent accidental navigation.
+            e.preventDefault();
+            return;
+          }
+          t = t.parentElement;
+        }
+      }
+
       // Walk up to find an editable element.
       //
       // Cases:
@@ -1233,6 +1257,37 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                 break;
               }
               nsib = nsib.nextElementSibling as HTMLElement | null;
+            }
+          }
+          if (el.dataset.sourceLine) {
+            editEl = el;
+            break;
+          }
+        }
+        // Case (5b): any heading (h1–h6) with no data-source-line that did not
+        // match the section-opener check above. Handles headings inside <section>
+        // or brand-specific wrapper divs (e.g. "Why Now" heading). Walk up the
+        // ancestor chain, then preceding siblings, to find a line to borrow.
+        if (
+          ["H1","H2","H3","H4","H5","H6"].includes(el.tagName) &&
+          !el.dataset.sourceLine
+        ) {
+          let anc: HTMLElement | null = el.parentElement;
+          while (anc && anc !== doc.body) {
+            if (anc.dataset.sourceLine) {
+              el.dataset.sourceLine = anc.dataset.sourceLine;
+              break;
+            }
+            anc = anc.parentElement;
+          }
+          if (!el.dataset.sourceLine) {
+            let sib = el.previousElementSibling as HTMLElement | null;
+            while (sib) {
+              if (sib.dataset.sourceLine) {
+                el.dataset.sourceLine = sib.dataset.sourceLine;
+                break;
+              }
+              sib = sib.previousElementSibling as HTMLElement | null;
             }
           }
           if (el.dataset.sourceLine) {
@@ -2126,7 +2181,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             <button
               key={lvl}
               className="format-btn"
-              onClick={() => applyHeading(lvl)}
+              onMouseDown={(e) => { e.preventDefault(); applyHeading(lvl); }}
               disabled={isFolded}
               title={`Heading ${lvl}`}
               aria-label={`Heading ${lvl}`}
@@ -2139,7 +2194,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         <div className="format-group">
           <button
             className="format-btn"
-            onClick={() => toggleInline("**", "bold text")}
+            onMouseDown={(e) => { e.preventDefault(); toggleInline("**", "bold text"); }}
             disabled={isFolded}
             title="Bold — ⌘B"
             aria-label="Bold"
@@ -2148,7 +2203,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           </button>
           <button
             className="format-btn"
-            onClick={() => toggleInline("*", "italic text")}
+            onMouseDown={(e) => { e.preventDefault(); toggleInline("*", "italic text"); }}
             disabled={isFolded}
             title="Italic — ⌘I"
             aria-label="Italic"
@@ -2157,7 +2212,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           </button>
           <button
             className="format-btn"
-            onClick={() => toggleInline("~~", "struck text")}
+            onMouseDown={(e) => { e.preventDefault(); toggleInline("~~", "struck text"); }}
             disabled={isFolded}
             title="Strikethrough"
             aria-label="Strikethrough"
@@ -2166,7 +2221,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           </button>
           <button
             className="format-btn format-btn-mono"
-            onClick={() => toggleInline("`", "code")}
+            onMouseDown={(e) => { e.preventDefault(); toggleInline("`", "code"); }}
             disabled={isFolded}
             title="Inline code — ⌘E"
             aria-label="Inline code"
@@ -2178,7 +2233,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         <div className="format-group">
           <button
             className="format-btn"
-            onClick={applyBullets}
+            onMouseDown={(e) => { e.preventDefault(); applyBullets(); }}
             disabled={isFolded}
             title="Bulleted list"
             aria-label="Bulleted list"
@@ -2187,7 +2242,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           </button>
           <button
             className="format-btn"
-            onClick={applyNumbered}
+            onMouseDown={(e) => { e.preventDefault(); applyNumbered(); }}
             disabled={isFolded}
             title="Numbered list"
             aria-label="Numbered list"
@@ -2196,7 +2251,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           </button>
           <button
             className="format-btn"
-            onClick={applyQuote}
+            onMouseDown={(e) => { e.preventDefault(); applyQuote(); }}
             disabled={isFolded}
             title="Blockquote"
             aria-label="Blockquote"
@@ -2208,7 +2263,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         <div className="format-group">
           <button
             className="format-btn"
-            onClick={insertLink}
+            onMouseDown={(e) => { e.preventDefault(); insertLink(); }}
             disabled={isFolded}
             title="Link — ⌘K"
             aria-label="Insert link"
