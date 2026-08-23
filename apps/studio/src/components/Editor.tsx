@@ -470,6 +470,9 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // preview tracks continuously rather than jumping block to block.
   const syncEditorToPreview = useCallback(() => {
     if (mode !== "html") return;
+    // Don't sync while the user is editing in the preview — the preview scroll
+    // position is driven by the user, not the source pane.
+    if (isEditingPreview.current) return;
     // An echo from a preview-driven scroll: swallow it and re-arm.
     if (syncLock.current === 2) { releaseSync(); return; }
     const win = frameRef.current?.contentWindow;
