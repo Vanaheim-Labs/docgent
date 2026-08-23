@@ -2358,62 +2358,18 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             ) : (
               <div className="empty">Rendering first preview…</div>
             )
-          ) : editorMode === "pages" ? (
-            <div className="pdf-status-panel">
-              {previewing ? (
-                <>
-                  <div className="pdf-status-spinner" />
-                  <p className="pdf-status-title">Generating PDF…</p>
-                  <p className="pdf-status-sub">This usually takes 5–15 seconds</p>
-                </>
-              ) : previewUrl ? (
-                <>
-                  <div className="pdf-status-icon">📄</div>
-                  <p className="pdf-status-title">PDF ready</p>
-                  <p className="pdf-status-sub">{slug}.pdf</p>
-                  <div className="pdf-status-actions">
-                    <a
-                      className="btn"
-                      href={previewUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      title="View PDF in a new tab with full controls"
-                    >
-                      ↗ Open in viewer
-                    </a>
-                    <a
-                      className="btn btn-secondary"
-                      href={previewUrl}
-                      download={`${slug}.pdf`}
-                      title="Save PDF to your computer"
-                    >
-                      ↓ Download
-                    </a>
-                  </div>
-                  <button
-                    className="pdf-status-refresh"
-                    onClick={() => runPdfPreview(content)}
-                    disabled={previewing || errors.length > 0}
-                  >
-                    ↻ Regenerate
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="pdf-status-icon">📄</div>
-                  <p className="pdf-status-title">Ready to export</p>
-                  <p className="pdf-status-sub">Generate a paginated PDF of this document</p>
-                  <button
-                    className="btn"
-                    onClick={() => runPdfPreview(content)}
-                    disabled={errors.length > 0}
-                  >
-                    Generate PDF
-                  </button>
-                  {errors.length > 0 && (
-                    <p className="pdf-status-error">Fix {errors.length} error{errors.length !== 1 ? "s" : ""} before exporting</p>
-                  )}
-                </>
+          ) : previewUrl ? (
+            <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column" }}>
+              <iframe className="preview-frame" src={previewUrl} title="PDF preview" style={{ flex: 1 }} />
+              {/* Phase 5a: overlay to return to edit mode on double-click */}
+              {editorMode === "pages" && (
+                <div
+                  className="pdf-edit-overlay"
+                  onDoubleClick={() => setEditorMode("edit")}
+                  title="Double-click to return to Edit mode"
+                >
+                  <span className="pdf-edit-overlay-hint">Double-click to edit</span>
+                </div>
               )}
             </div>
           ) : (
