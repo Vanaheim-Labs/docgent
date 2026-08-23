@@ -1,5 +1,6 @@
 import { ImageResponse } from "@vercel/og";
 import { fetchDocPreviewMeta } from "@/lib/metadata";
+import { getBrandTheme } from "@/lib/brand-theme";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +14,12 @@ export const dynamic = "force-dynamic";
  *
  * A commit-pinned view (`?v=<sha>`) renders that revision's metadata, same
  * as the page itself, so a shared link and its preview image always agree.
+ *
+ * The image is visually branded per brand:
+ * - Background gradient derived from the brand's `band` + `accent` palette
+ * - Accent bar at the top uses the brand accent colour
+ * - Brand logo embedded when available (fetched from docgent-brands repo)
+ * - Falls back to brand name text when no logo is present
  */
 export async function GET(
   req: Request,
@@ -21,7 +28,12 @@ export async function GET(
   const { brand, slug } = await ctx.params;
   const ref = new URL(req.url).searchParams.get("v") || undefined;
 
-  const meta = await fetchDocPreviewMeta(brand, slug, ref);
+  // Fetch doc metadata and brand theme in parallel
+  const [meta, theme] = await Promise.all([
+    fetchDocPreviewMeta(brand, slug, ref),
+    getBrandTheme(brand, true),
+  ]);
+
   if (!meta) {
     return new Response("not found", { status: 404 });
   }
@@ -45,6 +57,23 @@ export async function GET(
   const showDescription =
     meta.description && meta.description !== "A Docgent document." && !meta.subtitle;
 
+  const { palette, darkBand, logoDataUri } = theme;
+  const { band, accent, ink: inkColor, paper } = palette;
+
+  // On dark band: text is white; on light band: text is the brand ink colour
+  const textColor = darkBand ? "#ffffff" : inkColor;
+  const textMuted = darkBand ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.45)";
+  const textFaint = darkBand ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.35)";
+  const textBody = darkBand ? "rgba(255,255,255,0.72)" : "rgba(0,0,0,0.65)";
+  const pillBg = darkBand ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)";
+  const pillBorder = darkBand ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.14)";
+  const dividerColor = darkBand ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
+
+  // Derive a slightly lightened/darkened mid-stop for the gradient
+  // by blending band toward accent. We do this purely with CSS since
+  // we can't do colour math in JSX easily.
+  const gradientMid = accent + "44"; // accent at 27% opacity over band
+
   return new ImageResponse(
     (
       <div
@@ -54,26 +83,28 @@ export async function GET(
           justifyContent: "space-between",
           width: "100%",
           height: "100%",
-          background: "linear-gradient(145deg, #0b1e30 0%, #163652 55%, #1e5278 100%)",
-          color: "#ffffff",
+          background: darkBand
+            ? `linear-gradient(145deg, ${band} 0%, ${band}ee 45%, ${accent}33 100%)`
+            : `linear-gradient(145deg, ${paper} 0%, ${paper} 60%, ${accent}18 100%)`,
+          color: textColor,
           fontFamily: '"Inter", "Helvetica Neue", Arial, sans-serif',
           position: "relative",
         }}
       >
-        {/* Subtle top accent bar */}
+        {/* Brand accent bar at top */}
         <div
           style={{
             position: "absolute",
             top: 0,
             left: 0,
             right: 0,
-            height: 4,
-            background: "linear-gradient(90deg, #4a9eda 0%, #2d7cbf 50%, #1a5c9a 100%)",
+            height: 5,
+            background: `linear-gradient(90deg, ${accent} 0%, ${accent}99 100%)`,
             display: "flex",
           }}
         />
 
-        {/* Header: brand name + Docgent wordmark */}
+        {/* Header: logo (or brand name) + Docgent wordmark */}
         <div
           style={{
             display: "flex",
@@ -86,31 +117,45 @@ export async function GET(
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 12,
+              gap: 14,
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                fontSize: 28,
-                fontWeight: 700,
-                letterSpacing: -0.5,
-                color: "#ffffff",
-              }}
-            >
-              {meta.brandName}
-            </div>
+            {/* Logo or brand name text */}
+            {logoDataUri ? (
+              <img
+                src={logoDataUri}
+                style={{
+                  height: 36,
+                  maxWidth: 180,
+                  objectFit: "contain",
+                  objectPosition: "left center",
+                }}
+                alt={meta.brandName}
+              />
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  fontSize: 28,
+                  fontWeight: 700,
+                  letterSpacing: -0.5,
+                  color: textColor,
+                }}
+              >
+                {meta.brandName}
+              </div>
+            )}
             {meta.doctype && (
               <>
-                <div style={{ display: "flex", opacity: 0.35, fontSize: 24 }}>·</div>
+                <div style={{ display: "flex", opacity: 0.3, fontSize: 22, color: textColor }}>·</div>
                 <div
                   style={{
                     display: "flex",
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: 600,
                     textTransform: "uppercase",
                     letterSpacing: 1.5,
-                    color: "rgba(255,255,255,0.55)",
+                    color: textMuted,
                     paddingTop: 3,
                   }}
                 >
@@ -122,9 +167,9 @@ export async function GET(
           <div
             style={{
               display: "flex",
-              fontSize: 18,
+              fontSize: 17,
               fontWeight: 500,
-              color: "rgba(255,255,255,0.4)",
+              color: textFaint,
               letterSpacing: 0.5,
             }}
           >
@@ -150,7 +195,7 @@ export async function GET(
               fontWeight: 800,
               lineHeight: 1.1,
               letterSpacing: -1.5,
-              color: "#ffffff",
+              color: textColor,
               maxWidth: 1000,
             }}
           >
@@ -162,7 +207,7 @@ export async function GET(
                 display: "flex",
                 fontSize: 26,
                 lineHeight: 1.4,
-                color: "rgba(255,255,255,0.72)",
+                color: textBody,
                 maxWidth: 900,
               }}
             >
@@ -175,7 +220,7 @@ export async function GET(
                 display: "flex",
                 fontSize: 22,
                 lineHeight: 1.5,
-                color: "rgba(255,255,255,0.58)",
+                color: textMuted,
                 maxWidth: 860,
               }}
             >
@@ -193,7 +238,7 @@ export async function GET(
             alignItems: "center",
             gap: 12,
             padding: "0 72px 52px",
-            borderTop: "1px solid rgba(255,255,255,0.08)",
+            borderTop: `1px solid ${dividerColor}`,
             paddingTop: 24,
             marginTop: 24,
           }}
@@ -204,12 +249,13 @@ export async function GET(
                 display: "flex",
                 padding: "7px 16px",
                 borderRadius: 6,
-                background: "rgba(255,255,255,0.12)",
-                border: "1px solid rgba(255,255,255,0.18)",
+                background: pillBg,
+                border: `1px solid ${pillBorder}`,
                 fontSize: 18,
                 fontWeight: 600,
                 textTransform: "capitalize",
                 letterSpacing: 0.3,
+                color: textColor,
               }}
             >
               {meta.status}
@@ -221,13 +267,13 @@ export async function GET(
                 display: "flex",
                 padding: "7px 16px",
                 borderRadius: 6,
-                background: "rgba(200,60,60,0.3)",
-                border: "1px solid rgba(255,100,100,0.4)",
+                background: darkBand ? "rgba(200,60,60,0.3)" : "rgba(200,60,60,0.1)",
+                border: `1px solid ${darkBand ? "rgba(255,100,100,0.4)" : "rgba(180,60,60,0.3)"}`,
                 fontSize: 18,
                 fontWeight: 600,
                 textTransform: "uppercase",
                 letterSpacing: 0.5,
-                color: "rgba(255,180,180,1)",
+                color: darkBand ? "rgba(255,180,180,1)" : "#b91c1c",
               }}
             >
               {meta.classification}
@@ -238,7 +284,7 @@ export async function GET(
               style={{
                 display: "flex",
                 fontSize: 18,
-                color: "rgba(255,255,255,0.45)",
+                color: textFaint,
                 fontWeight: 500,
               }}
             >
@@ -250,19 +296,31 @@ export async function GET(
               style={{
                 display: "flex",
                 fontSize: 18,
-                color: "rgba(255,255,255,0.45)",
+                color: textFaint,
                 fontWeight: 500,
               }}
             >
               {meta.client}
             </div>
           )}
+          {/* Accent dot — a small brand colour signal in the footer */}
+          <div
+            style={{
+              display: "flex",
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              background: accent,
+              marginLeft: 4,
+              opacity: 0.7,
+            }}
+          />
           {meta.date && (
             <div
               style={{
                 display: "flex",
                 fontSize: 18,
-                color: "rgba(255,255,255,0.4)",
+                color: textFaint,
                 marginLeft: "auto",
               }}
             >
