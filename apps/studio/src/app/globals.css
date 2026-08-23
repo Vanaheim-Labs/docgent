@@ -2454,3 +2454,21 @@ kbd {
   gap: 10px;
   flex-shrink: 0;
 }
+
+/* ---------- preview zoom indicator ---------- */
+.zoom-indicator {
+  font-size: 11.5px;
+  font-weight: 600;
+  font-family: var(--mono);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid #cfe0ec;
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s;
+}
+.zoom-indicator:hover {
+  background: #d8eaf5;
+}

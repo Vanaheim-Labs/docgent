@@ -187,6 +187,12 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [cmdQuery, setCmdQuery] = useState("");
   const [cmdSelectedIdx, setCmdSelectedIdx] = useState(0);
 
+  // Preview zoom: percentage applied to the HTML preview body via CSS zoom.
+  // Clamped to 50–200%. Driven by ⌘+scroll and pinch gestures inside the
+  // iframe; stored as React state so the toolbar can display and reset it.
+  const [previewZoom, setPreviewZoom] = useState(100);
+  const previewZoomRef = useRef(100);
+
   const dirty = content !== initialContent || save.kind === "error" || save.kind === "stale";
 
   const diagnostics = useMemo(
@@ -952,6 +958,70 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     el.addEventListener("keydown", handleKeydown);
   }, [patchMarkdownBlock]);
 
+  // Inject zoom gesture handlers into the iframe document.
+  //
+  // Intercepts ⌘+scroll (wheel with metaKey) and the non-standard GestureEvent
+  // (Safari pinch) on the iframe's own document, prevents the browser from
+  // treating them as a viewport zoom, and instead applies CSS zoom to
+  // document.body directly. Same-origin iframes let us do this without any
+  // postMessage indirection.
+  //
+  // Why body.style.zoom and not transform: scale()?
+  // CSS zoom reflows the document at the new logical width, so text wraps
+  // and columns resize exactly like Word / Google Docs. transform: scale()
+  // just scales pixels — layout stays fixed and the pane gets scroll bars.
+  //
+  // Re-injected on every iframe load (previewHtml change) because srcDoc
+  // replaces the entire document and the listeners are lost.
+  const injectZoomHandlers = useCallback(() => {
+    const doc = frameRef.current?.contentDocument;
+    if (!doc || doc.getElementById("__docgent_zoom")) return;
+
+    // Marker so we don't double-inject.
+    const marker = doc.createElement("meta");
+    marker.id = "__docgent_zoom";
+    doc.head.appendChild(marker);
+
+    // Wheel: ⌘+scroll (standard cross-browser zoom gesture on Mac).
+    doc.addEventListener("wheel", (e: WheelEvent) => {
+      if (!e.metaKey && !e.ctrlKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      // deltaY is negative for zoom-in (scroll up), positive for zoom-out.
+      // A typical trackpad notch is ~3–4 px; cap sensitivity.
+      const delta = -e.deltaY * 0.05;
+      const next = Math.min(200, Math.max(50, previewZoomRef.current + delta));
+      previewZoomRef.current = next;
+      setPreviewZoom(Math.round(next));
+      if (doc.body) doc.body.style.zoom = String(next / 100);
+    }, { passive: false });
+
+    // GestureEvent: Safari pinch-to-zoom (non-standard but widely used on Mac).
+    // The gesturechange event fires continuously; scale is the cumulative
+    // gesture scale relative to when the gesture started, not a delta.
+    let gestureStartZoom = previewZoomRef.current;
+    doc.addEventListener("gesturestart", () => {
+      gestureStartZoom = previewZoomRef.current;
+    });
+    doc.addEventListener("gesturechange", (e: Event) => {
+      const ge = e as unknown as { scale: number };
+      e.preventDefault();
+      const next = Math.min(200, Math.max(50, gestureStartZoom * ge.scale));
+      previewZoomRef.current = next;
+      setPreviewZoom(Math.round(next));
+      if (doc.body) doc.body.style.zoom = String(next / 100);
+    });
+    doc.addEventListener("gestureend", (e: Event) => {
+      e.preventDefault();
+    });
+
+    // Apply the current zoom immediately in case we're re-injecting after
+    // a preview reload that reset the body style.
+    if (doc.body && previewZoomRef.current !== 100) {
+      doc.body.style.zoom = String(previewZoomRef.current / 100);
+    }
+  }, []);
+
   // Inject a hover cursor into the iframe document so editable elements show
   // a text cursor on mouseover, making the surface discoverable.
   const injectEditCursor = useCallback(() => {
@@ -1160,6 +1230,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       doc.removeEventListener("click", handler);
       doc.addEventListener("click", handler);
       injectEditCursor();
+      injectZoomHandlers();
     };
 
     // Re-attach every time the iframe navigates to new HTML.
@@ -1774,6 +1845,21 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
 
         <div className="editor-toolbar-right">
+          {/* Zoom indicator — only in HTML preview modes */}
+          {editorMode !== "pages" && editorMode !== "source" && previewZoom !== 100 && (
+            <button
+              className="zoom-indicator"
+              onClick={() => {
+                previewZoomRef.current = 100;
+                setPreviewZoom(100);
+                const doc = frameRef.current?.contentDocument;
+                if (doc?.body) doc.body.style.zoom = "1";
+              }}
+              title="Reset zoom to 100%"
+            >
+              {previewZoom}% ↺
+            </button>
+          )}
           {editorMode === "pages" ? (
             <>
               <button
