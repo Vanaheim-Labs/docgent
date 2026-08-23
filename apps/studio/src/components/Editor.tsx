@@ -470,8 +470,9 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // preview tracks continuously rather than jumping block to block.
   const syncEditorToPreview = useCallback(() => {
     if (mode !== "html") return;
-    // Don't sync while the user is editing in the preview — the preview scroll
-    // position is driven by the user, not the source pane.
+    // In review posture the preview is the primary surface; the source pane
+    // scroll should never drive the preview position.
+    if (posture === "review") return;
     if (isEditingPreview.current) return;
     // An echo from a preview-driven scroll: swallow it and re-arm.
     if (syncLock.current === 2) { releaseSync(); return; }
@@ -836,6 +837,16 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const injectEditCursor = useCallback(() => {
     const doc = frameRef.current?.contentDocument;
     if (!doc || doc.getElementById("__docgent_edit_cursor")) return;
+    // Diagnostic: log every scroll event with a stack trace so we can see
+    // exactly what triggers the jump.
+    const win = doc.defaultView;
+    if (win && !(win as unknown as Record<string,boolean>).__docgent_scroll_log) {
+      (win as unknown as Record<string,boolean>).__docgent_scroll_log = true;
+      win.addEventListener("scroll", () => {
+        // eslint-disable-next-line no-console
+        console.log("[docgent] iframe scroll", win.scrollY, new Error("stack").stack?.split("\n").slice(1,5).join(" | "));
+      }, { passive: true });
+    }
     const style = doc.createElement("style");
     style.id = "__docgent_edit_cursor";
     style.textContent = [
