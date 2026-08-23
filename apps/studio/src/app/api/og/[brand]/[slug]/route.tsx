@@ -145,7 +145,7 @@ export async function GET(
                 {meta.brandName}
               </div>
             )}
-            {meta.doctype && (
+            {meta.doctype && (logoDataUri || meta.brandName) && (
               <>
                 <div style={{ display: "flex", opacity: 0.3, fontSize: 22, color: textColor }}>·</div>
                 <div

@@ -13,7 +13,7 @@
  * in an <img> tag inside Satori. Falls back gracefully when no logo exists.
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -113,19 +113,32 @@ function resolveHeadingFont(yaml: string): string {
  * would pull in node:fs usage into the OG edge runtime if we're not careful).
  */
 function findBrandsDir(): string | null {
+  if (process.env.DOCGENT_BRANDS_DIR) return process.env.DOCGENT_BRANDS_DIR;
+
   const candidates = [
-    // Relative to this source file at src/lib/brand-theme.ts
+    // Relative to this source file at src/lib/brand-theme.ts (dev)
     join(__dirname, "..", "..", "..", "..", "brands"),
     join(__dirname, "..", "..", "..", "..", "..", "brands"),
+    // Render-worker pipeline brands (authoritative config; present in dev checkout)
+    join(__dirname, "..", "..", "..", "..", "..", "apps", "render-worker", "pipeline", "brands"),
+    join(__dirname, "..", "..", "..", "..", "apps", "render-worker", "pipeline", "brands"),
     // Vercel serverless cwd paths
     join(process.cwd(), "brands"),
     join(process.cwd(), "..", "brands"),
     join(process.cwd(), "..", "..", "brands"),
+    // Vercel: render-worker brands bundled via outputFileTracingIncludes
+    join(process.cwd(), "..", "render-worker", "pipeline", "brands"),
+    join(process.cwd(), "apps", "render-worker", "pipeline", "brands"),
     "/var/task/brands",
+    "/var/task/apps/render-worker/pipeline/brands",
   ];
-  if (process.env.DOCGENT_BRANDS_DIR) return process.env.DOCGENT_BRANDS_DIR;
   for (const c of candidates) {
-    if (existsSync(c)) return c;
+    try {
+      // Only count a dir that actually has at least one brand.yaml in it
+      const entries = readdirSync(c, { withFileTypes: true });
+      if (entries.some((e) => e.isDirectory() && existsSync(join(c, e.name, "brand.yaml"))))
+        return c;
+    } catch { /* not found */ }
   }
   return null;
 }
@@ -213,6 +226,38 @@ export async function fetchLogoDataUri(
   return null;
 }
 
+// ─── Brand YAML from Git fallback ───────────────────────────────────────────
+
+/**
+ * Fetch brand.yaml text from the docgent-brands GitHub repo.
+ * Used as fallback when the local brands/ directory is absent (Vercel production).
+ */
+async function fetchBrandYamlFromGit(brandId: string): Promise<string | null> {
+  const readToken =
+    process.env.DOCGENT_BRANDS_WRITE_TOKEN || process.env.DOCGENT_BRANDS_TOKEN;
+  if (!readToken) return null;
+
+  const repoRef = process.env.DOCGENT_BRANDS_REPO ?? "Vanaheim-Labs/docgent-brands";
+  const [owner, repo] = repoRef.split("/");
+  const branch = process.env.DOCGENT_BRANCH ?? "main";
+
+  try {
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${brandId}/brand.yaml?ref=${branch}`;
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `token ${readToken}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { content?: string };
+    if (!data.content) return null;
+    return Buffer.from(data.content.replace(/\n/g, ""), "base64").toString("utf-8");
+  } catch {
+    return null;
+  }
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 /**
@@ -227,7 +272,9 @@ export async function getBrandTheme(
   brandId: string,
   fetchLogo = true
 ): Promise<BrandTheme> {
-  const yaml = readBrandYaml(brandId);
+  // Try disk first (dev); fall back to GitHub API (Vercel production where
+  // brands/ isn't bundled into the serverless function).
+  const yaml = readBrandYaml(brandId) ?? await fetchBrandYamlFromGit(brandId);
   if (!yaml) return DEFAULT_THEME;
 
   // Palette

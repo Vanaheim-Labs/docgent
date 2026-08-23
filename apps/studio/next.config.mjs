@@ -22,7 +22,14 @@ const nextConfig = {
   // Tracing is rooted at the monorepo so files outside apps/studio are eligible.
   outputFileTracingRoot: repoRoot,
   outputFileTracingIncludes: {
-    "/**": ["../../brands/**/brand.yaml"],
+    // Studio brands/ dir (canonical source; may be empty in some checkouts)
+    "/**": [
+      "../../brands/**/brand.yaml",
+      // Render-worker pipeline brands are the authoritative config source;
+      // include them so brand palette / typography is available to the OG
+      // image route and any other server path that reads brand.yaml.
+      "../render-worker/pipeline/brands/**/brand.yaml",
+    ],
   },
 };
 
