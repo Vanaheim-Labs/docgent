@@ -989,7 +989,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       e.stopPropagation();
       // deltaY is negative for zoom-in (scroll up), positive for zoom-out.
       // A typical trackpad notch is ~3–4 px; cap sensitivity.
-      const delta = -e.deltaY * 0.05;
+      const delta = -e.deltaY * 0.15;
       const next = Math.min(200, Math.max(50, previewZoomRef.current + delta));
       previewZoomRef.current = next;
       setPreviewZoom(Math.round(next));
