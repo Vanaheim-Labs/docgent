@@ -1260,9 +1260,25 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         }
       }
 
+      // Inline phrasing elements that are never editable targets themselves.
+      // When the click starts on STRONG, EM, CODE, SPAN, A, etc. the walk
+      // should pass straight through them to the containing block element
+      // (P, LI, Hx) so the normal cases can match. Without this guard the
+      // generic fallback at the bottom of the loop would still move el to
+      // parentElement, but the Case (7) bold-intro check depends on el being
+      // a <P> — if el is still <STRONG> when we test `el.tagName === "P"` it
+      // will never match, and the paragraph becomes unclickable.
+      const INLINE_SKIP_TAGS = new Set(["STRONG", "EM", "B", "I", "CODE", "SPAN", "A", "S", "U", "MARK", "SUB", "SUP", "ABBR", "CITE", "Q", "TIME"]);
+
       let editEl: HTMLElement | null = null;
       let el: HTMLElement | null = target;
       while (el && el !== doc.body) {
+        // Skip inline/phrasing elements entirely — continue upward to the
+        // containing block (P, LI, Hx) so the block-level cases can match.
+        if (INLINE_SKIP_TAGS.has(el.tagName)) {
+          el = el.parentElement;
+          continue;
+        }
         if (INLINE_EDITABLE_TAGS.has(el.tagName) && el.dataset.sourceLine) {
           // Case (1): element directly carries source line.
           editEl = el;
