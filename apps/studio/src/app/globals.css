@@ -2757,6 +2757,11 @@ kbd {
   border-left-color: var(--ink-faint);
   opacity: 0.65;
 }
+.comment-card[data-active="true"] {
+  border-left-color: #ca8a04;
+  background: #fefce8;
+  box-shadow: 0 2px 8px rgba(202,138,4,.2);
+}
 .comment-card-head {
   display: flex;
   align-items: center;

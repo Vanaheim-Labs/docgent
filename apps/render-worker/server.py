@@ -243,27 +243,41 @@ _OPEN_RE  = _re.compile(r'^::([a-zA-Z][a-zA-Z0-9_-]*)(.*)$')
 _CLOSE_RE = _re.compile(r'^::$')
 
 
-def _strip_comments(md: str) -> str:
-    """Strip %%[...] ... %% block comments before markdown reaches pandoc."""
+def _process_comments(md: str, mode: str = 'strip') -> str:
+    """Handle %%[...] ... %% block comments.
+
+    mode='strip'  — remove entirely (PDF path, no trace in output).
+    mode='anchor' — replace with an invisible <span data-comment-id="..."> so
+                    the HTML preview can highlight and navigate to comments.
+    """
     lines = md.split('\n')
     out = []
     in_comment = False
+    comment_id = None
     for line in lines:
         stripped = line.strip()
         if not in_comment and stripped.startswith('%%['):
             in_comment = True
+            if mode == 'anchor':
+                # Extract id attr for the anchor element.
+                import re as _re
+                m = _re.search(r'id="([^"]+)"', stripped)
+                comment_id = m.group(1) if m else f'comment-{len(out)}'
+                # Emit a raw HTML span as an anchor; pandoc passes raw html blocks through.
+                out.append(f'<span data-comment-id="{comment_id}" class="comment-anchor"></span>')
             continue
         if in_comment:
             if stripped == '%%':
                 in_comment = False
+                comment_id = None
             continue
         out.append(line)
     return '\n'.join(out)
 
 
-def _preprocess_markdown(md: str) -> str:
+def _preprocess_markdown(md: str, comment_mode: str = 'strip') -> str:
     """Rewrite ::primitive / :: shorthand into pandoc fenced-div syntax."""
-    md = _strip_comments(md)
+    md = _process_comments(md, mode=comment_mode)
     lines = md.split('\n')
     out = []
     in_frontmatter = False
@@ -310,14 +324,17 @@ def _preprocess_markdown(md: str) -> str:
 # --------------------------------------------------------------------------- #
 
 def _stage(work: Path, markdown: str, brand: dict, fm: dict,
-           assets: dict[str, str] | None):
+           assets: dict[str, str] | None, comment_mode: str = 'strip'):
     """Writes markdown, assets and CSS into a working directory.
 
     Shared by the PDF and HTML paths so both render from identical inputs;
     if these diverged the preview would stop predicting the PDF.
+
+    comment_mode='strip'  — comments removed entirely (PDF path).
+    comment_mode='anchor' — comments replaced with <span data-comment-id> anchors (HTML preview).
     """
     md_path = work / "doc.md"
-    md_path.write_text(_preprocess_markdown(markdown), encoding="utf-8")
+    md_path.write_text(_preprocess_markdown(markdown, comment_mode=comment_mode), encoding="utf-8")
 
     for rel, b64 in (assets or {}).items():
         target = (work / rel).resolve()
@@ -499,7 +516,7 @@ def render_html(markdown: str, brand_id: str, assets: dict[str, str] | None) -> 
 
     with tempfile.TemporaryDirectory(prefix="docforge-") as tmp:
         work = Path(tmp)
-        md_path, sheets = _stage(work, markdown, brand, fm, assets)
+        md_path, sheets = _stage(work, markdown, brand, fm, assets, comment_mode='anchor')
 
         html_path = work / "doc.html"
         g.pandoc_ms = _run_pandoc(

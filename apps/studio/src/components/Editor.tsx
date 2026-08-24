@@ -1189,9 +1189,59 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       "  background: rgba(99,102,241,0.06); border-radius: 3px; outline: 1px solid rgba(99,102,241,0.2);",
       "}",
       ".src-anchor:hover > p, .src-anchor:hover > li { background: rgba(99,102,241,0.06); border-radius: 3px; outline: 1px solid rgba(99,102,241,0.2); }",
+      /* Comment anchor styles — injected once, updated via injectCommentHighlights */
+      ".comment-anchor { display: block; height: 0; overflow: visible; }",
+      ".comment-highlighted { background: rgba(253,224,71,0.35) !important; border-radius: 3px; outline: 2px solid rgba(202,138,4,0.4); }",
+      ".comment-highlighted-active { background: rgba(253,224,71,0.6) !important; outline: 2px solid rgba(202,138,4,0.8); }",
     ].join(" ");
     doc.head.appendChild(style);
   }, []);
+
+  /**
+   * Inject/refresh yellow highlights into the preview iframe for each comment.
+   * Finds the <span data-comment-id> anchor the render worker emitted, then
+   * highlights the next sibling block element (the paragraph the comment sits above).
+   */
+  const injectCommentHighlights = useCallback((activeId?: string | null) => {
+    const doc = frameRef.current?.contentDocument;
+    if (!doc) return;
+    // Clear previous highlights.
+    doc.querySelectorAll(".comment-highlighted, .comment-highlighted-active").forEach((el) => {
+      el.classList.remove("comment-highlighted", "comment-highlighted-active");
+    });
+    doc.querySelectorAll<HTMLElement>("[data-comment-id]").forEach((anchor) => {
+      // Find the next meaningful sibling — skip empty text nodes.
+      let target: Element | null = anchor.nextElementSibling;
+      // If the anchor is inside a wrapper (e.g. a div), go up and find the next block.
+      if (!target) {
+        let p: Element | null = anchor;
+        while (p && !target) {
+          target = p.nextElementSibling;
+          p = p.parentElement;
+        }
+      }
+      if (!target) return;
+      const id = anchor.dataset.commentId;
+      target.classList.add(id === activeId ? "comment-highlighted-active" : "comment-highlighted");
+    });
+  }, []);
+
+  /**
+   * Scroll the preview iframe to a comment anchor by id.
+   */
+  const jumpToComment = useCallback((id: string) => {
+    const doc = frameRef.current?.contentDocument;
+    const win = frameRef.current?.contentWindow;
+    if (!doc || !win) return;
+    const anchor = doc.querySelector<HTMLElement>(`[data-comment-id="${id}"]`);
+    if (!anchor) return;
+    const top = anchor.getBoundingClientRect().top + win.scrollY - 80;
+    win.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    // Re-highlight with this one as active.
+    injectCommentHighlights(id);
+    // Clear active state after 2s.
+    setTimeout(() => injectCommentHighlights(null), 2000);
+  }, [injectCommentHighlights]);
 
   // Stable refs so the iframe click handler never goes stale when React
   // state changes. Updated synchronously on every render.
@@ -1524,18 +1574,30 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       injectZoomHandlers();
     };
 
+    const attachAndHighlight = () => {
+      attach();
+      // Small delay so the iframe document is fully painted before we query it.
+      setTimeout(() => injectCommentHighlights(null), 100);
+    };
+
     // Re-attach every time the iframe navigates to new HTML.
-    frame.addEventListener("load", attach);
+    frame.addEventListener("load", attachAndHighlight);
     // Also attach immediately if already loaded.
-    attach();
+    attachAndHighlight();
 
     return () => {
-      frame.removeEventListener("load", attach);
+      frame.removeEventListener("load", attachAndHighlight);
       frame.contentDocument?.removeEventListener("click", handler);
     };
   // Only re-run when the iframe element itself changes or HTML reloads.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewHtml]);
+
+  // Re-run highlights whenever comments change (e.g. after adding/resolving).
+  useEffect(() => {
+    injectCommentHighlights(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsedComments]);
 
   // Wrapper div click — events are handled inside the iframe directly.
   const onPreviewClick = useCallback(
@@ -2907,6 +2969,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               comments={parsedComments}
               onResolve={handleResolveComment}
               onAdd={handleAddComment}
+              onJump={jumpToComment}
               canEdit={true}
             />
           </div>

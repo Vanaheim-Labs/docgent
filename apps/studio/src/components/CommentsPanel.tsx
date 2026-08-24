@@ -7,6 +7,7 @@ export function CommentsPanel({
   comments,
   onResolve,
   onAdd,
+  onJump,
   canEdit = false,
   editHref,
 }: {
@@ -14,6 +15,8 @@ export function CommentsPanel({
   onResolve?: (id: string, resolved: boolean) => void;
   /** Called with the comment body text when the user submits a new comment. */
   onAdd?: (body: string) => void;
+  /** Called when a comment card is clicked — scroll the preview to that anchor. */
+  onJump?: (id: string) => void;
   canEdit?: boolean;
   /** If set, shows an "Add in editor" link instead of the inline composer (read-only doc view). */
   editHref?: string;
@@ -21,6 +24,7 @@ export function CommentsPanel({
   const [filter, setFilter] = useState<"open" | "all">("open");
   const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState("");
+  const [activeId, setActiveId] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const visible = filter === "all" ? comments : comments.filter((c) => !c.resolved);
@@ -37,6 +41,14 @@ export function CommentsPanel({
     onAdd(body);
     setComposing(false);
     setDraft("");
+  }
+
+  function handleCardClick(c: DocComment) {
+    if (!onJump) return;
+    setActiveId(c.id);
+    onJump(c.id);
+    // Clear active highlight after 2s to match the iframe animation.
+    setTimeout(() => setActiveId(null), 2000);
   }
 
   return (
@@ -117,7 +129,15 @@ export function CommentsPanel({
 
       <div className="comments-list">
         {visible.map((c) => (
-          <div key={c.id} className="comment-card" data-resolved={c.resolved}>
+          <div
+            key={c.id}
+            className="comment-card"
+            data-resolved={c.resolved}
+            data-active={activeId === c.id}
+            onClick={() => handleCardClick(c)}
+            style={onJump ? { cursor: "pointer" } : undefined}
+            title={onJump ? "Click to jump to this comment in the document" : undefined}
+          >
             <div className="comment-card-head">
               <span className="comment-author">{c.author}</span>
               <span className="comment-line-ref">Line {c.line}</span>
@@ -127,7 +147,7 @@ export function CommentsPanel({
               {onResolve && (
                 <button
                   className="comment-resolve-btn"
-                  onClick={() => onResolve(c.id, !c.resolved)}
+                  onClick={(e) => { e.stopPropagation(); onResolve(c.id, !c.resolved); }}
                 >
                   {c.resolved ? "↩ Unresolve" : "✓ Resolve"}
                 </button>
