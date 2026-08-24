@@ -2664,7 +2664,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                 className="preview-frame"
                 srcDoc={previewHtml}
                 title="Live preview"
-                sandbox="allow-same-origin"
+                sandbox="allow-same-origin allow-scripts"
                 onLoad={() => {
                   // Restore scroll position after re-render so the view
                   // doesn't jump to the top when the iframe reloads.
