@@ -1052,51 +1052,38 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
 
     // Two-phase zoom for smooth Safari + Chrome pinch.
     //
-    // The problem with updating CSS zoom on every wheel event is that it
-    // triggers a full layout reflow synchronously. Chrome is fast enough that
-    // this is imperceptible. Safari is not — it batches or drops frames,
-    // producing the "jumpy steps" feel.
+    // During a live pinch gesture, apply transform: scale() directly on
+    // doc.body (GPU-composited, zero reflow, 60fps). When the gesture ends,
+    // commit to CSS zoom on body (one reflow, correct text wrap/column resize).
+    // ⌘+scroll discrete steps commit immediately.
     //
-    // Fix: during a live pinch gesture use transform: scale() on a wrapper
-    // div (GPU-composited, zero reflow, runs at full 60fps on both browsers).
-    // When the gesture ends, commit the final value to CSS zoom (which causes
-    // one reflow at rest, reflowing text/columns correctly) and reset the
-    // transform. ⌘+scroll (discrete steps) goes straight to CSS zoom since
-    // it's not a continuous gesture.
+    // IMPORTANT: we never restructure the DOM (no wrapper div). Wrapping body
+    // children in a new element breaks the click handler's upward DOM walk,
+    // which stops at doc.body — an intermediate wrapper causes all editable
+    // elements to become unreachable, killing inline editing entirely.
     //
-    // Pinch = ctrlKey+wheel (what Safari and Chrome both synthesise from
-    // trackpad pinch). ⌘+scroll = metaKey+wheel.
+    // Pinch = ctrlKey+wheel (synthesised by Safari and Chrome from trackpad).
+    // ⌘+scroll = metaKey+wheel.
 
-    // Wrap body content in a scale target so transform doesn't affect
-    // the scroll container itself.
-    let scaleWrap = doc.getElementById("__docgent_scale_wrap") as HTMLDivElement | null;
-    if (!scaleWrap) {
-      scaleWrap = doc.createElement("div");
-      scaleWrap.id = "__docgent_scale_wrap";
-      scaleWrap.style.cssText = "transform-origin: top left; will-change: transform;";
-      // Move all body children into the wrap.
-      while (doc.body.firstChild) scaleWrap.appendChild(doc.body.firstChild);
-      doc.body.appendChild(scaleWrap);
-      doc.body.style.overflow = "hidden";
-    }
+    // Set transform-origin so scaling anchors to the top-left, matching
+    // how CSS zoom behaves visually.
+    doc.body.style.transformOrigin = "top left";
 
-    // Live scale applied during pinch (no reflow).
+    // Live scale applied during pinch (transform only, no reflow).
     const applyLiveScale = (zoom: number) => {
-      if (!scaleWrap) return;
       const s = zoom / 100;
-      scaleWrap.style.transform = `scale(${s})`;
-      // Expand body scroll area to match scaled content size, otherwise
-      // the scrollbar disappears and content clips at original size.
-      scaleWrap.style.width = `${100 / s}%`;
-      doc.body.style.height = `${scaleWrap.scrollHeight * s}px`;
+      // Clear any committed CSS zoom first so transforms are not compounded.
+      doc.body.style.zoom = "";
+      doc.body.style.transform = `scale(${s})`;
+      // Expand the scroll container to match scaled content, otherwise
+      // the page clips and the scrollbar vanishes.
+      doc.documentElement.style.height = `${doc.body.scrollHeight * s}px`;
     };
 
     // Commit to CSS zoom at gesture end (one reflow, correct text wrap).
     const commitZoom = (zoom: number) => {
-      if (!scaleWrap) return;
-      scaleWrap.style.transform = "";
-      scaleWrap.style.width = "";
-      doc.body.style.height = "";
+      doc.body.style.transform = "";
+      doc.documentElement.style.height = "";
       doc.body.style.zoom = String(zoom / 100);
     };
 
