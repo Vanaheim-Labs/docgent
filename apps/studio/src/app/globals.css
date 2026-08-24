@@ -2161,7 +2161,7 @@ kbd {
    up exactly, which is what makes a list of twenty scannable at a glance. */
 .queue-row {
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) 120px 140px auto 180px;
+  grid-template-columns: 8px minmax(0, 1fr) auto 180px;
   align-items: center;
   gap: 14px;
   padding: 10px 16px;
@@ -2185,6 +2185,8 @@ kbd {
 .queue-row-title {
   font-size: 13.5px;
   font-weight: 600;
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2235,8 +2237,6 @@ kbd {
   .queue-row {
     grid-template-columns: 8px minmax(0, 1fr) auto;
   }
-  .queue-row-brand,
-  .queue-row-fact,
   .queue-row-touched { display: none; }
 }
 
@@ -2509,4 +2509,62 @@ kbd {
 .zoom-pct:hover {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+/* ================= UX polish: queue-row meta, pdf skeleton, btn-primary ================= */
+
+/* Subdued brand + doctype metadata line beneath document title */
+.queue-row-meta {
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* PDF loading skeleton — tall grey A4-proportioned silhouette */
+.pdf-skeleton {
+  display: block;
+  background: var(--bg-2, #f0f0f0);
+  border-radius: 4px;
+  width: 60%;
+  margin: 0 auto;
+  aspect-ratio: 210 / 297;
+}
+
+/* Centres skeleton content vertically with consistent gaps */
+.pdf-skeleton-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+}
+
+/* Metadata shown while PDF is loading */
+.pdf-skeleton-meta {
+  font-size: 13px;
+  color: var(--ink-secondary, #666);
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* Primary action button — filled accent, white text */
+.btn-primary {
+  background: var(--accent, #2563eb);
+  color: #fff;
+  border: 1px solid transparent;
+  font-size: 13px;
+  padding: 7px 14px;
+  font-weight: 600;
+}
+.btn-primary:hover {
+  background: var(--accent-hover, #1d4ed8);
+  color: #fff;
+  text-decoration: none;
+}
+.btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
