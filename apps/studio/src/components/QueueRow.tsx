@@ -128,9 +128,12 @@ export function QueueRow({ doc }: { doc: DocSummary }) {
         ) : fm.subtitle ? (
           <span className="queue-row-sub">{String(fm.subtitle)}</span>
         ) : null}
+        {(doc.brandName || fm.doctype) && (
+          <span className="queue-row-meta">
+            {[doc.brandName, fm.doctype ? label(fm.doctype) : null].filter(Boolean).join(" · ")}
+          </span>
+        )}
       </span>
-      <span className="queue-row-brand">{doc.brandName}</span>
-      {fm.doctype && <span className="queue-row-fact">{label(fm.doctype)}</span>}
       {status && (
         <span className="badge" data-status={status.toLowerCase()}>
           {label(status)}
