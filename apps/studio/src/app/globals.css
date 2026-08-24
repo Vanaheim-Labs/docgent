@@ -2888,3 +2888,46 @@ kbd {
   padding: 0;
 }
 .editor-comments-close:hover { color: var(--ink); }
+
+/* ========== Doc workspace restructure ========== */
+/* Collapsed sidebar */
+.sidebar[data-collapsed="true"] { width: 52px; overflow: hidden; }
+.sidebar[data-collapsed="true"] .sidebar-head { padding: 14px 0; display: flex; flex-direction: column; align-items: center; }
+.sidebar[data-collapsed="true"] .wordmark { justify-content: center; }
+.sidebar-icon-rail { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; }
+.sidebar-icon-btn { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 8px; color: var(--ink-soft); text-decoration: none; }
+.sidebar-icon-btn:hover { background: var(--paper-alt); color: var(--ink); text-decoration: none; }
+.sidebar-icon-btn[data-active="true"] { background: var(--accent-soft); color: var(--accent); }
+
+/* Doc workspace */
+.doc-main { display: flex; flex-direction: column; }
+.doc-topbar { display: flex; align-items: center; justify-content: flex-end; padding: 10px 20px; border-bottom: 1px solid var(--rule); background: var(--paper); min-height: 48px; }
+.doc-content { flex: 1; display: flex; flex-direction: column; padding: 0; }
+.doc-workspace { display: flex; flex-direction: column; flex: 1; min-height: 0; height: calc(100vh - 48px); }
+
+/* Action bar */
+.doc-action-bar { display: flex; align-items: center; gap: 12px; padding: 10px 20px; background: var(--paper); border-bottom: 2px solid var(--rule); position: sticky; top: 0; z-index: 10; flex-wrap: wrap; }
+.doc-action-bar-title { font-size: 15px; font-weight: 650; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; flex-shrink: 1; }
+.doc-state-pipeline { display: flex; align-items: center; gap: 2px; flex: 1; }
+.doc-state-step { display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--ink-faint); font-weight: 500; letter-spacing: .04em; text-transform: uppercase; }
+.doc-state-step[data-done="true"] { color: var(--success); }
+.doc-state-step[data-active="true"] { color: var(--accent); font-weight: 700; }
+.doc-state-arrow { color: var(--rule); margin: 0 2px; }
+.doc-action-bar-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; }
+.doc-drawer-toggle { display: flex; align-items: center; justify-content: center; padding: 6px 8px; position: relative; }
+.doc-drawer-toggle--open { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-soft); }
+.doc-drawer-badge { position: absolute; top: -4px; right: -4px; background: var(--accent); color: #fff; font-size: 9px; font-weight: 700; border-radius: 8px; min-width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; padding: 0 3px; }
+
+/* Workspace body */
+.doc-workspace-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.doc-pdf-pane { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; overflow: hidden; background: var(--paper-alt); }
+.doc-pdf-pane .pdf-frame { flex: 1; border: none; width: 100%; height: 100%; display: block; }
+.pdf-rendered-at { position: absolute; bottom: 8px; right: 12px; font-size: 11px; color: var(--ink-faint); background: var(--paper); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--rule); pointer-events: none; }
+
+/* Drawer */
+.doc-drawer { width: 360px; flex-shrink: 0; border-left: 1px solid var(--rule); background: var(--paper); display: flex; flex-direction: column; overflow: hidden; }
+.doc-drawer-tabs { display: flex; border-bottom: 1px solid var(--rule); flex-shrink: 0; }
+.doc-drawer-tab { flex: 1; padding: 10px 4px; font-size: 12px; font-weight: 500; color: var(--ink-soft); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; text-align: center; }
+.doc-drawer-tab:hover { color: var(--ink); }
+.doc-drawer-tab[data-active="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.doc-drawer-body { flex: 1; overflow-y: auto; }
