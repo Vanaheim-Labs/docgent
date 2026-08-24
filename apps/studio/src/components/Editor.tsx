@@ -856,7 +856,12 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           if (a.line <= line) best = a;
           else break;
         }
-        best.node.scrollIntoView({ behavior: "smooth", block: "start" });
+        // scrollIntoView({ block: "start" }) puts the heading flush at the viewport top.
+        // Scroll manually to leave ~80px of breathing room above — matches Word/Docs feel.
+        const nodeRect = best.node.getBoundingClientRect();
+        const bodyRect = doc.documentElement.getBoundingClientRect();
+        const absoluteTop = nodeRect.top - bodyRect.top;
+        win.scrollTo({ top: Math.max(0, absoluteTop - 80), behavior: "smooth" });
         return;
       }
       offsets.current = null;
