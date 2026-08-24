@@ -455,8 +455,9 @@ a:hover { text-decoration: underline; }
 .editor-shell { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
 /* Phase 1c: editor is a flex column filling the viewport.
-   Sticky positioning for toolbar/format-bar is no longer needed
-   since the whole editor is a flex column — they sit at top naturally. */
+   Primary mechanism: flex-shrink:0 keeps bars at top.
+   Belt-and-suspenders: position:sticky guards against iOS Safari 100vh quirks
+   where body can scroll and the flex container is taller than the visual viewport. */
 .editor { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 
 .editor-toolbar {
@@ -468,6 +469,9 @@ a:hover { text-decoration: underline; }
   background: var(--paper);
   border-bottom: 1px solid var(--rule);
   flex-shrink: 0;
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 10;
 }
 .editor-toolbar-left,
 .editor-toolbar-right { display: flex; align-items: center; gap: 12px; }
@@ -872,7 +876,9 @@ kbd {
   background: var(--paper-alt);
   border-bottom: 1px solid var(--rule);
   flex-shrink: 0;
-  /* No longer needs sticky positioning — editor is a flex column */
+  position: sticky;
+  top: calc(var(--topbar-h) + var(--toolbar-h));
+  z-index: 10;
 }
 .format-group {
   display: inline-flex;
