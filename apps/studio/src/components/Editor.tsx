@@ -2317,7 +2317,20 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           toolbar: these are per-selection text actions, whereas the row above
           holds document-level state (posture, preview, save). Mixing them
           makes the destructive actions harder to find in a hurry. */}
-      <div className="format-bar" role="toolbar" aria-label="Markdown formatting">
+      <div
+        className="format-bar"
+        role="toolbar"
+        aria-label="Markdown formatting"
+        onMouseEnter={() => {
+          // Save the iframe selection as soon as the pointer enters the format
+          // bar. Doing it here (rather than only at button mousedown) gives us
+          // a reliable snapshot before any focus-change events can fire in the
+          // host frame and clear the iframe’s Selection object. The buttons
+          // still call getIframeSelection() at mousedown for the live path;
+          // this mouseenter snapshot is the safety-net fallback.
+          savedIframeSelection.current = getIframeSelection();
+        }}
+      >
         <div className="format-group">
           {([1, 2, 3] as const).map((lvl) => (
             <button
