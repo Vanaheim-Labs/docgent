@@ -2533,9 +2533,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         {isFolded && (
           <span className="format-note">unfold a section to edit</span>
         )}
-      </div>
-
-
+      </div>}
 
       {save.kind === "stale" && (
         <div className="banner" data-kind="stale">
