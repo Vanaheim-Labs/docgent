@@ -1033,38 +1033,37 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     marker.id = "__docgent_zoom";
     doc.head.appendChild(marker);
 
-    // Wheel: ⌘+scroll (standard cross-browser zoom gesture on Mac).
+    // Unified wheel handler for both ⌘+scroll and pinch-to-zoom.
+    //
+    // Safari translates trackpad pinch into synthetic wheel events with
+    // ctrlKey=true at ~60fps — this is the correct way to intercept live
+    // pinch on Mac, not gesturechange (which fires coarsely, once or twice
+    // per gesture). Chrome does the same. So one wheel listener handles
+    // both browsers continuously and smoothly.
+    //
+    // ⌘+scroll (mouse wheel zoom shortcut) arrives as metaKey=true.
+    // Pinch arrives as ctrlKey=true (even without Ctrl held).
+    //
+    // deltaMode: 0 = pixels (trackpad), 1 = lines, 2 = pages.
+    // Trackpad pinch deltaY is typically small floats (~0.5–3px per frame);
+    // mouse wheel notches are ~120px. Normalise both so 1 notch ≈ 10%.
     doc.addEventListener("wheel", (e: WheelEvent) => {
       if (!e.metaKey && !e.ctrlKey) return;
       e.preventDefault();
       e.stopPropagation();
-      // deltaY is negative for zoom-in (scroll up), positive for zoom-out.
-      // A typical trackpad notch is ~3–4 px; cap sensitivity.
-      const delta = -e.deltaY * 0.15;
+      const pixelDelta = e.deltaMode === 0 ? e.deltaY :
+                         e.deltaMode === 1 ? e.deltaY * 16 :
+                         e.deltaY * 100;
+      // Trackpad pinch: small deltas, higher sensitivity.
+      // Mouse wheel: large deltas, lower sensitivity (cap per-event impact).
+      const isPinch = e.ctrlKey && !e.metaKey;
+      const sensitivity = isPinch ? 0.5 : 0.15;
+      const delta = -pixelDelta * sensitivity;
       const next = Math.min(200, Math.max(50, previewZoomRef.current + delta));
       previewZoomRef.current = next;
       setPreviewZoom(Math.round(next));
       if (doc.body) doc.body.style.zoom = String(next / 100);
     }, { passive: false });
-
-    // GestureEvent: Safari pinch-to-zoom (non-standard but widely used on Mac).
-    // The gesturechange event fires continuously; scale is the cumulative
-    // gesture scale relative to when the gesture started, not a delta.
-    let gestureStartZoom = previewZoomRef.current;
-    doc.addEventListener("gesturestart", () => {
-      gestureStartZoom = previewZoomRef.current;
-    });
-    doc.addEventListener("gesturechange", (e: Event) => {
-      const ge = e as unknown as { scale: number };
-      e.preventDefault();
-      const next = Math.min(200, Math.max(50, gestureStartZoom * ge.scale));
-      previewZoomRef.current = next;
-      setPreviewZoom(Math.round(next));
-      if (doc.body) doc.body.style.zoom = String(next / 100);
-    });
-    doc.addEventListener("gestureend", (e: Event) => {
-      e.preventDefault();
-    });
 
     // Apply the current zoom immediately in case we're re-injecting after
     // a preview reload that reset the body style.
