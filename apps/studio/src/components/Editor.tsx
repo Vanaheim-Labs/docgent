@@ -143,6 +143,9 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
+  // Tracks the last source line clicked in the preview — used to anchor
+  // new comments to the paragraph the user clicked, not the scroll position.
+  const lastClickedLineRef = useRef<number | null>(null);
   // Tracks the contenteditable element currently being edited in the iframe.
   // Set by makeEditable, cleared on blur. Lets format bar buttons operate on
   // the inline edit surface instead of the hidden textarea.
@@ -696,20 +699,46 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     setContent((prev) => setCommentResolved(prev, id, resolved));
   }, []);
 
-  const handleAddComment = useCallback((body: string) => {
-    // Insert after cursor line in source mode, or at end of document otherwise.
-    const cursorLine = (() => {
+  /**
+   * Returns the source line the user is currently focused on:
+   * 1. The paragraph they last clicked in the preview (most precise)
+   * 2. The scroll-position interpolated from preview anchors (Edit mode)
+   * 3. The textarea cursor line (Source mode)
+   * 4. End of document (fallback)
+   */
+  const currentViewLine = useCallback((): number => {
+    if (editorMode === "source") {
       const ta = textareaRef.current;
-      if (ta && editorMode === "source") {
-        const before = ta.value.slice(0, ta.selectionStart);
-        return before.split("\n").length;
+      if (ta) return ta.value.slice(0, ta.selectionStart).split("\n").length;
+    }
+    const win = frameRef.current?.contentWindow;
+    if (win) {
+      const list = anchors();
+      if (list.length > 0) {
+        const y = win.scrollY + 8;
+        let lo = list[0], hi = list[list.length - 1];
+        for (let i = 0; i < list.length; i++) {
+          const t = docTop(list[i].el, win);
+          if (t <= y) lo = list[i];
+          if (t >= y) { hi = list[i]; break; }
+        }
+        const loTop = docTop(lo.el, win);
+        const hiTop = docTop(hi.el, win);
+        const frac = hiTop > loTop ? (y - loTop) / (hiTop - loTop) : 0;
+        return Math.round(lo.line + (hi.line - lo.line) * Math.min(1, Math.max(0, frac)));
       }
-      return content.split("\n").length;
-    })();
+    }
+    return content.split("\n").length;
+  }, [editorMode, anchors, docTop, content]);
+
+  const handleAddComment = useCallback((body: string) => {
+    // Use the last-clicked paragraph if available (most accurate), else scroll position.
+    const insertLine = lastClickedLineRef.current ?? currentViewLine();
+    lastClickedLineRef.current = null;
     const id = `c${Date.now()}`;
-    setContent((prev) => insertComment(prev, cursorLine, { id, author: "Andrew", resolved: false, body }));
+    setContent((prev) => insertComment(prev, insertLine, { id, author: "Andrew", resolved: false, body }));
     setShowComments(true);
-  }, [content, editorMode]);
+  }, [currentViewLine]);
 
   const headings = useMemo<Heading[]>(() => {
     const lines = content.split("\n");
@@ -1235,16 +1264,16 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     if (!doc || !win) return;
     const anchor = doc.querySelector<HTMLElement>(`[data-comment-id="${id}"]`);
     if (!anchor) return;
-    // Walk offsetParent chain for absolute document position — same technique
-    // as docTop() used by scroll sync. getBoundingClientRect() is viewport-relative
-    // and gives wrong results when the anchor is off-screen.
+    // Walk offsetParent chain from the <p> parent (pandoc wraps the span in a <p>)
+    // for absolute document position.
+    const target = anchor.parentElement ?? anchor;
     let absTop = 0;
-    let el: HTMLElement | null = anchor;
+    let el: HTMLElement | null = target;
     while (el) {
       absTop += el.offsetTop;
       el = el.offsetParent as HTMLElement | null;
     }
-    win.scrollTo({ top: Math.max(0, absTop - 80), behavior: "smooth" });
+    win.scrollTo({ top: Math.max(0, absTop - 100), behavior: "smooth" });
     // Re-highlight with this one as active.
     injectCommentHighlights(id);
     // Clear active state after 2s.
@@ -1536,12 +1565,14 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
 
       if (editEl) {
         e.preventDefault();
+        const srcLine = Number(editEl.dataset.sourceLine);
+        // Capture click position for comment insertion — cleared after use.
+        if (srcLine > 0) lastClickedLineRef.current = srcLine;
         // If a section containing this line is folded, remove the fold so the
         // source textarea is no longer read-only. Use unfoldLine (not
         // jumpToLine) so focus is NOT moved to the textarea — jumpToLine calls
         // el.focus() in a rAF, which would steal focus back from the
         // contenteditable element the moment the author starts typing.
-        const srcLine = Number(editEl.dataset.sourceLine);
         if (srcLine > 0) unfoldLineRef.current(srcLine);
         makeEditableRef.current(editEl);
         return;
@@ -1560,6 +1591,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           const d = Math.abs(docTopRef.current(a.el, win) - y);
           if (d < best) { best = d; nearest = a; }
         }
+        // Capture for comment insertion.
+        lastClickedLineRef.current = nearest.line;
         jumpToLineRef.current(nearest.line);
       }
     };

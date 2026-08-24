@@ -83,6 +83,12 @@ export function CommentsPanel({
       </div>
 
       {/* Inline composer — appears at top of list when adding */}
+      {!composing && onAdd && (
+        <div className="comments-click-hint">
+          Click a paragraph in the document, then + Add to anchor the comment there.
+        </div>
+      )}
+
       {composing && (
         <div className="comment-composer">
           <textarea

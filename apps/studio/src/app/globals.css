@@ -2681,6 +2681,13 @@ kbd {
 }
 
 /* ---- Comments panel (Google Docs-style sidebar) ---- */
+.comments-click-hint {
+  margin: 6px 12px 2px;
+  font-size: 11px;
+  color: var(--ink-faint);
+  line-height: 1.4;
+  font-style: italic;
+}
 .comment-composer {
   margin: 8px 12px;
   background: var(--paper);

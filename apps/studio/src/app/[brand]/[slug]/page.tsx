@@ -131,21 +131,12 @@ export default async function DocumentPage({ params, searchParams }: Props) {
   return (
     <div className="shell">
       <Sidebar documents={documents} activeBrand={brand} activeSlug={slug} />
-      <div className="main">
-        <div className="topbar">
-          <div>
-            <div className="crumb">
-              {repoSlug(brand)} · <strong>{brand}</strong>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <h1 className="doc-title" style={{ margin: 0 }}>{fm.title || slug}</h1>
-              <DocStatusPill status={fm.status} timelineLength={timeline.length} />
-            </div>
-          </div>
+      <div className="main doc-main">
+        <div className="topbar doc-topbar">
           <UserChip />
         </div>
 
-        <div className="content">
+        <div className="content doc-content">
           {commitSha && (
             <div
               className="error-box"
