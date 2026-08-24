@@ -1537,15 +1537,23 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       // indexOf gives us the first occurrence; this is best-effort for the preview
       // selection path (the textarea path always has exact offsets from selectionStart/End).
       const srcStart = content.indexOf(text);
-      const srcEnd = srcStart >= 0 ? srcStart + text.length : 0;
+      // If the selected text doesn’t appear verbatim in the Markdown source
+      // (e.g. rendered smart-quotes, ligatures, or HTML-entity expansions),
+      // we cannot compute a valid range. Hide the toolbar rather than showing
+      // it with start:0, end:0, which the API rejects as “That scope is empty.”
+      if (srcStart < 0) {
+        setSelectionToolbar((s) => s.visible ? { ...s, visible: false } : s);
+        return;
+      }
+      const srcEnd = srcStart + text.length;
       setSelectionToolbar({
         visible: true,
         // Position above the selection, relative to the viewport
         top: frameRect.top + rect.top - 44,
         left: frameRect.left + rect.left + rect.width / 2,
         selectedText: text,
-        selStart: srcStart >= 0 ? srcStart : 0,
-        selEnd: srcStart >= 0 ? srcEnd : 0,
+        selStart: srcStart,
+        selEnd: srcEnd,
       });
     };
 
