@@ -83,7 +83,7 @@ function ChangeBanner({
         </span>
       </div>
       <button
-        className="btn btn-secondary"
+        className="btn btn-primary"
         onClick={() => onCompare(previous.sha, previous.version)}
       >
         Compare changes
@@ -198,15 +198,21 @@ export function DocumentWorkspace({
                 </a>
               )}
               <a className="btn btn-secondary" href={pdfUrl} target="_blank" rel="noreferrer">
-                Open
+                Open PDF ↗
               </a>
             </span>
           </div>
           <div className="pdf-panel-wrap">
             {!pdfLoaded && !pdfError && (
-              <div className="pdf-loading" aria-label="Loading PDF">
-                <div className="pdf-loading-spinner" />
-                <span>Rendering PDF…</span>
+              <div className="pdf-skeleton-wrap" aria-label="Loading PDF">
+                {(docMeta?.type || docMeta?.status) && (
+                  <div className="pdf-skeleton-meta">
+                    {[docMeta.type, docMeta.status].filter(Boolean).join(" · ")}
+                  </div>
+                )}
+                <span className="pdf-skeleton" aria-hidden="true" />
+                <div className="pdf-loading-spinner" style={{ marginTop: 8 }} />
+                <span style={{ fontSize: 12, color: "var(--ink-faint)" }}>Rendering PDF…</span>
               </div>
             )}
             {pdfError && (
