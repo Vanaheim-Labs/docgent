@@ -231,14 +231,16 @@ export function DocumentWorkspace({
                 </button>
               </div>
             )}
-            <iframe
-              className="pdf-frame"
-              src={pdfSrc}
-              title="Document preview"
-              onLoad={() => { setPdfLoaded(true); setPdfError(false); setPdfLoadedAt(Date.now()); }}
-              onError={() => { setPdfError(true); setPdfLoaded(false); }}
-              style={pdfLoaded ? undefined : { opacity: 0, pointerEvents: "none" }}
-            />
+            <div className="pdf-frame-outer">
+              <iframe
+                className="pdf-frame"
+                src={pdfSrc}
+                title="Document preview"
+                onLoad={() => { setPdfLoaded(true); setPdfError(false); setPdfLoadedAt(Date.now()); }}
+                onError={() => { setPdfError(true); setPdfLoaded(false); }}
+                style={pdfLoaded ? undefined : { opacity: 0, pointerEvents: "none" }}
+              />
+            </div>
           </div>
           {pdfLoaded && pdfLoadedAt !== null && (
             <div style={{ padding: "4px 16px 8px", fontSize: 11, color: "var(--ink-faint)" }}>

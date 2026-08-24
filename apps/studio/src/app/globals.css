@@ -2568,3 +2568,72 @@ kbd {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* ================= UX polish wave 2: thumbnails, hierarchy, approval-back, pdf-separator ================= */
+
+/* --- Change 1: Queue row thumbnail --- */
+.queue-row-thumb {
+  flex-shrink: 0;
+  width: 36px;
+  height: 48px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--bg-2, #f0f0f0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 4px;
+}
+.queue-row-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+  display: block;
+}
+
+/* --- Change 2: Library visual hierarchy --- */
+.queue-section[data-bucket="needs-review"] .section-title { font-weight: 700; }
+.queue-section[data-bucket="needs-review"] .section-count {
+  background: var(--accent, #2563eb);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.queue-section[data-bucket="in-progress"] { opacity: 0.85; }
+.queue-section[data-bucket="done"] { opacity: 0.6; }
+.bucket-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ink-soft, #888);
+  padding: 6px 0;
+  text-align: left;
+}
+.bucket-toggle:hover { color: var(--ink, #111); }
+
+/* --- Change 3: Approval panel backward-action separator --- */
+.approval-back-sep {
+  border-top: 1px solid var(--border, #e5e7eb);
+  margin: 8px 0 6px;
+  font-size: 11px;
+  color: var(--ink-faint, #bbb);
+  padding-top: 6px;
+}
+
+/* --- Change 4: PDF toolbar visual separator --- */
+.pdf-frame-outer {
+  border-top: 2px solid var(--border, #e5e7eb);
+  background: var(--bg-2, #f0f0f0);
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.pdf-frame-outer .pdf-frame {
+  flex: 1 1 auto;
+  border: none;
+}
