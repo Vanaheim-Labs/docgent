@@ -1033,42 +1033,96 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     marker.id = "__docgent_zoom";
     doc.head.appendChild(marker);
 
-    // Unified wheel handler for both ⌘+scroll and pinch-to-zoom.
+    // Two-phase zoom for smooth Safari + Chrome pinch.
     //
-    // Safari translates trackpad pinch into synthetic wheel events with
-    // ctrlKey=true at ~60fps — this is the correct way to intercept live
-    // pinch on Mac, not gesturechange (which fires coarsely, once or twice
-    // per gesture). Chrome does the same. So one wheel listener handles
-    // both browsers continuously and smoothly.
+    // The problem with updating CSS zoom on every wheel event is that it
+    // triggers a full layout reflow synchronously. Chrome is fast enough that
+    // this is imperceptible. Safari is not — it batches or drops frames,
+    // producing the "jumpy steps" feel.
     //
-    // ⌘+scroll (mouse wheel zoom shortcut) arrives as metaKey=true.
-    // Pinch arrives as ctrlKey=true (even without Ctrl held).
+    // Fix: during a live pinch gesture use transform: scale() on a wrapper
+    // div (GPU-composited, zero reflow, runs at full 60fps on both browsers).
+    // When the gesture ends, commit the final value to CSS zoom (which causes
+    // one reflow at rest, reflowing text/columns correctly) and reset the
+    // transform. ⌘+scroll (discrete steps) goes straight to CSS zoom since
+    // it's not a continuous gesture.
     //
-    // deltaMode: 0 = pixels (trackpad), 1 = lines, 2 = pages.
-    // Trackpad pinch deltaY is typically small floats (~0.5–3px per frame);
-    // mouse wheel notches are ~120px. Normalise both so 1 notch ≈ 10%.
+    // Pinch = ctrlKey+wheel (what Safari and Chrome both synthesise from
+    // trackpad pinch). ⌘+scroll = metaKey+wheel.
+
+    // Wrap body content in a scale target so transform doesn't affect
+    // the scroll container itself.
+    let scaleWrap = doc.getElementById("__docgent_scale_wrap") as HTMLDivElement | null;
+    if (!scaleWrap) {
+      scaleWrap = doc.createElement("div");
+      scaleWrap.id = "__docgent_scale_wrap";
+      scaleWrap.style.cssText = "transform-origin: top left; will-change: transform;";
+      // Move all body children into the wrap.
+      while (doc.body.firstChild) scaleWrap.appendChild(doc.body.firstChild);
+      doc.body.appendChild(scaleWrap);
+      doc.body.style.overflow = "hidden";
+    }
+
+    // Live scale applied during pinch (no reflow).
+    const applyLiveScale = (zoom: number) => {
+      if (!scaleWrap) return;
+      const s = zoom / 100;
+      scaleWrap.style.transform = `scale(${s})`;
+      // Expand body scroll area to match scaled content size, otherwise
+      // the scrollbar disappears and content clips at original size.
+      scaleWrap.style.width = `${100 / s}%`;
+      doc.body.style.height = `${scaleWrap.scrollHeight * s}px`;
+    };
+
+    // Commit to CSS zoom at gesture end (one reflow, correct text wrap).
+    const commitZoom = (zoom: number) => {
+      if (!scaleWrap) return;
+      scaleWrap.style.transform = "";
+      scaleWrap.style.width = "";
+      doc.body.style.height = "";
+      doc.body.style.zoom = String(zoom / 100);
+    };
+
+    // Debounce commit: fire 120ms after the last pinch wheel event.
+    let commitTimer: ReturnType<typeof setTimeout> | null = null;
+    let livePinching = false;
+
     doc.addEventListener("wheel", (e: WheelEvent) => {
       if (!e.metaKey && !e.ctrlKey) return;
       e.preventDefault();
       e.stopPropagation();
+
       const pixelDelta = e.deltaMode === 0 ? e.deltaY :
                          e.deltaMode === 1 ? e.deltaY * 16 :
                          e.deltaY * 100;
-      // Trackpad pinch: small deltas, higher sensitivity.
-      // Mouse wheel: large deltas, lower sensitivity (cap per-event impact).
       const isPinch = e.ctrlKey && !e.metaKey;
       const sensitivity = isPinch ? 0.5 : 0.15;
       const delta = -pixelDelta * sensitivity;
       const next = Math.min(200, Math.max(50, previewZoomRef.current + delta));
       previewZoomRef.current = next;
       setPreviewZoom(Math.round(next));
-      if (doc.body) doc.body.style.zoom = String(next / 100);
+
+      if (isPinch) {
+        // Live phase: transform only, no reflow.
+        livePinching = true;
+        applyLiveScale(next);
+        // Debounced commit: once fingers lift, settle to CSS zoom.
+        if (commitTimer) clearTimeout(commitTimer);
+        commitTimer = setTimeout(() => {
+          livePinching = false;
+          commitZoom(previewZoomRef.current);
+          commitTimer = null;
+        }, 120);
+      } else {
+        // ⌘+scroll: discrete steps, commit immediately.
+        if (!livePinching) commitZoom(next);
+      }
     }, { passive: false });
 
     // Apply the current zoom immediately in case we're re-injecting after
     // a preview reload that reset the body style.
-    if (doc.body && previewZoomRef.current !== 100) {
-      doc.body.style.zoom = String(previewZoomRef.current / 100);
+    if (previewZoomRef.current !== 100) {
+      commitZoom(previewZoomRef.current);
     }
   }, []);
 
