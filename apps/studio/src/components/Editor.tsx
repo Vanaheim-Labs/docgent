@@ -2732,17 +2732,23 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         data-mode={editorMode}
         data-split={(splitView && editorMode === "edit") || (splitView && editorMode === "review")}
         data-comments={showComments}
+        data-outline={showOutline && headings.length > 0}
       >
-        {/* Collapsible outline sidebar (Phase 2b) */}
+        {/* Collapsible outline sidebar (Phase 2b) — grid column, pushes content pane */}
         {showOutline && headings.length > 0 && (
           <nav
             className="outline-sidebar"
-            data-open="true"
             aria-label="Document outline"
           >
             <div className="outline-head" style={{ position: "sticky", top: 0, zIndex: 1 }}>
               <span>Outline</span>
               <span className="outline-count">{headings.length}</span>
+              <button
+                className="outline-close"
+                onClick={() => setShowOutline(false)}
+                aria-label="Close outline"
+                title="Close outline"
+              >&times;</button>
             </div>
             <div className="outline-list">
               {headings.map((h) => {
