@@ -1050,83 +1050,59 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     marker.id = "__docgent_zoom";
     doc.head.appendChild(marker);
 
-    // Two-phase zoom for smooth Safari + Chrome pinch.
+    // Pure CSS zoom, with React state updates throttled via rAF.
     //
-    // During a live pinch gesture, apply transform: scale() directly on
-    // doc.body (GPU-composited, zero reflow, 60fps). When the gesture ends,
-    // commit to CSS zoom on body (one reflow, correct text wrap/column resize).
-    // ⌘+scroll discrete steps commit immediately.
+    // Previous two-phase approach (transform during pinch, CSS zoom on settle)
+    // caused two bugs:
+    //   1. transform-origin:top-left right-aligns centered content during pinch
+    //   2. Switching between transform and CSS zoom mid-gesture causes a
+    //      visible jump as layout snaps between the two models
     //
-    // IMPORTANT: we never restructure the DOM (no wrapper div). Wrapping body
-    // children in a new element breaks the click handler's upward DOM walk,
-    // which stops at doc.body — an intermediate wrapper causes all editable
-    // elements to become unreachable, killing inline editing entirely.
+    // The actual source of Safari jank was not CSS zoom itself — it's
+    // setPreviewZoom() triggering a full React re-render of the entire editor
+    // component on every pinch frame (~60/s). CSS zoom on the iframe body is
+    // fast; React rendering the whole editor is not.
     //
-    // Pinch = ctrlKey+wheel (synthesised by Safari and Chrome from trackpad).
-    // ⌘+scroll = metaKey+wheel.
+    // Fix: apply CSS zoom directly on every wheel event (no React), then
+    // batch the React state update via requestAnimationFrame so the toolbar
+    // number updates at most once per animation frame rather than 60 times.
+    //
+    // CSS zoom is correct here: it reflows the document at the new logical
+    // width so text wraps and columns resize, exactly like Word/Google Docs.
+    // transform: scale() keeps the old layout width and just scales pixels.
 
-    // Set transform-origin so scaling anchors to the top-left, matching
-    // how CSS zoom behaves visually.
-    doc.body.style.transformOrigin = "top left";
+    let rafPending = false;
 
-    // Live scale applied during pinch (transform only, no reflow).
-    const applyLiveScale = (zoom: number) => {
-      const s = zoom / 100;
-      // Clear any committed CSS zoom first so transforms are not compounded.
-      doc.body.style.zoom = "";
-      doc.body.style.transform = `scale(${s})`;
-      // Expand the scroll container to match scaled content, otherwise
-      // the page clips and the scrollbar vanishes.
-      doc.documentElement.style.height = `${doc.body.scrollHeight * s}px`;
-    };
-
-    // Commit to CSS zoom at gesture end (one reflow, correct text wrap).
-    const commitZoom = (zoom: number) => {
-      doc.body.style.transform = "";
-      doc.documentElement.style.height = "";
+    const applyZoom = (zoom: number) => {
       doc.body.style.zoom = String(zoom / 100);
+      // Batch React state update to once per frame — keeps toolbar in sync
+      // without triggering per-event re-renders.
+      if (!rafPending) {
+        rafPending = true;
+        (doc.defaultView ?? window).requestAnimationFrame(() => {
+          setPreviewZoom(Math.round(previewZoomRef.current));
+          rafPending = false;
+        });
+      }
     };
-
-    // Debounce commit: fire 120ms after the last pinch wheel event.
-    let commitTimer: ReturnType<typeof setTimeout> | null = null;
-    let livePinching = false;
 
     doc.addEventListener("wheel", (e: WheelEvent) => {
       if (!e.metaKey && !e.ctrlKey) return;
       e.preventDefault();
       e.stopPropagation();
-
       const pixelDelta = e.deltaMode === 0 ? e.deltaY :
                          e.deltaMode === 1 ? e.deltaY * 16 :
                          e.deltaY * 100;
-      const isPinch = e.ctrlKey && !e.metaKey;
-      const sensitivity = isPinch ? 0.5 : 0.15;
-      const delta = -pixelDelta * sensitivity;
-      const next = Math.min(200, Math.max(50, previewZoomRef.current + delta));
+      const sensitivity = (e.ctrlKey && !e.metaKey) ? 0.5 : 0.15;
+      const next = Math.min(200, Math.max(50, previewZoomRef.current + (-pixelDelta * sensitivity)));
       previewZoomRef.current = next;
-      setPreviewZoom(Math.round(next));
-
-      if (isPinch) {
-        // Live phase: transform only, no reflow.
-        livePinching = true;
-        applyLiveScale(next);
-        // Debounced commit: once fingers lift, settle to CSS zoom.
-        if (commitTimer) clearTimeout(commitTimer);
-        commitTimer = setTimeout(() => {
-          livePinching = false;
-          commitZoom(previewZoomRef.current);
-          commitTimer = null;
-        }, 120);
-      } else {
-        // ⌘+scroll: discrete steps, commit immediately.
-        if (!livePinching) commitZoom(next);
-      }
+      applyZoom(next);
     }, { passive: false });
 
     // Apply the current zoom immediately in case we're re-injecting after
     // a preview reload that reset the body style.
     if (previewZoomRef.current !== 100) {
-      commitZoom(previewZoomRef.current);
+      doc.body.style.zoom = String(previewZoomRef.current / 100);
     }
   }, []);
 
