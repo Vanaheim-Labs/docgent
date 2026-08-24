@@ -114,6 +114,7 @@ export function LibraryView({
   }, [filtered]);
 
   const order: QueueBucket[] = ["needs-review", "in-progress", "done"];
+  const [doneExpanded, setDoneExpanded] = useState(false);
 
   return (
     <div className="shell">
@@ -134,10 +135,6 @@ export function LibraryView({
         </div>
 
         <div className="content">
-          {documents.length > 0 && !bucketParam && (
-            <ForYouCard buckets={buckets} />
-          )}
-
           {documents.length === 0 && (
             <div className="empty">
               No documents yet. Create one with{" "}
@@ -151,16 +148,36 @@ export function LibraryView({
 
           {order.map((b) =>
             buckets[b].length > 0 ? (
-              <section className="queue-section" key={b}>
+              <section className="queue-section" key={b} data-bucket={b}>
                 <div className="section-head">
                   <h2 className="section-title">{BUCKET_LABEL[b]}</h2>
                   <span className="section-count">{buckets[b].length}</span>
                 </div>
-                <div className="queue-list">
-                  {buckets[b].map((d) => (
-                    <QueueRow key={d.path} doc={d} />
-                  ))}
-                </div>
+                {b === "done" ? (
+                  <>
+                    <button
+                      className="bucket-toggle"
+                      onClick={() => setDoneExpanded((v) => !v)}
+                    >
+                      {doneExpanded
+                        ? "Hide completed ▴"
+                        : `Show ${buckets[b].length} completed ▾`}
+                    </button>
+                    {doneExpanded && (
+                      <div className="queue-list">
+                        {buckets[b].map((d) => (
+                          <QueueRow key={d.path} doc={d} />
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="queue-list">
+                    {buckets[b].map((d) => (
+                      <QueueRow key={d.path} doc={d} />
+                    ))}
+                  </div>
+                )}
               </section>
             ) : null
           )}
