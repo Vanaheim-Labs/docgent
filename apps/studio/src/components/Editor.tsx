@@ -766,7 +766,26 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     );
     requestAnimationFrame(() => {
       const el = textareaRef.current;
-      if (!el) return;
+      if (!el) {
+        // Edit/Review mode: scroll the iframe preview to the nearest heading
+        // anchor that matches this source line.
+        const win = frameRef.current?.contentWindow;
+        const doc = frameRef.current?.contentDocument;
+        if (!win || !doc) return;
+        const allAnchors = Array.from(doc.querySelectorAll<HTMLElement>("[data-source-line]"))
+          .map((node) => ({ line: Number(node.dataset.sourceLine), node }))
+          .filter((a) => Number.isFinite(a.line))
+          .sort((a, b) => a.line - b.line);
+        if (allAnchors.length === 0) return;
+        // Find closest anchor at or before the requested line.
+        let best = allAnchors[0];
+        for (const a of allAnchors) {
+          if (a.line <= line) best = a;
+          else break;
+        }
+        best.node.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
       offsets.current = null;
       const offs = lineOffsets();
       const idx = Math.min(offs.length - 2, Math.max(0, line - 1));
