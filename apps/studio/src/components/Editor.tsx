@@ -1432,19 +1432,46 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       const range = sel.getRangeAt(0);
       const rect = range.getBoundingClientRect();
       const frameRect = frame.getBoundingClientRect();
-      // Resolve character offsets by searching source content for the selected text.
-      // indexOf gives us the first occurrence; this is best-effort for the preview
-      // selection path (the textarea path always has exact offsets from selectionStart/End).
-      const srcStart = content.indexOf(text);
-      const srcEnd = srcStart >= 0 ? srcStart + text.length : 0;
+      // Resolve character offsets by searching the markdown source for the selected text.
+      // indexOf works for plain paragraphs; for callout boxes and fenced divs the rendered
+      // text may not match the source verbatim (extra whitespace, wrapping), so we also try
+      // a whitespace-collapsed search. If neither hits, fall back to document scope so the
+      // rewrite button still works rather than sending an empty range that the API rejects.
+      let srcStart = content.indexOf(text);
+      if (srcStart < 0) {
+        // Normalise runs of whitespace in both the needle and the haystack and try again.
+        const normalize = (s: string) => s.replace(/\s+/g, " ").trim();
+        const needle = normalize(text);
+        const hay = normalize(content);
+        const normIdx = hay.indexOf(needle);
+        if (normIdx >= 0) {
+          // Map the normalised offset back to a raw offset (count chars up to normIdx in hay).
+          // We approximate by scanning the raw content until we've consumed normIdx chars worth.
+          let raw = 0; let norm = 0;
+          while (raw < content.length && norm < normIdx) {
+            if (/\s/.test(content[raw])) {
+              // All whitespace runs compress to one space in the normalised string.
+              while (raw < content.length && /\s/.test(content[raw])) raw++;
+              norm++;
+            } else {
+              raw++; norm++;
+            }
+          }
+          srcStart = raw;
+        }
+      }
+      const srcEnd = srcStart >= 0 ? srcStart + text.length : content.length;
+      // If still not found, scope to full document so rewrite never fires with an empty range.
+      const resolvedStart = srcStart >= 0 ? srcStart : 0;
+      const resolvedEnd   = srcStart >= 0 ? srcEnd   : content.length;
       setSelectionToolbar({
         visible: true,
         // Position above the selection, relative to the viewport
         top: frameRect.top + rect.top - 44,
         left: frameRect.left + rect.left + rect.width / 2,
         selectedText: text,
-        selStart: srcStart >= 0 ? srcStart : 0,
-        selEnd: srcStart >= 0 ? srcEnd : 0,
+        selStart: resolvedStart,
+        selEnd:   resolvedEnd,
       });
     };
 
