@@ -960,12 +960,29 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     // Prevent focus() from scrolling the element into view, which causes
     // the page-jump. Save the iframe scroll position, focus, then restore.
     const win = frameRef.current?.contentWindow;
+    const ifrDoc = frameRef.current?.contentDocument;
     const scrollBefore = win?.scrollY ?? 0;
     el.contentEditable = "true";
     el.focus({ preventScroll: true });
     // preventScroll is not supported in all browsers; belt-and-suspenders.
     if (win && win.scrollY !== scrollBefore) {
       win.scrollTo({ top: scrollBefore, behavior: "instant" as ScrollBehavior });
+    }
+    // Safari does not reliably place the cursor after focus() on a
+    // contenteditable element. After one animation frame, check whether the
+    // selection is empty and, if so, explicitly collapse it to the end of
+    // the element so the user can start typing immediately.
+    if (win && ifrDoc) {
+      requestAnimationFrame(() => {
+        const sel = win.getSelection();
+        if (sel && sel.rangeCount === 0) {
+          const range = ifrDoc.createRange();
+          range.selectNodeContents(el);
+          range.collapse(false); // collapse to end
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      });
     }
 
     const handleKeydown = (ke: KeyboardEvent) => {
