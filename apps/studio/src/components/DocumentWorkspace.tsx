@@ -263,6 +263,17 @@ export function DocumentWorkspace({
               {t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
+          <button
+            key="comments"
+            className="rail-tab"
+            data-active={railTab === "comments"}
+            onClick={() => setRailTab("comments")}
+          >
+            Comments
+            {openCommentCount > 0 && (
+              <span className="rail-tab-badge">{openCommentCount}</span>
+            )}
+          </button>
         </div>
 
         {railTab === "changes" && (
@@ -313,6 +324,13 @@ export function DocumentWorkspace({
               )}
             </div>
           </div>
+        )}
+
+        {railTab === "comments" && (
+          <CommentsPanel
+            comments={parsedComments}
+            canEdit={canEdit}
+          />
         )}
       </div>
     </div>
