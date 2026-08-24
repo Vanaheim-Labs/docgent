@@ -690,7 +690,15 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       if (/^\s*(```|~~~)/.test(raw)) { inFence = !inFence; continue; }
       if (inFence) continue;
       const m = raw.match(/^(#{1,6})\s+(.*\S)\s*$/);
-      if (m) out.push({ line: i + 1, level: m[1].length, text: m[2] });
+      if (m) {
+        // Strip pandoc attribute blocks {.class #id key=val} and .struck etc.
+        // These appear at the end of heading lines and must not be sent to the
+        // rewrite API as part of the heading text — the API looks up the section
+        // by heading text verbatim and will fail to find it if the attribute
+        // block is included ("That scope is empty").
+        const text = m[2].replace(/\s*\{[^}]*\}\s*$/, "").trim();
+        out.push({ line: i + 1, level: m[1].length, text });
+      }
     }
     return out;
   }, [content]);
@@ -1521,16 +1529,29 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       // Resolve character offsets by searching source content for the selected text.
       // indexOf gives us the first occurrence; this is best-effort for the preview
       // selection path (the textarea path always has exact offsets from selectionStart/End).
-      const srcStart = content.indexOf(text);
+      //
+      // Normalise before comparing: pandoc renders straight quotes as curly smart
+      // quotes, and may expand other entities. Curly quotes map to the same
+      // character count in JS strings (both BMP codepoints), so the normalised
+      // position maps back to the original source correctly.
+      const normalise = (s: string) =>
+        s
+          .replace(/[‘’]/g, "'")   // curly single quotes → straight
+          .replace(/[“”]/g, '"')   // curly double quotes → straight
+          .replace(/–/g, "-")           // en dash → hyphen
+          .replace(/—/g, "--")          // em dash → double hyphen
+          .replace(/ /g, " ");          // non-breaking space → space
+      const normText    = normalise(text);
+      const normContent = normalise(content);
+      const srcStart = normContent.indexOf(normText);
       // If the selected text doesn’t appear verbatim in the Markdown source
-      // (e.g. rendered smart-quotes, ligatures, or HTML-entity expansions),
-      // we cannot compute a valid range. Hide the toolbar rather than showing
-      // it with start:0, end:0, which the API rejects as “That scope is empty.”
+      // (even after normalisation), hide the toolbar rather than showing it
+      // with start:0, end:0, which the API rejects as “That scope is empty.”
       if (srcStart < 0) {
         setSelectionToolbar((s) => s.visible ? { ...s, visible: false } : s);
         return;
       }
-      const srcEnd = srcStart + text.length;
+      const srcEnd = srcStart + normText.length;
       setSelectionToolbar({
         visible: true,
         // Position above the selection, relative to the viewport
