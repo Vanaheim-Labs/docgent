@@ -2156,7 +2156,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               ⋯ Split
             </button>
           )}
-          {/* Unified 4-button mode switcher (Phase 5b adds Review) */}
+          {/* Mode switcher: Edit · Print · Source (Review hidden until feature-complete) */}
           <div className="mode-toggle" role="group" aria-label="Editor mode">
             <button
               className="mode-btn"
@@ -2168,19 +2168,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             </button>
             <button
               className="mode-btn"
-              data-active={editorMode === "review"}
-              onClick={() => setEditorMode("review")}
-              title="Review — agent suggestions, comments and diff review"
-            >
-              Review
-            </button>
-            <button
-              className="mode-btn"
               data-active={editorMode === "pages"}
               onClick={() => setEditorMode("pages")}
-              title="Paginated PDF — exact print fidelity"
+              title="Print preview — paginated PDF, exact print fidelity"
             >
-              Pages{pdfStale && editorMode === "pages" ? " •" : ""}
+              Print{pdfStale && editorMode === "pages" ? " •" : ""}
             </button>
             <button
               className="mode-btn source-mode-btn"
@@ -2206,7 +2198,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               <button
                 className="zoom-step-btn"
                 onClick={() => {
-                  const next = Math.max(50, previewZoomRef.current - 10);
+                  const next = Math.max(50, Math.round(previewZoomRef.current / 10) * 10 - 10);
                   previewZoomRef.current = next;
                   setPreviewZoom(next);
                   const doc = frameRef.current?.contentDocument;
@@ -2228,7 +2220,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               <button
                 className="zoom-step-btn"
                 onClick={() => {
-                  const next = Math.min(200, previewZoomRef.current + 10);
+                  const next = Math.min(200, Math.round(previewZoomRef.current / 10) * 10 + 10);
                   previewZoomRef.current = next;
                   setPreviewZoom(next);
                   const doc = frameRef.current?.contentDocument;
@@ -2889,11 +2881,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                 onChange={(e) => { setCmdQuery(e.target.value); setCmdSelectedIdx(0); }}
                 onKeyDown={(e) => {
                   const cmds = [
-                    { label: "Export PDF", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
+                    { label: "Print preview (PDF)", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
                     { label: "Open Source view", action: () => { setEditorMode("source"); setCmdPalette(false); } },
                     { label: "Toggle Outline", action: () => { setShowOutline((v) => !v); setCmdPalette(false); } },
                     { label: "Edit mode", action: () => { setEditorMode("edit"); setCmdPalette(false); } },
-                    { label: "Pages mode", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
+                    { label: "Print preview (PDF)", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
                   ];
                   const filtered = cmds.filter((c) => !cmdQuery || c.label.toLowerCase().includes(cmdQuery.toLowerCase()));
                   if (e.key === "Escape") { setCmdPalette(false); }
@@ -2905,11 +2897,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             </div>
             <div className="cmd-palette-list">
               {([
-                { label: "Export PDF", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
+                { label: "Print preview (PDF)", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
                 { label: "Open Source view", action: () => { setEditorMode("source"); setCmdPalette(false); } },
                 { label: "Toggle Outline", action: () => { setShowOutline((v) => !v); setCmdPalette(false); } },
                 { label: "Edit mode", action: () => { setEditorMode("edit"); setCmdPalette(false); } },
-                { label: "Pages mode", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
+                { label: "Print preview (PDF)", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
               ] as Array<{label:string;action:()=>void}>)
                 .filter((c) => !cmdQuery || c.label.toLowerCase().includes(cmdQuery.toLowerCase()))
                 .map((c, i) => (
