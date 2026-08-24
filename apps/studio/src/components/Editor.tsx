@@ -1737,68 +1737,99 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // removed instead of nested, because "**\*\*bold\*\***" is the classic way a
   // toolbar silently corrupts a document.
   //
-  // In Edit mode with an active contenteditable element, operates directly on
-  // the element's innerText using the iframe's selection (not the textarea).
-  // The existing blur → patchMarkdownBlock flow then syncs it back to the
-  // Markdown buffer when focus leaves the element.
+  // In Edit mode the preview is a rendered HTML iframe — setting innerText to
+  // raw Markdown would display the asterisks as literal characters. Instead we
+  // resolve the selected text back to its position in the Markdown source
+  // buffer and apply the marks there via applyEdit, exactly as the source-mode
+  // path does. The 1.2 s debounced re-render then updates the preview.
+  //
+  // Selection resolution uses the same normalise + indexOf approach that the
+  // Rewrite/Shorten toolbar already uses (see selectionchange handler above).
   const toggleInline = useCallback(
     (mark: string, placeholder: string) => {
       if (isFolded) return;
 
-      // --- Contenteditable path (Edit mode, user has clicked a block) ---
-      const editEl = activeEditEl.current;
-      if (editEl) {
-        const ifrSel = getIframeSelection();
-        const text = editEl.innerText;
-        const len = mark.length;
+      // --- Edit-mode path: resolve via Markdown source buffer ---
+      // This fires whether we got here from the format bar (active contenteditable
+      // or not) or from a keyboard shortcut while the preview has focus.
+      if (editorMode === "edit" || editorMode === "review") {
+        const win = frameRef.current?.contentWindow;
+        const ifrSel = win?.getSelection();
+        const selectedText = ifrSel && !ifrSel.isCollapsed ? ifrSel.toString() : "";
 
-        if (ifrSel && ifrSel.start !== ifrSel.end) {
-          // We have a selection inside the contenteditable element.
-          const { start, end } = ifrSel;
-          const selected = text.slice(start, end);
+        if (selectedText) {
+          // Normalise smart punctuation so the indexOf probe matches the raw source.
+          const normalise = (s: string) =>
+            s
+              .replace(/[\u2018\u2019]/g, "'")
+              .replace(/[\u201C\u201D]/g, '"')
+              .replace(/\u2013/g, "-")
+              .replace(/\u2014/g, "--")
+              .replace(/\u00A0/g, " ");
+          const normSel  = normalise(selectedText);
+          const normSrc  = normalise(content);
+          const srcStart = normSrc.indexOf(normSel);
+          if (srcStart < 0) return; // text not found in source — bail safely
+          const srcEnd = srcStart + normSel.length;
+          const len = mark.length;
 
-          // Marks inside the selection — remove them.
-          if (
-            selected.length >= len * 2 &&
-            selected.startsWith(mark) &&
-            selected.endsWith(mark)
-          ) {
-            const inner = selected.slice(len, -len);
-            editEl.innerText = text.slice(0, start) + inner + text.slice(end);
-            restoreIframeSelection(editEl, start, start + inner.length);
-            return;
-          }
-
-          // Marks just outside the selection — remove them.
-          const before = text.slice(Math.max(0, start - len), start);
-          const after  = text.slice(end, end + len);
+          // Marks already wrap this region — remove them.
+          const before = content.slice(Math.max(0, srcStart - len), srcStart);
+          const after  = content.slice(srcEnd, srcEnd + len);
           if (before === mark && after === mark) {
-            editEl.innerText = text.slice(0, start - len) + selected + text.slice(end + len);
-            restoreIframeSelection(editEl, start - len, start - len + selected.length);
+            applyEdit(
+              content.slice(0, srcStart - len) + normSel + content.slice(srcEnd + len),
+              srcStart - len,
+              srcStart - len + normSel.length
+            );
             return;
           }
-
-          // Wrap selection with marks.
-          const newText = mark + selected + mark;
-          editEl.innerText = text.slice(0, start) + newText + text.slice(end);
-          restoreIframeSelection(editEl, start + len, start + len + selected.length);
-        } else {
-          // No selection — insert placeholder with marks, select the placeholder.
-          const win = frameRef.current?.contentWindow;
-          const doc = frameRef.current?.contentDocument;
-          if (!win || !doc) return;
-          const sel = win.getSelection();
-          const cursorPos = sel && sel.rangeCount > 0
-            ? getTextOffset(doc, editEl, sel.getRangeAt(0).startContainer, sel.getRangeAt(0).startOffset)
-            : text.length;
-          const inserted = mark + placeholder + mark;
-          editEl.innerText = text.slice(0, cursorPos) + inserted + text.slice(cursorPos);
-          restoreIframeSelection(editEl, cursorPos + len, cursorPos + len + placeholder.length);
+          // Marks inside the selected text — remove them.
+          if (
+            normSel.length >= len * 2 &&
+            normSel.startsWith(mark) &&
+            normSel.endsWith(mark)
+          ) {
+            const inner = normSel.slice(len, -len);
+            applyEdit(
+              content.slice(0, srcStart) + inner + content.slice(srcEnd),
+              srcStart,
+              srcStart + inner.length
+            );
+            return;
+          }
+          // Wrap with marks.
+          const wrapped = mark + content.slice(srcStart, srcEnd) + mark;
+          applyEdit(
+            content.slice(0, srcStart) + wrapped + content.slice(srcEnd),
+            srcStart + len,
+            srcStart + len + (srcEnd - srcStart)
+          );
+          return;
         }
+
+        // No iframe selection — if we're inside a contenteditable element
+        // insert the placeholder at the cursor's source-line position.
+        const editEl = activeEditEl.current;
+        if (editEl) {
+          const srcLine = Number(editEl.dataset.sourceLine);
+          if (srcLine > 0) {
+            const lines = content.split("\n");
+            const idx = srcLine - 1;
+            if (idx >= 0 && idx < lines.length) {
+              const line = lines[idx];
+              const inserted = mark + placeholder + mark;
+              lines[idx] = line + inserted;
+              applyEdit(lines.join("\n"), 0, 0);
+            }
+          }
+          return;
+        }
+        // No selection and no active element — nothing to do.
         return;
       }
 
-      // --- Textarea path (Source mode or no active contenteditable) ---
+      // --- Textarea path (Source mode or split view) ---
       const el = textareaRef.current;
       if (!el) return;
       const start = el.selectionStart;
@@ -1841,51 +1872,43 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         start + len + body.length
       );
     },
-    [content, isFolded, applyEdit, getIframeSelection, restoreIframeSelection, getTextOffset]
+    [content, isFolded, editorMode, applyEdit, activeEditEl]
   );
 
   // Line-level transforms operate on whole lines, so the selection is first
   // expanded to line boundaries. Without that, applying a heading to a
   // mid-line cursor would inject '#' into the middle of a sentence.
   //
-  // In Edit mode with an active contenteditable element, the element maps to
-  // a single source line. Apply the transform to that line directly via
-  // patchMarkdownBlock, which is simpler and avoids needing cursor offsets
-  // across the whole buffer.
+  // In Edit mode the active contenteditable element maps to a single source
+  // line. We apply the transform directly to that source line and let the
+  // debounced re-render update the preview — we do NOT rewrite innerText,
+  // because that element is rendered HTML and writing Markdown prefixes there
+  // would display the raw syntax characters.
   const transformLines = useCallback(
     (fn: (lines: string[]) => string[]) => {
       if (isFolded) return;
 
-      // --- Contenteditable path ---
-      const editEl = activeEditEl.current;
-      if (editEl) {
-        const sourceLine = Number(editEl.dataset.sourceLine);
-        if (!sourceLine) return;
-        const lines = content.split("\n");
-        const idx = sourceLine - 1;
-        if (idx < 0 || idx >= lines.length) return;
-        const transformed = fn([lines[idx]]);
-        if (transformed.length > 0 && transformed[0] !== lines[idx]) {
-          lines[idx] = transformed[0];
-          // Update the buffer. Don't go through applyEdit's rAF focus-steal;
-          // call setContent directly and let the existing blur handler
-          // catch any inline text change when focus eventually leaves.
-          setContent(lines.join("\n"));
-          setSave((s) => (s.kind === "saved" ? { kind: "idle" } : s));
-          // Also update the displayed element text to reflect the new prefix
-          // (e.g. heading level change) so the author sees it immediately.
-          // Strip the new line prefix — patchMarkdownBlock re-adds it on blur.
-          const newLine = transformed[0];
-          const headingM  = newLine.match(/^(#{1,6}\s+)/);
-          const bulletM   = newLine.match(/^(\s*[-*+]\s+)/);
-          const numberedM = newLine.match(/^(\s*\d+\.\s+)/);
-          const prefix = headingM?.[1] ?? bulletM?.[1] ?? numberedM?.[1] ?? "";
-          editEl.innerText = newLine.slice(prefix.length);
+      // --- Edit-mode path: operate on the source line for the active element ---
+      if (editorMode === "edit" || editorMode === "review") {
+        const editEl = activeEditEl.current;
+        if (editEl) {
+          const sourceLine = Number(editEl.dataset.sourceLine);
+          if (!sourceLine) return;
+          const lines = content.split("\n");
+          const idx = sourceLine - 1;
+          if (idx < 0 || idx >= lines.length) return;
+          const transformed = fn([lines[idx]]);
+          if (transformed.length > 0 && transformed[0] !== lines[idx]) {
+            lines[idx] = transformed[0];
+            applyEdit(lines.join("\n"), 0, 0);
+          }
+          return;
         }
+        // No active element — nothing to transform in Edit mode.
         return;
       }
 
-      // --- Textarea path ---
+      // --- Textarea path (Source mode / split view) ---
       const el = textareaRef.current;
       if (!el) return;
       const start = el.selectionStart;
