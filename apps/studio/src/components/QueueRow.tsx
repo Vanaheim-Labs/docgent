@@ -1,3 +1,4 @@
+import { useState } from "react";
 import Link from "next/link";
 import type { DocSummary } from "@/lib/store";
 
@@ -112,9 +113,21 @@ export function QueueRow({ doc }: { doc: DocSummary }) {
   const bucket = queueBucket(doc);
   const action = actionText(doc, bucket);
   const cta = ctaLabel(bucket);
+  const [thumbErrored, setThumbErrored] = useState(false);
 
   return (
     <Link href={`/${doc.brand}/${doc.slug}`} className="queue-row">
+      <span className="queue-row-thumb">
+        {!thumbErrored && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`/api/thumbnail/${doc.brand}/${doc.slug}`}
+            alt={`Thumbnail for ${doc.title}`}
+            loading="lazy"
+            onError={() => setThumbErrored(true)}
+          />
+        )}
+      </span>
       <span className="queue-row-status" data-status={status?.toLowerCase()} aria-hidden="true" />
       <span className="queue-row-main">
         <span className="queue-row-title" title={doc.title}>
