@@ -1398,6 +1398,20 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               sib = sib.previousElementSibling as HTMLElement | null;
             }
           }
+          // Walk forward siblings of the element itself. This covers brands
+          // (e.g. northface) where the h1 follows a `.section-number` eyebrow
+          // div as a bare sibling — NOT wrapped in a `.section-opener`. The
+          // source line lives on the next `.src-anchor` sibling after the h1.
+          if (!el.dataset.sourceLine) {
+            let fsib = el.nextElementSibling as HTMLElement | null;
+            while (fsib) {
+              if (fsib.dataset.sourceLine) {
+                el.dataset.sourceLine = fsib.dataset.sourceLine;
+                break;
+              }
+              fsib = fsib.nextElementSibling as HTMLElement | null;
+            }
+          }
           // For section-opener h1s: the source line is on the next sibling of
           // the section-opener *parent* div. Walk forward siblings of the parent.
           if (!el.dataset.sourceLine && el.parentElement?.classList.contains("section-opener")) {
