@@ -346,10 +346,11 @@ export function VersionPanel({
                 </div>
               </div>
               <div className="approval-actions">
-                {allowed.map((next) => (
+                {allowed.map((next, idx) => (
                   <button
                     key={next}
-                    className="btn btn-secondary"
+                    className={idx === 0 ? "btn btn-primary" : "btn btn-secondary"}
+                    style={idx === 0 ? { width: "100%" } : undefined}
                     disabled={transitioning}
                     onClick={() => transition(next)}
                   >
