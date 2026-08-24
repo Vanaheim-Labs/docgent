@@ -341,6 +341,7 @@ export function DocumentWorkspace({
             comments={parsedComments}
             onResolve={canEdit ? handleResolveComment : undefined}
             canEdit={canEdit}
+            editHref={canEdit ? `/${brand}/${slug}/edit` : undefined}
           />
         )}
       </div>

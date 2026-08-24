@@ -6,7 +6,7 @@ import { validateMarkdown, type Diagnostic } from "@/lib/validate-client";
 import { RewriteBar, type RewriteProposal } from "@/components/RewriteBar";
 import { ProposalReview } from "@/components/ProposalReview";
 import { CommentsPanel } from "@/components/CommentsPanel";
-import { parseComments, setCommentResolved } from "@/lib/comments";
+import { parseComments, setCommentResolved, insertComment } from "@/lib/comments";
 
 /**
  * Auto-generate a meaningful commit message by diffing two Markdown buffers.
@@ -695,6 +695,21 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const handleResolveComment = useCallback((id: string, resolved: boolean) => {
     setContent((prev) => setCommentResolved(prev, id, resolved));
   }, []);
+
+  const handleAddComment = useCallback((body: string) => {
+    // Insert after cursor line in source mode, or at end of document otherwise.
+    const cursorLine = (() => {
+      const ta = textareaRef.current;
+      if (ta && editorMode === "source") {
+        const before = ta.value.slice(0, ta.selectionStart);
+        return before.split("\n").length;
+      }
+      return content.split("\n").length;
+    })();
+    const id = `c${Date.now()}`;
+    setContent((prev) => insertComment(prev, cursorLine, { id, author: "Andrew", resolved: false, body }));
+    setShowComments(true);
+  }, [content, editorMode]);
 
   const headings = useMemo<Heading[]>(() => {
     const lines = content.split("\n");
@@ -2374,11 +2389,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
       </div>
 
-      {/* Formatting bar. Deliberately a second row rather than crammed into the
-          toolbar: these are per-selection text actions, whereas the row above
-          holds document-level state (posture, preview, save). Mixing them
-          makes the destructive actions harder to find in a hurry. */}
-      <div
+      {/* Formatting bar — only shown in Edit mode; hidden in Print and Source where it serves no purpose. */}
+      {editorMode === "edit" && <div
         className="format-bar"
         role="toolbar"
         aria-label="Markdown formatting"
@@ -2651,6 +2663,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         data-posture={posture}
         data-mode={editorMode}
         data-split={(splitView && editorMode === "edit") || (splitView && editorMode === "review")}
+        data-comments={showComments}
       >
         {/* Collapsible outline sidebar (Phase 2b) */}
         {showOutline && headings.length > 0 && (
@@ -2895,6 +2908,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             <CommentsPanel
               comments={parsedComments}
               onResolve={handleResolveComment}
+              onAdd={handleAddComment}
               canEdit={true}
             />
           </div>
