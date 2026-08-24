@@ -17,6 +17,7 @@
   /* editor sticky stack heights */
   --topbar-h: 56px;   /* .editor-topbar */
   --toolbar-h: 49px;  /* .editor-toolbar (10px top+bottom padding + ~29px button) */
+  --format-bar-h: 42px; /* .format-bar (6px top+bottom padding + ~30px content) */
 }
 
 * { box-sizing: border-box; }
@@ -1828,18 +1829,19 @@ kbd {
 
 /* ---------------- directed rewrite ---------------- */
 
-/* The bar that asks "what should happen to this text". Positioned inline
-   near where the author was working (anchorTop), rather than as a fixed
-   toolbar, so it reads as attached to the thing it will change. */
+/* The bar that asks "what should happen to this text". Sticky just below
+   the toolbar stack so it's never hidden behind the sticky chrome. The
+   anchorTop inline style is ignored — position:sticky overrides it. */
 .rewrite-bar {
-  position: relative;
-  z-index: 5;
-  margin: 8px 20px 0;
-  padding: 10px 12px;
+  position: sticky;
+  top: calc(var(--topbar-h) + var(--toolbar-h) + var(--format-bar-h));
+  z-index: 9;
+  margin: 0 0 0;
+  padding: 10px 20px;
   background: var(--paper-raised, #fff);
-  border: 1px solid var(--accent);
-  border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+  border-bottom: 2px solid var(--accent);
+  border-radius: 0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
 }
 .rewrite-bar-row {
   display: flex;
