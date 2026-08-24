@@ -220,7 +220,7 @@ export function ProposalReview({
   proposal: RewriteProposal;
   brand: string;
   slug: string;
-  onAccept: (finalContent: string, accepted: RewriteProposal) => void;
+  onAccept: (finalContent: string, accepted: RewriteProposal, newSha: string | null) => void;
   onReject: () => void;
 }) {
   const [accepting, setAccepting] = useState(false);
@@ -275,7 +275,7 @@ export function ProposalReview({
         }
         return;
       }
-      onAccept(proposal.proposed, proposal);
+      onAccept(proposal.proposed, proposal, data.sha ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

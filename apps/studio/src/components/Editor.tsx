@@ -81,6 +81,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [content, setContent] = useState(initialContent);
   const [baseSha, setBaseSha] = useState(initialSha);
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
+  // Mutable baseline: starts at initialContent but advances each time we
+  // successfully commit (manual save OR accept-proposal). Used in the dirty
+  // check so a freshly-accepted rewrite doesn't trigger a spurious autosave
+  // with the old baseSha (which would get a 409 stale conflict back).
+  const committedContentRef = useRef(initialContent);
 
   /**
    * What changed, in the author's words.
@@ -197,7 +202,12 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [previewZoom, setPreviewZoom] = useState(100);
   const previewZoomRef = useRef(100);
 
-  const dirty = content !== initialContent || save.kind === "error" || save.kind === "stale";
+  // dirty = content differs from the last *committed* baseline (initialContent
+  // at page-load, advanced by every successful save or accepted rewrite).
+  // Using committedContentRef rather than initialContent means accepting a
+  // proposal advances the baseline immediately, preventing the 3-second
+  // autosave from firing a stale PUT with the old baseSha and getting a 409.
+  const dirty = content !== committedContentRef.current || save.kind === "error" || save.kind === "stale";
 
   const diagnostics = useMemo(
     () => validateMarkdown(content, vocabulary),
@@ -366,6 +376,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       }
 
       setBaseSha(data.sha);
+      committedContentRef.current = content; // advance baseline so dirty=false
       setSave({ kind: "saved", sha: data.sha, commit: data.commit });
     } catch (e) {
       setSave({ kind: "error", message: e instanceof Error ? e.message : String(e) });
@@ -1730,14 +1741,23 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // formatting button uses, so undo, dirty-state and preview invalidation
   // behave identically for an AI-authored change and a hand-typed one.
   const acceptProposal = useCallback(
-    (finalContent: string, accepted: RewriteProposal) => {
+    (finalContent: string, accepted: RewriteProposal, newSha: string | null) => {
       applyEdit(finalContent, accepted.span.start, accepted.span.start + accepted.after.length);
-      setBaseSha((prev) => prev); // server already advanced baseSha via the accept commit
-      setAcceptedNote(`Accepted — ${accepted.model.label}: “${accepted.instruction}”`);
+      // The accept endpoint committed to the repo and returned a new blob SHA.
+      // Update baseSha so the next autosave (or manual save) sends the right
+      // SHA and doesn't get a spurious 409 "stale conflict" response.
+      if (newSha) {
+        setBaseSha(newSha);
+        // Advance the committed baseline so dirty = false immediately.
+        // Without this, content !== committedContentRef.current stays true
+        // and autosave fires 3s later with the old baseSha, getting a 409.
+        committedContentRef.current = finalContent;
+        // Mark as saved so the toolbar reflects the committed state.
+        setSave({ kind: "saved", sha: newSha });
+      }
+      setAcceptedNote(`Accepted — ${accepted.model.label}: "${accepted.instruction}"`);
       setProposal(null);
       setRewriteTarget(null);
-      // The accept endpoint already committed, so the buffer and the repo
-      // agree the moment applyEdit lands — nothing further to save.
     },
     [applyEdit]
   );
