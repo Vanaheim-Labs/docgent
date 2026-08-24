@@ -185,7 +185,7 @@ a:hover { text-decoration: underline; }
 }
 
 /* ---------- content ---------- */
-.content { padding: 24px 28px 60px; }
+.content { padding: 16px 28px 32px; }
 .grid { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start; }
 @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
 
