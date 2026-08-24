@@ -5,6 +5,8 @@ import type { Vocabulary } from "@/lib/vocabulary";
 import { validateMarkdown, type Diagnostic } from "@/lib/validate-client";
 import { RewriteBar, type RewriteProposal } from "@/components/RewriteBar";
 import { ProposalReview } from "@/components/ProposalReview";
+import { CommentsPanel } from "@/components/CommentsPanel";
+import { parseComments, setCommentResolved } from "@/lib/comments";
 
 /**
  * Auto-generate a meaningful commit message by diffing two Markdown buffers.
@@ -106,6 +108,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // Split-screen toggle (Phase 2c): show both panes side-by-side in Edit mode.
   const [splitView, setSplitView] = useState(false);
   const [showOutline, setShowOutline] = useState(false);
+  const [showComments, setShowComments] = useState(false);
   const [folded, setFolded] = useState<number[]>([]);
   const [showErrors, setShowErrors] = useState(false);
 
@@ -675,6 +678,13 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // the human loses trust in navigation the first time it lands them badly.
   // Fenced code blocks are skipped so a '#' comment inside one is not
   // mistaken for a section.
+  const parsedComments = useMemo(() => parseComments(content), [content]);
+  const openCommentCount = parsedComments.filter((c) => !c.resolved).length;
+
+  const handleResolveComment = useCallback((id: string, resolved: boolean) => {
+    setContent((prev) => setCommentResolved(prev, id, resolved));
+  }, []);
+
   const headings = useMemo<Heading[]>(() => {
     const lines = content.split("\n");
     const out: Heading[] = [];
@@ -2206,6 +2216,16 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               ‹› Source
             </button>
           </div>
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowComments((v) => !v)}
+            data-active={showComments}
+            title="Toggle comments panel"
+          >
+            💬 Comments{openCommentCount > 0 && (
+              <span className="rail-tab-badge" style={{ marginLeft: 5 }}>{openCommentCount}</span>
+            )}
+          </button>
           <span className="editor-stat">{lineCount} lines · {wordCount} words</span>
           {isFolded && (
             <span className="diag-pill" data-severity="warning" title="Unfold to edit">
@@ -2837,6 +2857,27 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             </div>
           )}
         </div>
+        )}
+
+        {/* Comments rail — shown to the right of editor panes when toggled */}
+        {showComments && (
+          <div className="editor-comments-rail">
+            <div className="editor-comments-rail-head">
+              <span>Comments</span>
+              <button
+                className="editor-comments-close"
+                onClick={() => setShowComments(false)}
+                aria-label="Close comments panel"
+              >
+                ×
+              </button>
+            </div>
+            <CommentsPanel
+              comments={parsedComments}
+              onResolve={handleResolveComment}
+              canEdit={true}
+            />
+          </div>
         )}
       </div>
 

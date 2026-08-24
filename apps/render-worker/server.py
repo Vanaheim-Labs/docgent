@@ -243,8 +243,27 @@ _OPEN_RE  = _re.compile(r'^::([a-zA-Z][a-zA-Z0-9_-]*)(.*)$')
 _CLOSE_RE = _re.compile(r'^::$')
 
 
+def _strip_comments(md: str) -> str:
+    """Strip %%[...] ... %% block comments before markdown reaches pandoc."""
+    lines = md.split('\n')
+    out = []
+    in_comment = False
+    for line in lines:
+        stripped = line.strip()
+        if not in_comment and stripped.startswith('%%['):
+            in_comment = True
+            continue
+        if in_comment:
+            if stripped == '%%':
+                in_comment = False
+            continue
+        out.append(line)
+    return '\n'.join(out)
+
+
 def _preprocess_markdown(md: str) -> str:
     """Rewrite ::primitive / :: shorthand into pandoc fenced-div syntax."""
+    md = _strip_comments(md)
     lines = md.split('\n')
     out = []
     in_frontmatter = False
