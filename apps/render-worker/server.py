@@ -421,7 +421,6 @@ PREVIEW_CSS = """
 /* injected by Docgent for the HTML preview pane only */
 html { background: #edeef1; }
 body { background: #edeef1; margin: 0; padding: 24px 0; }
-body > section.cover,
 body > nav.toc,
 body > main {
   background: var(--paper, #fff);
@@ -433,7 +432,16 @@ body > main {
            var(--margin-bottom, 20mm) var(--margin-inner, 24mm);
   box-shadow: 0 1px 3px rgba(16, 22, 32, .14);
 }
-body > section.cover { min-height: 0; }
+/* Cover: sizing/shadow only — do NOT set background.
+ * Each brand defines its own cover background (dark, light, image-based).
+ * Forcing var(--paper) here overrides the brand CSS and washes it white. */
+body > section.cover {
+  box-sizing: border-box;
+  width: 210mm;
+  max-width: 100%;
+  margin: 0 auto 18px;
+  box-shadow: 0 1px 3px rgba(16, 22, 32, .14);
+}
 [data-source-line] { scroll-margin-top: 8px; }
 .src-anchor { display: contents; }
 """
