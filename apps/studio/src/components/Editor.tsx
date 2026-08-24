@@ -2185,7 +2185,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               <button
                 className="zoom-step-btn"
                 onClick={() => {
-                  const next = Math.max(50, previewZoomRef.current - 10);
+                  const next = Math.max(50, Math.round(previewZoomRef.current / 10) * 10 - 10);
                   previewZoomRef.current = next;
                   setPreviewZoom(next);
                   const doc = frameRef.current?.contentDocument;
@@ -2207,7 +2207,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               <button
                 className="zoom-step-btn"
                 onClick={() => {
-                  const next = Math.min(200, previewZoomRef.current + 10);
+                  const next = Math.min(200, Math.round(previewZoomRef.current / 10) * 10 + 10);
                   previewZoomRef.current = next;
                   setPreviewZoom(next);
                   const doc = frameRef.current?.contentDocument;
