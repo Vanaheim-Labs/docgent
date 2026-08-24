@@ -981,7 +981,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     const win = frameRef.current?.contentWindow;
     const ifrDoc = frameRef.current?.contentDocument;
     const scrollBefore = win?.scrollY ?? 0;
-    el.contentEditable = "true";
+    // Use setAttribute for Safari compatibility: in some WebKit versions the
+    // contentEditable property assignment is not enough to enable editing in a
+    // sandboxed iframe — setAttribute fires the attribute mutation that WebKit
+    // needs to wire up its text input handling.
+    el.setAttribute("contenteditable", "true");
     el.focus({ preventScroll: true });
     // preventScroll is not supported in all browsers; belt-and-suspenders.
     if (win && win.scrollY !== scrollBefore) {
@@ -1021,8 +1025,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
 
     const handleBlur = () => {
       el.removeEventListener("keydown", handleKeydown);
-      el.contentEditable = "false";
-      el.contentEditable = "false";
+      el.setAttribute("contenteditable", "false");
       // Clear the active edit element reference on blur.
       activeEditEl.current = null;
       const edited = el.innerText;
@@ -2767,7 +2770,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                 className="preview-frame"
                 srcDoc={previewHtml}
                 title="Live preview"
-                sandbox="allow-same-origin allow-scripts"
+                sandbox="allow-same-origin allow-scripts allow-forms"
                 onLoad={() => {
                   // Restore scroll position after re-render so the view
                   // doesn't jump to the top when the iframe reloads.
