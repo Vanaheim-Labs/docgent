@@ -34,13 +34,10 @@ try {
     execSync(`git -C "${brandsDir}" pull --ff-only`, { stdio: "inherit" });
   } else if (existsSync(brandsDir)) {
     // Directory exists but no .git — Vercel checked out the submodule as a
-    // plain directory. Pull the real repo on top by cloning into a temp dir
-    // then copying the .git folder in, or simply use git init + fetch.
-    console.log("[clone-brands] brands/ exists without .git (submodule checkout) — initialising git and fetching...");
-    execSync(`git -C "${brandsDir}" init`, { stdio: "inherit" });
-    execSync(`git -C "${brandsDir}" remote add origin "${url}"`, { stdio: "inherit" });
-    execSync(`git -C "${brandsDir}" fetch --depth 1 origin HEAD`, { stdio: "inherit" });
-    execSync(`git -C "${brandsDir}" checkout FETCH_HEAD`, { stdio: "inherit" });
+    // plain directory. Remove it and do a clean clone.
+    console.log("[clone-brands] brands/ exists without .git (submodule checkout) — removing and recloning...");
+    execSync(`rm -rf "${brandsDir}"`, { stdio: "inherit" });
+    execSync(`git clone --depth 1 "${url}" "${brandsDir}"`, { stdio: "inherit" });
   } else {
     console.log(`[clone-brands] Cloning ${repo} → brands/`);
     execSync(`git clone --depth 1 "${url}" "${brandsDir}"`, { stdio: "inherit" });
