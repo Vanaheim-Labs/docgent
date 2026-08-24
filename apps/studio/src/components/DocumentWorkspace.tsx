@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { TimelineEntry } from "@/lib/store";
 import { VersionPanel } from "@/components/VersionPanel";
 import { DiffView, type DiffResult } from "@/components/DiffView";
+import { CommentsPanel } from "@/components/CommentsPanel";
+import { parseComments, setCommentResolved } from "@/lib/comments";
 
-type RailTab = "changes" | "activity" | "details";
+type RailTab = "changes" | "activity" | "details" | "comments";
 
 type DocMeta = {
   type?: string;
@@ -110,6 +112,7 @@ export function DocumentWorkspace({
   pdfUrl,
   canEdit,
   docMeta,
+  docSource,
 }: {
   brand: string;
   slug: string;
@@ -120,8 +123,16 @@ export function DocumentWorkspace({
   pdfUrl: string;
   canEdit: boolean;
   docMeta?: DocMeta;
+  docSource?: string;
 }) {
   const [railTab, setRailTab] = useState<RailTab>("changes");
+  const [docSourceState, setDocSourceState] = useState(docSource ?? "");
+  const parsedComments = useMemo(() => parseComments(docSourceState), [docSourceState]);
+  const openCommentCount = parsedComments.filter((c) => !c.resolved).length;
+
+  const handleResolveComment = useCallback((id: string, resolved: boolean) => {
+    setDocSourceState((prev) => setCommentResolved(prev, id, resolved));
+  }, []);
   const [compareBase, setCompareBase] = useState<string | null>(null);
   const [compareLabel, setCompareLabel] = useState<string>("");
   const [diff, setDiff] = useState<DiffResult | null>(null);
@@ -250,10 +261,10 @@ export function DocumentWorkspace({
         </div>
       )}
 
-      {/* Tabbed right rail: Changes | Activity | Details */}
+      {/* Tabbed right rail: Changes | Activity | Details | Comments */}
       <div className="rail">
         <div className="rail-tabs">
-          {(["changes", "activity", "details"] as RailTab[]).map((t) => (
+          {(["changes", "activity", "details"] as ("changes" | "activity" | "details")[]).map((t) => (
             <button
               key={t}
               className="rail-tab"
@@ -264,7 +275,6 @@ export function DocumentWorkspace({
             </button>
           ))}
           <button
-            key="comments"
             className="rail-tab"
             data-active={railTab === "comments"}
             onClick={() => setRailTab("comments")}
@@ -329,6 +339,7 @@ export function DocumentWorkspace({
         {railTab === "comments" && (
           <CommentsPanel
             comments={parsedComments}
+            onResolve={canEdit ? handleResolveComment : undefined}
             canEdit={canEdit}
           />
         )}
