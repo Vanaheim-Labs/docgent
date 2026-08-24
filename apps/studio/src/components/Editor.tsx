@@ -139,6 +139,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // Set by makeEditable, cleared on blur. Lets format bar buttons operate on
   // the inline edit surface instead of the hidden textarea.
   const activeEditEl = useRef<HTMLElement | null>(null);
+  // Snapshot of the iframe selection captured at mousedown on a format bar
+  // button. Clicking outside the iframe (even with e.preventDefault()) can
+  // clear the iframe's Selection object before the button handler reads it,
+  // so we save start/end offsets at mousedown and use them in toggleInline.
+  const savedIframeSelection = useRef<{ start: number; end: number } | null>(null);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPreviewed = useRef<string>("");
   const lastPdfRendered = useRef<string>("");
@@ -902,8 +907,9 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   }, []);
 
   // Returns { start, end } character offsets of the current selection inside
-  // activeEditEl, using the iframe window's getSelection(). Returns null if
-  // there is no active edit element or no selection.
+  // activeEditEl. Prefers a live iframe Selection; falls back to the snapshot
+  // saved at the last format-bar mousedown (the host-frame click can clear the
+  // iframe selection before the handler runs).
   const getIframeSelection = useCallback((): { start: number; end: number } | null => {
     const el = activeEditEl.current;
     if (!el) return null;
@@ -911,11 +917,14 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     const doc = frameRef.current?.contentDocument;
     if (!win || !doc) return null;
     const sel = win.getSelection();
-    if (!sel || sel.rangeCount === 0) return null;
-    const range = sel.getRangeAt(0);
-    const start = getTextOffset(doc, el, range.startContainer, range.startOffset);
-    const end   = getTextOffset(doc, el, range.endContainer,   range.endOffset);
-    return { start, end };
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      const start = getTextOffset(doc, el, range.startContainer, range.startOffset);
+      const end   = getTextOffset(doc, el, range.endContainer,   range.endOffset);
+      return { start, end };
+    }
+    // Fallback: saved snapshot from the most recent format-bar mousedown.
+    return savedIframeSelection.current;
   }, [getTextOffset]);
 
   // Restore the selection inside a contenteditable element after its innerText
@@ -1233,20 +1242,29 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             }
           }
         }
-        // Case (7): bare <p> with no data-source-line (e.g. paragraphs starting
-        // with **bold** inline where an older Lua filter omitted the src-anchor
-        // wrapper). Borrow the source line from the nearest preceding src-anchor
-        // sibling so the paragraph is still editable.
+        // Case (7): bare <p> with no data-source-line. Two sub-cases:
+        //   a. The <p> is a direct child of a src-anchor wrapper — borrow the
+        //      wrapper's line. This covers bold-intro paragraphs like
+        //      "**Increm is not a valuation firm.**..." where the Lua filter
+        //      wraps the whole paragraph in a src-anchor but doesn't stamp the
+        //      <p> itself.
+        //   b. No src-anchor parent — search preceding/following siblings.
         if (el.tagName === "P" && !el.dataset.sourceLine && !clickedLi) {
-          let sib = el.previousElementSibling as HTMLElement | null;
-          while (sib) {
-            if (sib.dataset.sourceLine) {
-              // Use the sibling's line as an approximation — close enough for
-              // source-panel navigation and contenteditable editing.
-              el.dataset.sourceLine = sib.dataset.sourceLine;
-              break;
+          // Subcase (a): parent is a src-anchor — borrow directly.
+          const parent7 = el.parentElement;
+          if (parent7?.classList.contains("src-anchor") && parent7.dataset.sourceLine) {
+            el.dataset.sourceLine = parent7.dataset.sourceLine;
+          }
+          // Subcase (b): sibling search (same parent).
+          if (!el.dataset.sourceLine) {
+            let sib = el.previousElementSibling as HTMLElement | null;
+            while (sib) {
+              if (sib.dataset.sourceLine) {
+                el.dataset.sourceLine = sib.dataset.sourceLine;
+                break;
+              }
+              sib = sib.previousElementSibling as HTMLElement | null;
             }
-            sib = sib.previousElementSibling as HTMLElement | null;
           }
           if (!el.dataset.sourceLine) {
             // Try next sibling as fallback.
@@ -1265,13 +1283,16 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           }
         }
         // Case (5b): any heading (h1–h6) with no data-source-line that did not
-        // match the section-opener check above. Handles headings inside <section>
-        // or brand-specific wrapper divs (e.g. "Why Now" heading). Walk up the
-        // ancestor chain, then preceding siblings, to find a line to borrow.
+        // match the section-opener check above. Handles h1 section-opener headings
+        // when the click lands directly on the <h1> (not on the wrapper div).
+        // Walk: ancestors → preceding siblings of the element itself → forward
+        // siblings of the *parent* (needed for section-opener h1s whose source
+        // line lives on the next sibling src-anchor of the section-opener div).
         if (
           ["H1","H2","H3","H4","H5","H6"].includes(el.tagName) &&
           !el.dataset.sourceLine
         ) {
+          // Walk up ancestors.
           let anc: HTMLElement | null = el.parentElement;
           while (anc && anc !== doc.body) {
             if (anc.dataset.sourceLine) {
@@ -1280,6 +1301,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             }
             anc = anc.parentElement;
           }
+          // Walk preceding siblings inside the same parent.
           if (!el.dataset.sourceLine) {
             let sib = el.previousElementSibling as HTMLElement | null;
             while (sib) {
@@ -1288,6 +1310,18 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                 break;
               }
               sib = sib.previousElementSibling as HTMLElement | null;
+            }
+          }
+          // For section-opener h1s: the source line is on the next sibling of
+          // the section-opener *parent* div. Walk forward siblings of the parent.
+          if (!el.dataset.sourceLine && el.parentElement?.classList.contains("section-opener")) {
+            let psib = el.parentElement.nextElementSibling as HTMLElement | null;
+            while (psib) {
+              if (psib.dataset.sourceLine) {
+                el.dataset.sourceLine = psib.dataset.sourceLine;
+                break;
+              }
+              psib = psib.nextElementSibling as HTMLElement | null;
             }
           }
           if (el.dataset.sourceLine) {
@@ -2194,7 +2228,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         <div className="format-group">
           <button
             className="format-btn"
-            onMouseDown={(e) => { e.preventDefault(); toggleInline("**", "bold text"); }}
+            onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("**", "bold text"); }}
             disabled={isFolded}
             title="Bold — ⌘B"
             aria-label="Bold"
@@ -2203,7 +2237,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           </button>
           <button
             className="format-btn"
-            onMouseDown={(e) => { e.preventDefault(); toggleInline("*", "italic text"); }}
+            onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("*", "italic text"); }}
             disabled={isFolded}
             title="Italic — ⌘I"
             aria-label="Italic"
@@ -2212,7 +2246,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           </button>
           <button
             className="format-btn"
-            onMouseDown={(e) => { e.preventDefault(); toggleInline("~~", "struck text"); }}
+            onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("~~", "struck text"); }}
             disabled={isFolded}
             title="Strikethrough"
             aria-label="Strikethrough"
@@ -2221,7 +2255,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           </button>
           <button
             className="format-btn format-btn-mono"
-            onMouseDown={(e) => { e.preventDefault(); toggleInline("`", "code"); }}
+            onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("`", "code"); }}
             disabled={isFolded}
             title="Inline code — ⌘E"
             aria-label="Inline code"
