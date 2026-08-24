@@ -170,6 +170,7 @@ export default async function DocumentPage({ params, searchParams }: Props) {
               docVersion={fm.version}
               pdfUrl={pdfUrl}
               canEdit={!commitSha}
+              docTitle={fm.title || slug}
               docSource={doc.content}
               docMeta={{
                 type: fm.doctype,
