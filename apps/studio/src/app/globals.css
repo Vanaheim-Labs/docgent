@@ -2022,7 +2022,13 @@ kbd {
    as its own panel rather than inline in the pane grid — accepting or
    rejecting is a decision, not part of the continuous editing flow. */
 .proposal-overlay {
-  margin: 8px 20px 0;
+  position: sticky;
+  top: calc(var(--topbar-h) + var(--toolbar-h) + var(--format-bar-h));
+  z-index: 9;
+  margin: 0;
+  background: var(--paper-raised, #fff);
+  border-bottom: 2px solid var(--accent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
 }
 .proposal-review {
   background: var(--paper-raised, #fff);
