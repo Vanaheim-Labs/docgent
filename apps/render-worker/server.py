@@ -65,6 +65,7 @@ PANDOC_EXTENSIONS = (
     "+table_attributes"
     "+link_attributes"
     "+smart"
+    "+raw_html"           # needed to pass <span data-comment-id> anchors through to HTML preview
     "-tex_math_dollars"
 )
 

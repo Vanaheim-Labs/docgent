@@ -1235,8 +1235,16 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     if (!doc || !win) return;
     const anchor = doc.querySelector<HTMLElement>(`[data-comment-id="${id}"]`);
     if (!anchor) return;
-    const top = anchor.getBoundingClientRect().top + win.scrollY - 80;
-    win.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    // Walk offsetParent chain for absolute document position — same technique
+    // as docTop() used by scroll sync. getBoundingClientRect() is viewport-relative
+    // and gives wrong results when the anchor is off-screen.
+    let absTop = 0;
+    let el: HTMLElement | null = anchor;
+    while (el) {
+      absTop += el.offsetTop;
+      el = el.offsetParent as HTMLElement | null;
+    }
+    win.scrollTo({ top: Math.max(0, absTop - 80), behavior: "smooth" });
     // Re-highlight with this one as active.
     injectCommentHighlights(id);
     // Clear active state after 2s.
