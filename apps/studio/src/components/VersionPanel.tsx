@@ -30,6 +30,7 @@ function displaySubject(subject: string): string {
  * never re-fetches.
  */
 const WORKFLOW_STATES = ["draft", "review", "approved", "released"] as const;
+const WORKFLOW_STATES_ORDER = ["draft", "review", "approved", "released", "superseded"] as const;
 
 /** Human-readable label for the transition button. */
 function transitionLabel(from: string, to: string): string {
@@ -346,17 +347,47 @@ export function VersionPanel({
                 </div>
               </div>
               <div className="approval-actions">
-                {allowed.map((next, idx) => (
-                  <button
-                    key={next}
-                    className={idx === 0 ? "btn btn-primary" : "btn btn-secondary"}
-                    style={idx === 0 ? { width: "100%" } : undefined}
-                    disabled={transitioning}
-                    onClick={() => transition(next)}
-                  >
-                    {transitionLabel(status, next)}
-                  </button>
-                ))}
+                {(() => {
+                  const currentIdx = WORKFLOW_STATES_ORDER.indexOf(status as typeof WORKFLOW_STATES_ORDER[number]);
+                  const forwardTransitions = allowed.filter((t) => {
+                    if (t === "superseded") return false;
+                    return WORKFLOW_STATES_ORDER.indexOf(t as typeof WORKFLOW_STATES_ORDER[number]) > currentIdx;
+                  });
+                  const backwardTransitions = allowed.filter((t) => {
+                    if (t === "superseded") return true;
+                    return WORKFLOW_STATES_ORDER.indexOf(t as typeof WORKFLOW_STATES_ORDER[number]) < currentIdx;
+                  });
+                  return (
+                    <>
+                      {forwardTransitions.map((next) => (
+                        <button
+                          key={next}
+                          className="btn btn-primary"
+                          style={{ width: "100%" }}
+                          disabled={transitioning}
+                          onClick={() => transition(next)}
+                        >
+                          {transitionLabel(status, next)}
+                        </button>
+                      ))}
+                      {backwardTransitions.length > 0 && (
+                        <>
+                          <div className="approval-back-sep" />
+                          {backwardTransitions.map((next) => (
+                            <button
+                              key={next}
+                              className="btn btn-secondary"
+                              disabled={transitioning}
+                              onClick={() => transition(next)}
+                            >
+                              {"↩ " + transitionLabel(status, next)}
+                            </button>
+                          ))}
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
               <div className="approval-note" style={{ marginTop: 6 }}>
                 Changes will be committed immediately.
