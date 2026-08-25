@@ -2234,13 +2234,17 @@ kbd {
   grid-column: 1 / -1;
   grid-template-columns: subgrid;
   align-items: center;
-  gap: 12px;
-  padding: 8px 16px;
+  /* no padding here — subgrid rows have no box; padding goes on first/last cells */
   color: var(--ink);
   border-bottom: 1px solid var(--rule);
 }
 .queue-row:last-child { border-bottom: none; }
 .queue-row:hover { background: var(--paper-alt); text-decoration: none; color: var(--ink); }
+/* First cell (thumb) gets left padding; last cell (action/touched) gets right padding */
+.queue-row > :first-child { padding-left: 16px; }
+.queue-row > :last-child { padding-right: 16px; }
+/* Vertical padding on every cell */
+.queue-row > * { padding-top: 9px; padding-bottom: 9px; }
 
 .queue-row-status {
   width: 8px; height: 8px; border-radius: 50%;
