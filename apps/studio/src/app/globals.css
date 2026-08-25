@@ -2975,3 +2975,58 @@ kbd {
   border-bottom: 1px solid var(--rule);
   letter-spacing: 0.03em;
 }
+
+/* ---------- new document strip ---------- */
+.new-doc-strip {
+  background: var(--paper-alt);
+  border-bottom: 1px solid var(--rule);
+  padding: 20px 28px 24px;
+}
+.new-doc-strip-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.new-doc-strip-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.new-doc-strip-gallery-link {
+  font-size: 12.5px;
+  color: var(--accent);
+}
+.new-doc-strip-cards {
+  display: flex;
+  gap: 12px;
+}
+.new-doc-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100px;
+  height: 130px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.new-doc-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+.new-doc-card-icon {
+  font-size: 28px;
+  color: var(--ink-faint);
+  line-height: 1;
+}
+.new-doc-card-label {
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  font-weight: 500;
+}

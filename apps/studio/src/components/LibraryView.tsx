@@ -181,6 +181,26 @@ export function LibraryView({
             <div className="empty">No documents match these filters.</div>
           )}
 
+          {/* New document strip — shown only on home view */}
+          {!bucketParam && (
+            <div className="new-doc-strip">
+              <div className="new-doc-strip-header">
+                <span className="new-doc-strip-title">Start a new document</span>
+                <a href="#" className="new-doc-strip-gallery-link">Template gallery →</a>
+              </div>
+              <div className="new-doc-strip-cards">
+                <button
+                  type="button"
+                  className="new-doc-card"
+                  onClick={() => console.log("new document")}
+                >
+                  <span className="new-doc-card-icon">+</span>
+                  <span className="new-doc-card-label">Blank document</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="queue-table">
             {bucketParam ? (
               // Bucket filter active: render workflow-bucket groups
