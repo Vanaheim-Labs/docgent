@@ -2656,7 +2656,6 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 4px;
 }
 .queue-row-thumb img {
   width: 100%;
@@ -2667,8 +2666,8 @@ kbd {
 }
 
 /* --- Change 2: Library visual hierarchy --- */
-.queue-section[data-bucket="needs-review"] .section-title { font-weight: 700; }
-.queue-section[data-bucket="needs-review"] .section-count {
+.queue-group[data-bucket="needs-review"] .section-title { font-weight: 700; }
+.queue-group[data-bucket="needs-review"] .section-count {
   background: var(--accent, #2563eb);
   color: #fff;
   border-radius: 999px;
@@ -2676,8 +2675,8 @@ kbd {
   font-size: 11px;
   font-weight: 600;
 }
-.queue-section[data-bucket="in-progress"] { opacity: 0.85; }
-.queue-section[data-bucket="done"] { opacity: 0.6; }
+.queue-group[data-bucket="in-progress"] .queue-row { opacity: 0.85; }
+.queue-group[data-bucket="done"] .queue-row { opacity: 0.6; }
 .bucket-toggle {
   background: none;
   border: none;
