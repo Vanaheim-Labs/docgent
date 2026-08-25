@@ -185,7 +185,7 @@ a:hover { text-decoration: underline; }
 }
 
 /* ---------- content ---------- */
-.content { padding: 16px 28px 32px; }
+.content { padding: 24px 28px 32px; }
 .grid { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start; }
 @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
 
@@ -2254,7 +2254,7 @@ kbd {
   white-space: nowrap;
 }
 .queue-row-sub {
-  font-size: 11.5px;
+  font-size: 13px;
   color: var(--ink-faint);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2968,7 +2968,7 @@ kbd {
 .new-doc-strip {
   background: var(--paper-alt);
   border-bottom: 1px solid var(--rule);
-  padding: 20px 28px 24px;
+  padding: 14px 28px 16px;
 }
 .new-doc-strip-header {
   display: flex;
@@ -2995,8 +2995,8 @@ kbd {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: 100px;
-  height: 130px;
+  width: 116px;
+  height: 150px;
   background: var(--paper);
   border: 1px solid var(--rule);
   border-radius: 6px;
@@ -3096,13 +3096,15 @@ kbd {
 
 /* ---------- grid view ---------- */
 .doc-grid { padding: 0 28px 32px; }
-.doc-grid-group { margin-top: 16px; }
+.doc-grid-group { display: block; margin-bottom: 28px; }
 .doc-grid-group-head {
   font-size: 12px;
   font-weight: 650;
   color: var(--ink-faint);
-  margin-bottom: 10px;
   letter-spacing: 0.03em;
+  padding: 10px 0 8px;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 12px;
 }
 .doc-grid-cards {
   display: grid;
@@ -3145,6 +3147,18 @@ kbd {
   width: 100%;
   height: 100%;
   background: var(--paper-alt);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.doc-grid-thumb-placeholder::before {
+  content: "";
+  width: 36px;
+  height: 46px;
+  background: var(--rule);
+  border-radius: 3px;
+  clip-path: polygon(0 0, 70% 0, 100% 30%, 100% 100%, 0 100%);
+  opacity: 0.7;
 }
 .doc-grid-info {
   padding: 8px 10px;
@@ -3159,13 +3173,14 @@ kbd {
   min-width: 0;
 }
 .doc-grid-title {
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--ink);
-  white-space: nowrap;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
 }
 .doc-grid-date {
   font-size: 11px;
