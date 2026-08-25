@@ -2198,7 +2198,8 @@ kbd {
   overflow: hidden;
   background: var(--paper);
   display: grid;
-  grid-template-columns: 44px 8px minmax(0, 1fr) auto minmax(0, 140px) auto;
+  grid-template-columns: 20px minmax(0,1fr) 20px 100px 24px;
+  gap: 12px;
 }
 .queue-group { display: contents; }
 .queue-group-head {
@@ -2310,9 +2311,10 @@ kbd {
 
 @media (max-width: 900px) {
   .queue-row {
-    grid-template-columns: 8px minmax(0, 1fr) auto;
+    grid-template-columns: 20px minmax(0,1fr) 24px;
   }
-  .queue-row-touched { display: none; }
+  .queue-row-sharing { display: none; }
+  .queue-row-date { display: none; }
 }
 
 /* ================= UX Feedback v1 additions ================= */
@@ -2962,3 +2964,224 @@ kbd {
 .doc-drawer-tab:hover { color: var(--ink); }
 .doc-drawer-tab[data-active="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 .doc-drawer-body { flex: 1; overflow-y: auto; }
+
+/* ---------- time-based grouping (Google Docs-style) ---------- */
+.time-group { }
+.time-group + .time-group { border-top: 1px solid var(--rule); }
+.time-group-head {
+  padding: 8px 16px 6px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink-faint);
+  background: var(--paper-alt);
+  border-bottom: 1px solid var(--rule);
+  letter-spacing: 0.03em;
+}
+
+/* ---------- new document strip ---------- */
+.new-doc-strip {
+  background: var(--paper-alt);
+  border-bottom: 1px solid var(--rule);
+  padding: 20px 28px 24px;
+}
+.new-doc-strip-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.new-doc-strip-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.new-doc-strip-gallery-link {
+  font-size: 12.5px;
+  color: var(--accent);
+}
+.new-doc-strip-cards {
+  display: flex;
+  gap: 12px;
+}
+.new-doc-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100px;
+  height: 130px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.new-doc-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+.new-doc-card-icon {
+  font-size: 28px;
+  color: var(--ink-faint);
+  line-height: 1;
+}
+.new-doc-card-label {
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+
+/* ---------- GDocs-style row (Step 3) ---------- */
+.queue-row-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.queue-row-sharing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-faint);
+  flex-shrink: 0;
+}
+.queue-row-date {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  text-align: right;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.queue-row-menu {
+  font-size: 16px;
+  color: var(--ink-faint);
+  text-align: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  border-radius: 4px;
+  padding: 0 2px;
+}
+.queue-row-menu:hover { background: var(--paper-alt); color: var(--ink); }
+
+/* ---------- library controls bar ---------- */
+.library-wrap { display: flex; flex-direction: column; min-height: 100vh; }
+.library-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 28px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+  gap: 12px;
+}
+.library-controls-left { font-size: 13px; color: var(--ink-soft); font-weight: 600; }
+.library-controls-right { display: flex; align-items: center; gap: 8px; }
+.library-sort-select {
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--ink-soft);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 4px 10px;
+  background: var(--paper);
+  cursor: pointer;
+}
+.view-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--paper);
+  cursor: pointer;
+  color: var(--ink-faint);
+  transition: background 0.1s, color 0.1s;
+}
+.view-toggle-btn[data-active="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: #cfe0ec;
+}
+.view-toggle-btn:hover { background: var(--paper-alt); }
+
+/* ---------- grid view ---------- */
+.doc-grid { padding: 0 28px 32px; }
+.doc-grid-group { margin-top: 16px; }
+.doc-grid-group-head {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink-faint);
+  margin-bottom: 10px;
+  letter-spacing: 0.03em;
+}
+.doc-grid-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+@media (max-width: 900px) { .doc-grid-cards { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 640px) { .doc-grid-cards { grid-template-columns: repeat(2, 1fr); } }
+.doc-grid-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--paper);
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.doc-grid-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  text-decoration: none;
+}
+.doc-grid-thumb {
+  width: 100%;
+  aspect-ratio: 3/4;
+  background: var(--paper-alt);
+  overflow: hidden;
+  border-bottom: 1px solid var(--rule);
+}
+.doc-grid-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+  display: block;
+}
+.doc-grid-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  background: var(--paper-alt);
+}
+.doc-grid-info {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.doc-grid-title-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.doc-grid-title {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.doc-grid-date {
+  font-size: 11px;
+  color: var(--ink-faint);
+}

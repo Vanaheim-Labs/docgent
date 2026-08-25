@@ -63,6 +63,16 @@ function timeAgo(ms: number | null | undefined): string | null {
   return `${Math.floor(mo / 12)}y ago`;
 }
 
+/** Human-readable date: "Aug 22, 2026" */
+function formatDate(ms: number | null | undefined): string | null {
+  if (!ms) return null;
+  return new Date(ms).toLocaleDateString("en-AU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 /** Derive a human-readable action description from the document state. */
 function actionText(doc: DocSummary, bucket: QueueBucket): string | null {
   const status = (doc.frontmatter?.status || "draft").toLowerCase();
@@ -96,39 +106,64 @@ function ctaLabel(bucket: QueueBucket): string | null {
   return null;
 }
 
+/** Small document page SVG icon */
+function DocIcon({ size = 16 }: { size?: number }) {
+  const w = size;
+  const h = Math.round(size * 1.25);
+  const fold = Math.round(w * 0.35);
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d={`M2 0 H${w - fold} L${w} ${fold} V${h} Q${w} ${h} ${w} ${h} H2 Q0 ${h} 0 ${h} V2 Q0 0 2 0Z`}
+        fill="var(--accent-soft)"
+        stroke="var(--accent)"
+        strokeWidth="1"
+      />
+      <path
+        d={`M${w - fold} 0 L${w - fold} ${fold} H${w}`}
+        fill="none"
+        stroke="var(--accent)"
+        strokeWidth="1"
+      />
+    </svg>
+  );
+}
+
+/** Small people/sharing SVG icon */
+function PeopleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="6" cy="5" r="2.5" fill="var(--ink-faint)" />
+      <path d="M1 13c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="var(--ink-faint)" strokeWidth="1.2" fill="none" />
+      <circle cx="11" cy="5" r="2" fill="var(--ink-faint)" opacity="0.6" />
+      <path d="M11 8c1.66 0 3 1.34 3 3v2" stroke="var(--ink-faint)" strokeWidth="1.2" fill="none" opacity="0.6" />
+    </svg>
+  );
+}
+
 /**
  * One row in the work queue.
  *
- * A row, not a card: the question the library page answers is "what needs my
- * attention", and a list of short rows lets someone scan twenty documents in
- * the time a grid of cards would take to scroll through five. The card
- * layout survives nowhere now — density is the point of this view.
+ * showWorkflow: when true (bucket filter active), show status badge and action text.
+ * Default (home view): show Google Docs-style icon + date + sharing columns.
  */
-export function QueueRow({ doc }: { doc: DocSummary }) {
+export function QueueRow({ doc, showWorkflow = false }: { doc: DocSummary; showWorkflow?: boolean }) {
   const fm = doc.frontmatter || {};
   const status = fm.status?.trim();
-  const who = doc.lastCommit?.name;
-  const when = timeAgo(doc.lastCommit?.at);
-  const isAgent = doc.lastCommit?.isAgent;
   const bucket = queueBucket(doc);
   const action = actionText(doc, bucket);
   const cta = ctaLabel(bucket);
-  const [thumbErrored, setThumbErrored] = useState(false);
+  const isAgent = doc.lastCommit?.isAgent;
+  const dateFmt = formatDate(doc.lastCommit?.at ?? doc.dateMs);
 
   return (
     <Link href={`/${doc.brand}/${doc.slug}`} className="queue-row">
-      <span className="queue-row-thumb">
-        {!thumbErrored && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={`/api/thumbnail/${doc.brand}/${doc.slug}`}
-            alt={`Thumbnail for ${doc.title}`}
-            loading="lazy"
-            onError={() => setThumbErrored(true)}
-          />
-        )}
+      {/* Icon */}
+      <span className="queue-row-icon">
+        <DocIcon size={16} />
       </span>
-      <span className="queue-row-status" data-status={status?.toLowerCase()} aria-hidden="true" />
+
+      {/* Title + subtitle */}
       <span className="queue-row-main">
         <span className="queue-row-title" title={doc.title}>
           {doc.title}
@@ -136,7 +171,7 @@ export function QueueRow({ doc }: { doc: DocSummary }) {
             <span className="queue-row-render-error" title={doc.renderError}>⚠ render failed</span>
           )}
         </span>
-        {action ? (
+        {showWorkflow && action ? (
           <span className="queue-row-sub">{action}</span>
         ) : fm.subtitle ? (
           <span className="queue-row-sub">{String(fm.subtitle)}</span>
@@ -146,25 +181,23 @@ export function QueueRow({ doc }: { doc: DocSummary }) {
             {[doc.brandName, fm.doctype ? label(fm.doctype) : null].filter(Boolean).join(" · ")}
           </span>
         )}
-      </span>
-      {status && (
-        <span className="badge" data-status={status.toLowerCase()}>
-          {label(status)}
-        </span>
-      )}
-      <span className="queue-row-touched">
-        {action ? null : who ? (
-          <>
-            <span className={isAgent ? "queue-row-agent" : undefined}>
-              {isAgent ? "🤖 " : ""}{who}
-            </span>
-            {when && <span className="queue-row-when"> · {when}</span>}
-          </>
-        ) : (
-          <span className="queue-row-when">—</span>
+        {showWorkflow && status && (
+          <span className="badge" data-status={status.toLowerCase()}>
+            {label(status)}
+          </span>
         )}
       </span>
-      {cta && <span className="queue-row-action">{cta}</span>}
+
+      {/* Sharing indicator */}
+      <span className="queue-row-sharing">
+        {isAgent && <PeopleIcon />}
+      </span>
+
+      {/* Date */}
+      <span className="queue-row-date">{dateFmt}</span>
+
+      {/* Menu dot */}
+      <span className="queue-row-menu" onClick={(e) => e.preventDefault()}>⋮</span>
     </Link>
   );
 }
