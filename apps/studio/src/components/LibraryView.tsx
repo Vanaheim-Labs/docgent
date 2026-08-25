@@ -34,6 +34,7 @@ function ForYouCard({ buckets }: { buckets: Record<QueueBucket, DocSummary[]> })
     </div>
   );
 }
+import Link from "next/link";
 import { LibraryFilterPanel, type LibraryFilters } from "@/components/LibraryFilterPanel";
 import { QueueRow, queueBucket, BUCKET_LABEL, type QueueBucket } from "@/components/QueueRow";
 import { UserChip } from "@/components/UserChip";
@@ -73,6 +74,58 @@ function ListIcon() {
       <rect x="1" y="7" width="14" height="2" rx="1" fill="currentColor" />
       <rect x="1" y="12" width="14" height="2" rx="1" fill="currentColor" />
     </svg>
+  );
+}
+
+/** Small document icon for grid cards (14px) */
+function DocGridIcon() {
+  return (
+    <svg width="14" height="17" viewBox="0 0 14 17" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M2 0 H9 L14 5 V15 Q14 17 12 17 H2 Q0 17 0 15 V2 Q0 0 2 0Z"
+        fill="var(--accent-soft)"
+        stroke="var(--accent)"
+        strokeWidth="1"
+      />
+      <path d="M9 0 L9 5 H14" fill="none" stroke="var(--accent)" strokeWidth="1" />
+    </svg>
+  );
+}
+
+/** One card in the grid view */
+function DocGridCard({ doc }: { doc: DocSummary }) {
+  const [thumbErrored, setThumbErrored] = useState(false);
+  const dateFmt = doc.lastCommit?.at ?? doc.dateMs
+    ? new Date(doc.lastCommit?.at ?? doc.dateMs ?? 0).toLocaleDateString("en-AU", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : null;
+
+  return (
+    <Link href={`/${doc.brand}/${doc.slug}`} className="doc-grid-card">
+      <div className="doc-grid-thumb">
+        {!thumbErrored ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`/api/thumbnail/${doc.brand}/${doc.slug}`}
+            alt={`Thumbnail for ${doc.title}`}
+            loading="lazy"
+            onError={() => setThumbErrored(true)}
+          />
+        ) : (
+          <div className="doc-grid-thumb-placeholder" />
+        )}
+      </div>
+      <div className="doc-grid-info">
+        <div className="doc-grid-title-row">
+          <DocGridIcon />
+          <span className="doc-grid-title" title={doc.title}>{doc.title}</span>
+        </div>
+        {dateFmt && <span className="doc-grid-date">{dateFmt}</span>}
+      </div>
+    </Link>
   );
 }
 
@@ -260,47 +313,68 @@ export function LibraryView({
           </div>
         )}
 
-        <div className="queue-table">
-          {bucketParam ? (
-            // Bucket filter active: render workflow-bucket groups
-            order.map((b) =>
-              buckets[b].length > 0 ? (
-                <div className="queue-group" key={b} data-bucket={b}>
-                  <div className="queue-group-head">
-                    <span className="section-title">{BUCKET_LABEL[b]}</span>
-                    <span className="section-count">{buckets[b].length}</span>
-                  </div>
-                  {b === "done" ? (
-                    <>
-                      <button
-                        className="bucket-toggle"
-                        onClick={() => setDoneExpanded((v) => !v)}
-                      >
-                        {doneExpanded
-                          ? "Hide completed ▴"
-                          : `Show ${buckets[b].length} completed ▾`}
-                      </button>
-                      {doneExpanded &&
-                        buckets[b].map((d) => <QueueRow key={d.path} doc={d} showWorkflow />)}
-                    </>
-                  ) : (
-                    buckets[b].map((d) => <QueueRow key={d.path} doc={d} showWorkflow />)
-                  )}
-                </div>
-              ) : null
-            )
-          ) : (
-            // Home view: render time-based groups (Google Docs style)
-            timeGroups && TIME_GROUP_ORDER.map((group) =>
+        {/* Grid view */}
+        {!bucketParam && viewMode === "grid" && timeGroups && (
+          <div className="doc-grid">
+            {TIME_GROUP_ORDER.map((group) =>
               timeGroups[group].length > 0 ? (
-                <div className="time-group" key={group}>
-                  <div className="time-group-head">{group}</div>
-                  {timeGroups[group].map((d) => <QueueRow key={d.path} doc={d} />)}
+                <div className="doc-grid-group" key={group}>
+                  <div className="doc-grid-group-head">{group}</div>
+                  <div className="doc-grid-cards">
+                    {timeGroups[group].map((d) => (
+                      <DocGridCard key={d.path} doc={d} />
+                    ))}
+                  </div>
                 </div>
               ) : null
-            )
-          )}
-        </div>
+            )}
+          </div>
+        )}
+
+        {/* List view */}
+        {(bucketParam || viewMode === "list") && (
+          <div className="queue-table">
+            {bucketParam ? (
+              // Bucket filter active: render workflow-bucket groups
+              order.map((b) =>
+                buckets[b].length > 0 ? (
+                  <div className="queue-group" key={b} data-bucket={b}>
+                    <div className="queue-group-head">
+                      <span className="section-title">{BUCKET_LABEL[b]}</span>
+                      <span className="section-count">{buckets[b].length}</span>
+                    </div>
+                    {b === "done" ? (
+                      <>
+                        <button
+                          className="bucket-toggle"
+                          onClick={() => setDoneExpanded((v) => !v)}
+                        >
+                          {doneExpanded
+                            ? "Hide completed ▴"
+                            : `Show ${buckets[b].length} completed ▾`}
+                        </button>
+                        {doneExpanded &&
+                          buckets[b].map((d) => <QueueRow key={d.path} doc={d} showWorkflow />)}
+                      </>
+                    ) : (
+                      buckets[b].map((d) => <QueueRow key={d.path} doc={d} showWorkflow />)
+                    )}
+                  </div>
+                ) : null
+              )
+            ) : (
+              // Home view list: render time-based groups (Google Docs style)
+              timeGroups && TIME_GROUP_ORDER.map((group) =>
+                timeGroups[group].length > 0 ? (
+                  <div className="time-group" key={group}>
+                    <div className="time-group-head">{group}</div>
+                    {timeGroups[group].map((d) => <QueueRow key={d.path} doc={d} />)}
+                  </div>
+                ) : null
+              )
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
