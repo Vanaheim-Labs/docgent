@@ -2190,33 +2190,26 @@ kbd {
 .foryou-count[data-highlight="true"] { color: var(--accent); }
 .foryou-label { color: var(--ink-soft); }
 
-/* Queue sections replace the brand-grouped card grid. */
-/* Single flat grid — all rows share the same column widths across sections */
+/* Queue table: plain block container; rows are self-contained grids */
 .queue-table {
   border: 1px solid var(--rule);
   border-radius: 8px;
   overflow: hidden;
   background: var(--paper);
-  display: grid;
-  grid-template-columns: 20px minmax(0,1fr) 20px 100px 24px;
-  gap: 12px;
 }
-.queue-group { display: contents; }
+.queue-group { display: block; }
+.queue-group + .queue-group { border-top: 2px solid var(--rule); }
 .queue-group-head {
-  grid-column: 1 / -1;
   display: flex;
   align-items: baseline;
   gap: 10px;
-  padding: 10px 16px 8px;
+  padding: 9px 16px 7px;
+  background: var(--paper-alt);
   border-bottom: 1px solid var(--rule);
-  background: var(--bg-alt, var(--paper-alt, #f8f8f8));
 }
-.queue-group:not(:first-child) .queue-group-head {
-  border-top: 2px solid var(--rule);
-}
-/* bucket-toggle and done rows also need to span full width */
 .bucket-toggle {
-  grid-column: 1 / -1;
+  display: block;
+  width: 100%;
 }
 .queue-section { margin-bottom: 28px; }
 .queue-list {
@@ -2226,26 +2219,19 @@ kbd {
   background: var(--paper);
 }
 
-/* One row per document. display:contents so the row's children participate
-   directly in the parent .queue-table grid — this makes all columns align
-   across every section. The visual row styling goes on a wrapper via :has
-   or on each cell; we use a background on hover via the link itself. */
+/* Self-contained 5-column row: icon | title | sharing | date | menu */
 .queue-row {
   display: grid;
-  grid-column: 1 / -1;
-  grid-template-columns: subgrid;
+  grid-template-columns: 20px minmax(0,1fr) 20px 100px 24px;
   align-items: center;
-  /* no padding here — subgrid rows have no box; padding goes on first/last cells */
+  gap: 12px;
+  padding: 9px 16px;
   color: var(--ink);
   border-bottom: 1px solid var(--rule);
+  text-decoration: none;
 }
 .queue-row:last-child { border-bottom: none; }
 .queue-row:hover { background: var(--paper-alt); text-decoration: none; color: var(--ink); }
-/* First cell (thumb) gets left padding; last cell (action/touched) gets right padding */
-.queue-row > :first-child { padding-left: 16px; }
-.queue-row > :last-child { padding-right: 16px; }
-/* Vertical padding on every cell */
-.queue-row > * { padding-top: 9px; padding-bottom: 9px; }
 
 .queue-row-status {
   width: 8px; height: 8px; border-radius: 50%;
