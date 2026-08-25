@@ -92,16 +92,20 @@ function DocGridIcon() {
   );
 }
 
+function relativeDate(ms: number): string {
+  const diff = Date.now() - ms;
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days} days ago`;
+  return new Date(ms).toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+}
+
 /** One card in the grid view */
 function DocGridCard({ doc }: { doc: DocSummary }) {
   const [thumbErrored, setThumbErrored] = useState(false);
-  const dateFmt = doc.lastCommit?.at ?? doc.dateMs
-    ? new Date(doc.lastCommit?.at ?? doc.dateMs ?? 0).toLocaleDateString("en-AU", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
-    : null;
+  const dateMs = doc.lastCommit?.at ?? doc.dateMs ?? null;
+  const dateFmt = dateMs ? relativeDate(dateMs) : null;
 
   return (
     <Link href={`/${doc.brand}/${doc.slug}`} className="doc-grid-card">
@@ -235,9 +239,11 @@ export function LibraryView({
     <div className="library-wrap">
       <div className="topbar">
         <div>
-          <div className="crumb">
-            {filtered.length} of {documents.length} document{documents.length === 1 ? "" : "s"}
-          </div>
+          {bucketParam && (
+            <div className="crumb">
+              {filtered.length} of {documents.length} document{documents.length === 1 ? "" : "s"}
+            </div>
+          )}
           <h1 className="doc-title">Documents</h1>
         </div>
         {userChip}
