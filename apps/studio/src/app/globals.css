@@ -2203,10 +2203,10 @@ kbd {
    up exactly, which is what makes a list of twenty scannable at a glance. */
 .queue-row {
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) auto 180px;
+  grid-template-columns: 44px 8px minmax(0, 1fr) auto minmax(0, 140px) auto;
   align-items: center;
-  gap: 14px;
-  padding: 10px 16px;
+  gap: 12px;
+  padding: 8px 16px;
   color: var(--ink);
   border-bottom: 1px solid var(--rule);
 }
@@ -2344,8 +2344,7 @@ kbd {
   font-size: 12px;
   font-weight: 600;
   color: var(--accent);
-  margin-left: auto;
-  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* --- VersionPanel approval status --- */
