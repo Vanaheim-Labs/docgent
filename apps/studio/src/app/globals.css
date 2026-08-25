@@ -2962,3 +2962,16 @@ kbd {
 .doc-drawer-tab:hover { color: var(--ink); }
 .doc-drawer-tab[data-active="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 .doc-drawer-body { flex: 1; overflow-y: auto; }
+
+/* ---------- time-based grouping (Google Docs-style) ---------- */
+.time-group { }
+.time-group + .time-group { border-top: 1px solid var(--rule); }
+.time-group-head {
+  padding: 8px 16px 6px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink-faint);
+  background: var(--paper-alt);
+  border-bottom: 1px solid var(--rule);
+  letter-spacing: 0.03em;
+}

@@ -38,6 +38,19 @@ import { LibraryFilterPanel, type LibraryFilters } from "@/components/LibraryFil
 import { QueueRow, queueBucket, BUCKET_LABEL, type QueueBucket } from "@/components/QueueRow";
 import { UserChip } from "@/components/UserChip";
 
+type TimeGroup = "Previous 7 days" | "Previous 30 days" | "Earlier";
+
+function getTimeGroup(ms: number | null | undefined): TimeGroup {
+  if (!ms) return "Earlier";
+  const diff = Date.now() - ms;
+  const days = diff / (1000 * 60 * 60 * 24);
+  if (days <= 7) return "Previous 7 days";
+  if (days <= 30) return "Previous 30 days";
+  return "Earlier";
+}
+
+const TIME_GROUP_ORDER: TimeGroup[] = ["Previous 7 days", "Previous 30 days", "Earlier"];
+
 /**
  * The library, as a work queue.
  *
@@ -47,6 +60,9 @@ import { UserChip } from "@/components/UserChip";
  * axis. The old page grouped by brand because a brand is a real ownership
  * boundary; that is still true, it is just not the question a returning
  * user is asking when they open Studio.
+ *
+ * When no bucket filter is active (home view), documents are grouped by
+ * recency (Google Docs-style time grouping).
  */
 export function LibraryView({
   documents,
@@ -113,6 +129,25 @@ export function LibraryView({
     return m;
   }, [filtered]);
 
+  // Time groups for home view (no bucket filter)
+  const timeGroups = useMemo(() => {
+    if (bucketParam) return null;
+    const m: Record<TimeGroup, DocSummary[]> = {
+      "Previous 7 days": [],
+      "Previous 30 days": [],
+      "Earlier": [],
+    };
+    for (const d of filtered) {
+      const ts = d.lastCommit?.at ?? d.dateMs;
+      m[getTimeGroup(ts)].push(d);
+    }
+    // Sort each group: most recent first
+    for (const g of TIME_GROUP_ORDER) {
+      m[g].sort((a, b) => (b.lastCommit?.at ?? b.dateMs ?? 0) - (a.lastCommit?.at ?? a.dateMs ?? 0));
+    }
+    return m;
+  }, [filtered, bucketParam]);
+
   const order: QueueBucket[] = ["needs-review", "in-progress", "done"];
   const [doneExpanded, setDoneExpanded] = useState(false);
 
@@ -147,31 +182,44 @@ export function LibraryView({
           )}
 
           <div className="queue-table">
-            {order.map((b) =>
-              buckets[b].length > 0 ? (
-                <div className="queue-group" key={b} data-bucket={b}>
-                  <div className="queue-group-head">
-                    <span className="section-title">{BUCKET_LABEL[b]}</span>
-                    <span className="section-count">{buckets[b].length}</span>
+            {bucketParam ? (
+              // Bucket filter active: render workflow-bucket groups
+              order.map((b) =>
+                buckets[b].length > 0 ? (
+                  <div className="queue-group" key={b} data-bucket={b}>
+                    <div className="queue-group-head">
+                      <span className="section-title">{BUCKET_LABEL[b]}</span>
+                      <span className="section-count">{buckets[b].length}</span>
+                    </div>
+                    {b === "done" ? (
+                      <>
+                        <button
+                          className="bucket-toggle"
+                          onClick={() => setDoneExpanded((v) => !v)}
+                        >
+                          {doneExpanded
+                            ? "Hide completed ▴"
+                            : `Show ${buckets[b].length} completed ▾`}
+                        </button>
+                        {doneExpanded &&
+                          buckets[b].map((d) => <QueueRow key={d.path} doc={d} showWorkflow />)}
+                      </>
+                    ) : (
+                      buckets[b].map((d) => <QueueRow key={d.path} doc={d} showWorkflow />)
+                    )}
                   </div>
-                  {b === "done" ? (
-                    <>
-                      <button
-                        className="bucket-toggle"
-                        onClick={() => setDoneExpanded((v) => !v)}
-                      >
-                        {doneExpanded
-                          ? "Hide completed ▴"
-                          : `Show ${buckets[b].length} completed ▾`}
-                      </button>
-                      {doneExpanded &&
-                        buckets[b].map((d) => <QueueRow key={d.path} doc={d} />)}
-                    </>
-                  ) : (
-                    buckets[b].map((d) => <QueueRow key={d.path} doc={d} />)
-                  )}
-                </div>
-              ) : null
+                ) : null
+              )
+            ) : (
+              // Home view: render time-based groups (Google Docs style)
+              timeGroups && TIME_GROUP_ORDER.map((group) =>
+                timeGroups[group].length > 0 ? (
+                  <div className="time-group" key={group}>
+                    <div className="time-group-head">{group}</div>
+                    {timeGroups[group].map((d) => <QueueRow key={d.path} doc={d} />)}
+                  </div>
+                ) : null
+              )
             )}
           </div>
         </div>
