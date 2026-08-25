@@ -2191,6 +2191,32 @@ kbd {
 .foryou-label { color: var(--ink-soft); }
 
 /* Queue sections replace the brand-grouped card grid. */
+/* Single flat grid — all rows share the same column widths across sections */
+.queue-table {
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--paper);
+  display: grid;
+  grid-template-columns: 44px 8px minmax(0, 1fr) auto minmax(0, 140px) auto;
+}
+.queue-group { display: contents; }
+.queue-group-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 16px 8px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--bg-alt, var(--paper-alt, #f8f8f8));
+}
+.queue-group:not(:first-child) .queue-group-head {
+  border-top: 2px solid var(--rule);
+}
+/* bucket-toggle and done rows also need to span full width */
+.bucket-toggle {
+  grid-column: 1 / -1;
+}
 .queue-section { margin-bottom: 28px; }
 .queue-list {
   border: 1px solid var(--rule);
@@ -2199,11 +2225,14 @@ kbd {
   background: var(--paper);
 }
 
-/* One row per document. Grid rather than flex so every row's columns line
-   up exactly, which is what makes a list of twenty scannable at a glance. */
+/* One row per document. display:contents so the row's children participate
+   directly in the parent .queue-table grid — this makes all columns align
+   across every section. The visual row styling goes on a wrapper via :has
+   or on each cell; we use a background on hover via the link itself. */
 .queue-row {
   display: grid;
-  grid-template-columns: 44px 8px minmax(0, 1fr) auto minmax(0, 140px) auto;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: center;
   gap: 12px;
   padding: 8px 16px;

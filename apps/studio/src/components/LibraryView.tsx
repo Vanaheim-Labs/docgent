@@ -146,41 +146,34 @@ export function LibraryView({
             <div className="empty">No documents match these filters.</div>
           )}
 
-          {order.map((b) =>
-            buckets[b].length > 0 ? (
-              <section className="queue-section" key={b} data-bucket={b}>
-                <div className="section-head">
-                  <h2 className="section-title">{BUCKET_LABEL[b]}</h2>
-                  <span className="section-count">{buckets[b].length}</span>
-                </div>
-                {b === "done" ? (
-                  <>
-                    <button
-                      className="bucket-toggle"
-                      onClick={() => setDoneExpanded((v) => !v)}
-                    >
-                      {doneExpanded
-                        ? "Hide completed ▴"
-                        : `Show ${buckets[b].length} completed ▾`}
-                    </button>
-                    {doneExpanded && (
-                      <div className="queue-list">
-                        {buckets[b].map((d) => (
-                          <QueueRow key={d.path} doc={d} />
-                        ))}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="queue-list">
-                    {buckets[b].map((d) => (
-                      <QueueRow key={d.path} doc={d} />
-                    ))}
+          <div className="queue-table">
+            {order.map((b) =>
+              buckets[b].length > 0 ? (
+                <div className="queue-group" key={b} data-bucket={b}>
+                  <div className="queue-group-head">
+                    <span className="section-title">{BUCKET_LABEL[b]}</span>
+                    <span className="section-count">{buckets[b].length}</span>
                   </div>
-                )}
-              </section>
-            ) : null
-          )}
+                  {b === "done" ? (
+                    <>
+                      <button
+                        className="bucket-toggle"
+                        onClick={() => setDoneExpanded((v) => !v)}
+                      >
+                        {doneExpanded
+                          ? "Hide completed ▴"
+                          : `Show ${buckets[b].length} completed ▾`}
+                      </button>
+                      {doneExpanded &&
+                        buckets[b].map((d) => <QueueRow key={d.path} doc={d} />)}
+                    </>
+                  ) : (
+                    buckets[b].map((d) => <QueueRow key={d.path} doc={d} />)
+                  )}
+                </div>
+              ) : null
+            )}
+          </div>
         </div>
       </div>
     </div>
