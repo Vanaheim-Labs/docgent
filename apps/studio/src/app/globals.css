@@ -3064,3 +3064,46 @@ kbd {
   padding: 0 2px;
 }
 .queue-row-menu:hover { background: var(--paper-alt); color: var(--ink); }
+
+/* ---------- library controls bar ---------- */
+.library-wrap { display: flex; flex-direction: column; min-height: 100vh; }
+.library-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 28px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+  gap: 12px;
+}
+.library-controls-left { font-size: 13px; color: var(--ink-soft); font-weight: 600; }
+.library-controls-right { display: flex; align-items: center; gap: 8px; }
+.library-sort-select {
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--ink-soft);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 4px 10px;
+  background: var(--paper);
+  cursor: pointer;
+}
+.view-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--paper);
+  cursor: pointer;
+  color: var(--ink-faint);
+  transition: background 0.1s, color 0.1s;
+}
+.view-toggle-btn[data-active="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: #cfe0ec;
+}
+.view-toggle-btn:hover { background: var(--paper-alt); }
