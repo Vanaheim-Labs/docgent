@@ -401,7 +401,8 @@ def _run_pandoc(md_path, html_path, brand, brand_id, fm, sheets, source_lines):
         cmd += ["--metadata", "docforge_no_autonumber=1"]
 
     if fm.get("toc"):
-        cmd += ["--toc", "--toc-depth=2"]
+        toc_depth = (brand.get("toc") or {}).get("depth", 2)
+        cmd += ["--toc", f"--toc-depth={toc_depth}"]
     # Only the preview needs source positions. The PDF path leaves them off so
     # its output stays byte-identical to what it produced before this existed.
     if source_lines:
