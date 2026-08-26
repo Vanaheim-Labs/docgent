@@ -188,7 +188,10 @@ export function mdToHtml(mdPath, { brand, frontmatter, outHtml, cssHrefs }) {
   for (const k of ["capital_sought", "instrument", "target_close", "contact"]) {
     if (frontmatter[k]) args.push("--metadata", `${k}=${frontmatter[k]}`);
   }
-  if (frontmatter.toc) args.push("--toc", "--toc-depth=2");
+  if (frontmatter.toc) {
+    const tocDepth = brand.toc?.depth ?? 2;
+    args.push("--toc", `--toc-depth=${tocDepth}`);
+  }
   for (const href of cssHrefs) args.push("--css", href);
   execFileSync("pandoc", args, { stdio: ["ignore", "pipe", "pipe"] });
   return outHtml;
