@@ -241,6 +241,15 @@ blocks:
       caption: { type: string, required: false }
     breakInside: avoid
 
+  - id: icon-grid
+    syntax: "::icon-grid{cols=4 label=...}"
+    description: Tiled grid of small SVG icons. Each H3 heading names an icon tile; its body is raw SVG markup. Use for compact multi-platform or integration grids. cols controls tiles per row (2–6, default 4).
+    attrs:
+      cols: { type: integer, default: 4 }
+      label: { type: string, required: false }
+      caption: { type: string, required: false }
+    breakInside: avoid
+
   - id: key-figure
     syntax: "::key-figure"
     description: Single prominent metric with value, label, and optional source. Use for
@@ -286,6 +295,32 @@ inlines:
     description: Inline chip classifying a claim's evidential status.
     attrs:
       kind: { type: enum, values: [fact, drafting, gated], default: gated }
+
+# Heading attributes
+# These attrs can be applied to any H1 heading: # Heading text {attr="value"}
+# They are processed by the vocabulary Lua filter and are NOT block primitives.
+heading_attrs:
+  - name: eyebrow
+    description: >-
+      Override the section eyebrow label independently of the H1 text. The
+      eyebrow appears as '01 · LABEL' above the heading. When omitted the
+      eyebrow echoes the H1 text. Use this to set a short functional category
+      label (e.g. "Introduction", "Product") while keeping a punchy H1.
+    type: string
+    example: '# A new law. A hard deadline. {eyebrow="Introduction"}'
+  - name: nav-title
+    description: >-
+      Override the label used in the table of contents and running headers
+      without affecting the visible H1 text. When eyebrow is also absent,
+      nav-title is used for the eyebrow too. Useful for long headings that
+      need a shorter navigational form.
+    type: string
+    example: '# A very long section heading {nav-title="Short TOC Label"}'
+  - name: no-eyebrow
+    description: >-
+      Suppress the eyebrow entirely on this H1. Applied as a CSS class.
+    type: class
+    example: '# Heading with no eyebrow {.no-eyebrow}'
 
 frontmatter:
   required: [title, brand, doctype, version, date]
