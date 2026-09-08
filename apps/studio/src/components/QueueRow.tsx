@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { DocSummary } from "@/lib/store";
+import { DeleteDocButton } from "@/components/DeleteDocButton";
 
 /** Strip conventional-commit prefix and return the meaningful part, max 60 chars. */
 function stripConventionalPrefix(subject: string): string {
@@ -146,8 +147,17 @@ function PeopleIcon() {
  *
  * showWorkflow: when true (bucket filter active), show status badge and action text.
  * Default (home view): show Google Docs-style icon + date + sharing columns.
+ * onDeleted: callback so LibraryView can remove the row without a page reload.
  */
-export function QueueRow({ doc, showWorkflow = false }: { doc: DocSummary; showWorkflow?: boolean }) {
+export function QueueRow({
+  doc,
+  showWorkflow = false,
+  onDeleted,
+}: {
+  doc: DocSummary;
+  showWorkflow?: boolean;
+  onDeleted?: (slug: string) => void;
+}) {
   const fm = doc.frontmatter || {};
   const status = fm.status?.trim();
   const bucket = queueBucket(doc);
@@ -196,8 +206,16 @@ export function QueueRow({ doc, showWorkflow = false }: { doc: DocSummary; showW
       {/* Date */}
       <span className="queue-row-date">{dateFmt}</span>
 
-      {/* Menu dot */}
-      <span className="queue-row-menu" onClick={(e) => e.preventDefault()}>⋮</span>
+      {/* Delete */}
+      <span className="queue-row-menu" onClick={(e) => e.preventDefault()}>
+        <DeleteDocButton
+          brand={doc.brand}
+          slug={doc.slug}
+          title={doc.title}
+          variant="icon"
+          onDeleted={onDeleted}
+        />
+      </span>
     </Link>
   );
 }
