@@ -3186,3 +3186,136 @@ kbd {
   font-size: 11px;
   color: var(--ink-faint);
 }
+
+/* ========== Delete document button & confirmation dialog ========== */
+
+/* Danger button variant — red, used for destructive actions */
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #b42318;
+  color: #fff;
+  border-color: #922118;
+  transition: background 0.12s, opacity 0.12s;
+}
+.btn-danger:hover { background: #922118; color: #fff; text-decoration: none; }
+.btn-danger:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Small icon-only trash button in list rows */
+.delete-doc-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 4px;
+  border: none;
+  background: none;
+  color: var(--ink-faint);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s, color 0.1s;
+  flex-shrink: 0;
+}
+/* Show the icon when the parent row is hovered */
+.queue-row:hover .delete-doc-icon-btn,
+.delete-doc-icon-btn:focus-visible {
+  opacity: 1;
+}
+.delete-doc-icon-btn:hover {
+  background: #fde8e7;
+  color: #b42318;
+  opacity: 1;
+}
+
+/* Fullscreen semi-transparent overlay */
+.delete-doc-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(18, 22, 28, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: delete-doc-overlay-in 0.1s ease;
+}
+@keyframes delete-doc-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Dialog card */
+.delete-doc-dialog {
+  background: var(--paper);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.22), 0 0 0 1px rgba(0,0,0,0.06);
+  padding: 28px 28px 24px;
+  max-width: 420px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  animation: delete-doc-dialog-in 0.12s cubic-bezier(0.22,1,0.36,1);
+}
+@keyframes delete-doc-dialog-in {
+  from { opacity: 0; transform: scale(0.94) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.delete-doc-dialog-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #fde8e7;
+  color: #b42318;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-bottom: 2px;
+}
+
+.delete-doc-dialog-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+  text-align: center;
+}
+
+.delete-doc-dialog-body {
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  text-align: center;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.delete-doc-dialog-error {
+  font-size: 12.5px;
+  color: #b42318;
+  background: #fde8e7;
+  border: 1px solid #f5c0bc;
+  border-radius: 6px;
+  padding: 8px 12px;
+  width: 100%;
+  text-align: center;
+}
+
+.delete-doc-dialog-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+  width: 100%;
+  justify-content: flex-end;
+}

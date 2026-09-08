@@ -140,7 +140,7 @@ function DocGridCard({ doc }: { doc: DocSummary }) {
  * recency (Google Docs-style time grouping) with inline sort/view controls.
  */
 export function LibraryView({
-  documents,
+  documents: initialDocuments,
   userChip,
 }: {
   documents: DocSummary[];
@@ -148,6 +148,16 @@ export function LibraryView({
 }) {
   const searchParams = useSearchParams();
   const bucketParam = searchParams?.get("bucket") as QueueBucket | null;
+
+  // Track deletions client-side so rows vanish immediately without a reload.
+  const [deletedSlugs, setDeletedSlugs] = useState<Set<string>>(new Set());
+  const documents = useMemo(
+    () => initialDocuments.filter((d) => !deletedSlugs.has(d.slug)),
+    [initialDocuments, deletedSlugs]
+  );
+  const handleDeleted = (slug: string) => {
+    setDeletedSlugs((prev) => new Set([...prev, slug]));
+  };
 
   const [filters, setFilters] = useState<LibraryFilters>({
     brands: new Set(),
@@ -360,10 +370,10 @@ export function LibraryView({
                             : `Show ${buckets[b].length} completed ▾`}
                         </button>
                         {doneExpanded &&
-                          buckets[b].map((d) => <QueueRow key={d.path} doc={d} showWorkflow />)}
+                          buckets[b].map((d) => <QueueRow key={d.path} doc={d} showWorkflow onDeleted={handleDeleted} />)}
                       </>
                     ) : (
-                      buckets[b].map((d) => <QueueRow key={d.path} doc={d} showWorkflow />)
+                      buckets[b].map((d) => <QueueRow key={d.path} doc={d} showWorkflow onDeleted={handleDeleted} />)
                     )}
                   </div>
                 ) : null
@@ -374,7 +384,7 @@ export function LibraryView({
                 timeGroups[group].length > 0 ? (
                   <div className="time-group" key={group}>
                     <div className="time-group-head">{group}</div>
-                    {timeGroups[group].map((d) => <QueueRow key={d.path} doc={d} />)}
+                    {timeGroups[group].map((d) => <QueueRow key={d.path} doc={d} onDeleted={handleDeleted} />)}
                   </div>
                 ) : null
               )

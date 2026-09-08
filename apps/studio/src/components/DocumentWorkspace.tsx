@@ -6,6 +6,7 @@ import { VersionPanel } from "@/components/VersionPanel";
 import { DiffView, type DiffResult } from "@/components/DiffView";
 import { CommentsPanel } from "@/components/CommentsPanel";
 import { parseComments, setCommentResolved } from "@/lib/comments";
+import { DeleteDocButton } from "@/components/DeleteDocButton";
 
 type DrawerTab = "changes" | "activity" | "details" | "comments";
 
@@ -166,6 +167,15 @@ function DocActionBar({
           >
             {transitioning ? "…" : ctaLabel(statusState, forwardTransitions[0])}
           </button>
+        )}
+        {canEdit && (
+          <DeleteDocButton
+            brand={brand}
+            slug={slug}
+            title={title}
+            variant="button"
+            redirectTo="/"
+          />
         )}
         <button
           className={`btn btn-secondary doc-drawer-toggle${drawerOpen ? " doc-drawer-toggle--open" : ""}`}
