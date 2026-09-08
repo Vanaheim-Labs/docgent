@@ -3,6 +3,7 @@ import { storesFor, agentTokenValidForBrand } from "@/lib/store";
 import { loadVocabulary } from "@/lib/vocabulary";
 import { validateMarkdown } from "@/lib/validate-client";
 import { authorizeRequest } from "@/lib/agent-auth";
+import { NotFoundError } from "../../../../../../../../packages/git-store/src/index.mjs";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -125,5 +126,40 @@ export async function PUT(
       );
     }
     return Response.json({ error: err.message || String(e) }, { status: 500 });
+  }
+}
+
+/**
+ * Deletes a document.
+ *
+ * Commits a deletion to the brand's documents repo via the GitHub API and
+ * returns the commit reference so callers can verify the change. Returns 404
+ * when the slug does not exist — callers should treat this as idempotent
+ * rather than retrying, since a missing document is the desired end state.
+ *
+ * No body is required. Auth is the same bearer-token / session check every
+ * other route on this path uses, so no extra credential is needed.
+ */
+export async function DELETE(
+  req: Request,
+  ctx: { params: Promise<{ brand: string; slug: string }> }
+) {
+  const { brand, slug } = await ctx.params;
+
+  const authz = await authorizeRequest(req, brand);
+  if (!authz.ok) return new Response("unauthorised", { status: 401 });
+
+  try {
+    const { docs } = await storesFor(brand);
+    const result = await docs.deleteDocument(brand, slug, {
+      author: authz.author,
+      message: `docs(${brand}/${slug}): delete via agent API`,
+    });
+    return Response.json({ deleted: result.deleted, slug, commit: result.commit });
+  } catch (e) {
+    if (e instanceof NotFoundError || (e as { name?: string }).name === "NotFoundError") {
+      return Response.json({ error: `document not found: ${brand}/${slug}` }, { status: 404 });
+    }
+    return Response.json({ error: (e as Error).message || String(e) }, { status: 500 });
   }
 }
