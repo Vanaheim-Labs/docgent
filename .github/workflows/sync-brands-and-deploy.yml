@@ -1,0 +1,96 @@
+name: Sync brands submodule and deploy render-worker
+
+# Triggered when docgent-brands pushes to main.
+# Set up as a repository_dispatch from the docgent-brands repo, OR
+# run manually. Also fires on direct pushes to main that touch brands/.
+#
+# What this does:
+#   1. Pulls the latest docgent-brands submodule
+#   2. Bumps the pointer commit in the parent repo
+#   3. Runs stage.mjs to rebuild the render-worker pipeline bundle
+#   4. Deploys the render-worker to Fly.io (docgent-render, syd)
+#
+# Secrets required (set once, never need to touch again):
+#   FLY_API_TOKEN   — deploy token scoped to docgent-render
+#   BRANDS_DEPLOY_TOKEN — GitHub token with write access to docgent-brands
+#                         (for submodule fetch; GITHUB_TOKEN is enough if
+#                          both repos are in the same org)
+
+on:
+  # Triggered by a webhook from docgent-brands on push to main
+  repository_dispatch:
+    types: [brands-updated]
+
+  # Also fire when someone bumps the submodule pointer directly
+  push:
+    branches: [main]
+    paths:
+      - 'brands'
+      - 'apps/render-worker/**'
+      - 'packages/core/**'
+
+  # Manual trigger for emergency deploys
+  workflow_dispatch:
+
+jobs:
+  sync-and-deploy:
+    name: Sync brands → stage → deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to push submodule bump commit
+
+    steps:
+      - name: Checkout docgent (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull latest docgent-brands
+        run: |
+          git submodule update --remote brands
+          echo "brands now at: $(git -C brands rev-parse --short HEAD)"
+
+      - name: Check if brands pointer changed
+        id: brands_changed
+        run: |
+          git diff --quiet brands || echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Commit updated submodule pointer
+        if: steps.brands_changed.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          BRANDS_SHA=$(git -C brands rev-parse --short HEAD)
+          git add brands
+          git commit -m "chore(brands): auto-bump submodule → ${BRANDS_SHA}
+
+          Triggered by push to docgent-brands main.
+          Render-worker will be redeployed with updated brand assets."
+          git push origin main
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Stage render-worker pipeline
+        working-directory: apps/render-worker
+        run: node stage.mjs
+
+      - name: Verify brand was staged correctly
+        run: |
+          echo "=== Staged brands ==="
+          ls apps/render-worker/pipeline/brands/
+          echo "=== Staged fonts ==="
+          ls apps/render-worker/pipeline/fonts/ 2>/dev/null || echo "(none)"
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly.io
+        working-directory: apps/render-worker
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --app docgent-render --remote-only
