@@ -276,6 +276,74 @@ def _process_comments(md: str, mode: str = 'strip') -> str:
     return '\n'.join(out)
 
 
+# Regex to match a self-closing ::figure or ::chart shorthand primitive that
+# references an external SVG file via src=.  These are single-line blocks with
+# no body — the SVG content needs to be fetched from disk and inlined as the
+# block body before _preprocess_markdown converts the shorthand to pandoc divs.
+#
+# Examples matched:
+#   ::figure{src="figures/chart.svg" caption="Revenue" width="90%"}
+#   ::chart{src="figures/pipeline.svg"}
+_SVG_SRC_RE = _re.compile(
+    r'^::(figure|chart)\{([^}]*)\}\s*$',
+    _re.MULTILINE,
+)
+
+# Extracts a src="..." attribute from an attr string.
+_SRC_ATTR_RE = _re.compile(r'\bsrc="([^"]+\.svg)"', _re.IGNORECASE)
+
+# Strips src="..." (with optional surrounding whitespace) from an attr string.
+_STRIP_SRC_RE = _re.compile(r'\s*\bsrc="[^"]*"', _re.IGNORECASE)
+
+
+def _inline_svg_figures(markdown: str, work: Path) -> str:
+    """Replace ::figure/::chart{src="...svg"} shorthand with pandoc fenced divs.
+
+    Blocks that reference an SVG file (src="figures/foo.svg") are rewritten
+    into a pandoc fenced-div that contains the SVG inline:
+
+        :::{.figure caption="..." width="..."}
+        <svg ...>...</svg>
+        :::
+
+    This output is then handed directly to pandoc (bypassing the ::
+    shorthand normalisation in _preprocess_markdown, which only handles
+    blocks without body content).  Blocks whose src file cannot be resolved
+    are left unchanged so the existing error-surface behaviour is preserved.
+    """
+    def _replace(m: _re.Match) -> str:
+        name = m.group(1)          # 'figure' or 'chart'
+        attrs = m.group(2).strip() # everything inside {...}
+
+        src_m = _SRC_ATTR_RE.search(attrs)
+        if not src_m:
+            return m.group(0)  # no svg src — leave as-is
+
+        src_val = src_m.group(1)
+        svg_path = (work / src_val).resolve()
+
+        # Safety: must stay inside the working directory.
+        if not str(svg_path).startswith(str(work.resolve())):
+            return m.group(0)
+
+        if not svg_path.is_file():
+            return m.group(0)  # file absent — leave unchanged, not a hard error
+
+        svg_content = svg_path.read_text(encoding="utf-8").strip()
+
+        # Build the remaining attrs without src=.
+        remaining_attrs = _STRIP_SRC_RE.sub('', attrs).strip()
+
+        if remaining_attrs:
+            div_open = f':::{{.{name} {remaining_attrs}}}'
+        else:
+            div_open = f':::{{.{name}}}'
+
+        return f'{div_open}\n{svg_content}\n:::'
+
+    return _SVG_SRC_RE.sub(_replace, markdown)
+
+
 def _preprocess_markdown(md: str, comment_mode: str = 'strip') -> str:
     """Rewrite ::primitive / :: shorthand into pandoc fenced-div syntax."""
     md = _process_comments(md, mode=comment_mode)
@@ -335,14 +403,20 @@ def _stage(work: Path, markdown: str, brand: dict, fm: dict,
     comment_mode='anchor' — comments replaced with <span data-comment-id> anchors (HTML preview).
     """
     md_path = work / "doc.md"
-    md_path.write_text(_preprocess_markdown(markdown, comment_mode=comment_mode), encoding="utf-8")
 
+    # Write all assets to disk first so _inline_svg_figures can read SVG files
+    # from figures/ before the markdown is pre-processed.
     for rel, b64 in (assets or {}).items():
         target = (work / rel).resolve()
         if not str(target).startswith(str(work.resolve())):
             raise ValueError(f"asset path escapes working directory: {rel}")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(base64.b64decode(b64))
+
+    # SVG inlining: replace ::figure/::chart{src="...svg"} with pandoc fenced
+    # divs containing the SVG body, now that figures/ files are on disk.
+    processed = _inline_svg_figures(markdown, work)
+    md_path.write_text(_preprocess_markdown(processed, comment_mode=comment_mode), encoding="utf-8")
 
     tokens_css = work / "_tokens.css"
     tokens_css.write_text(
