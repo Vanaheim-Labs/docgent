@@ -2929,7 +2929,7 @@ kbd {
 .doc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .doc-topbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid var(--rule); background: var(--paper); min-height: 48px; }
 .doc-topbar-home { display: flex; align-items: center; text-decoration: none; }
-.doc-topbar-logo { height: 28px; width: auto; display: block; }
+.doc-topbar-logo { height: 22px; width: auto; display: block; }
 .doc-content { flex: 1; display: flex; flex-direction: column; padding: 0; }
 .doc-workspace { display: flex; flex-direction: column; flex: 1; min-height: 0; height: calc(100vh - 48px); }
 
