@@ -7,7 +7,7 @@ import { DiffView, type DiffResult } from "@/components/DiffView";
 import { CommentsPanel } from "@/components/CommentsPanel";
 import { parseComments, setCommentResolved } from "@/lib/comments";
 
-type DrawerTab = "changes" | "activity" | "details" | "comments";
+type DrawerTab = "activity" | "details" | "comments";
 
 type DocMeta = {
   type?: string;
@@ -49,18 +49,14 @@ function timeAgo(dateStr: string | undefined): string {
   return `${Math.floor(day / 30)}mo ago`;
 }
 
-const WORKFLOW_STATES = ["draft", "review", "approved", "released"] as const;
-type WorkflowState = typeof WORKFLOW_STATES[number];
-
 /**
- * Slim bar above the PDF: document title, state pipeline, primary CTA, drawer toggle.
+ * Slim bar above the PDF: document title, primary CTA, drawer toggle.
  * Replaces the old right rail as the primary action surface.
  */
 function DocActionBar({
   brand,
   slug,
   title,
-  status,
   canEdit,
   pdfUrl,
   timeline,
@@ -72,7 +68,6 @@ function DocActionBar({
   brand: string;
   slug: string;
   title: string;
-  status: string;
   canEdit: boolean;
   pdfUrl: string;
   timeline: TimelineEntry[];
@@ -81,66 +76,12 @@ function DocActionBar({
   onToggleDrawer: () => void;
   openCommentCount: number;
 }) {
-  const [allowed, setAllowed] = useState<string[]>([]);
-  const [transitioning, setTransitioning] = useState(false);
-  const [statusState, setStatusState] = useState(status);
-
-  // Fetch allowed transitions once on mount
-  useMemo(() => {
-    fetch(`/api/status/${brand}/${slug}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d?.allowed) { setStatusState(d.status); setAllowed(d.allowed); } })
-      .catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [brand, slug]);
-
-  const transition = useCallback(async (to: string) => {
-    setTransitioning(true);
-    try {
-      const res = await fetch(`/api/status/${brand}/${slug}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to }),
-      });
-      if (res.ok) window.location.reload();
-    } finally {
-      setTransitioning(false);
-    }
-  }, [brand, slug]);
-
-  const currentIdx = WORKFLOW_STATES.indexOf(statusState as WorkflowState);
-  const forwardTransitions = allowed.filter((t) => {
-    if (t === "superseded") return false;
-    return WORKFLOW_STATES.indexOf(t as WorkflowState) > currentIdx;
-  });
-
-  function ctaLabel(from: string, to: string): string {
-    if (from === "draft" && to === "review") return "Submit for review";
-    if (from === "review" && to === "approved") return "Approve";
-    if (from === "approved" && to === "released") return "Release";
-    return `Move to ${to.charAt(0).toUpperCase() + to.slice(1)}`;
-  }
-
   const hasPreviousRevision = timeline.length >= 2;
 
   return (
     <div className="doc-action-bar">
       {/* Title */}
       <div className="doc-action-bar-title">{title}</div>
-
-      {/* State pipeline */}
-      <div className="doc-state-pipeline" aria-label="Document workflow state">
-        {WORKFLOW_STATES.map((state, idx) => {
-          const isDone = currentIdx > idx;
-          const isActive = currentIdx === idx;
-          return (
-            <span key={state} className="doc-state-step" data-active={isActive} data-done={isDone}>
-              {idx > 0 && <span className="doc-state-arrow" aria-hidden="true">›</span>}
-              <span className="doc-state-label">{state}</span>
-            </span>
-          );
-        })}
-      </div>
 
       {/* Actions */}
       <div className="doc-action-bar-actions">
@@ -158,15 +99,6 @@ function DocActionBar({
         <a className="btn btn-secondary" href={pdfUrl} target="_blank" rel="noreferrer">
           Open PDF ↗
         </a>
-        {forwardTransitions.length > 0 && (
-          <button
-            className="btn btn-primary"
-            disabled={transitioning}
-            onClick={() => transition(forwardTransitions[0])}
-          >
-            {transitioning ? "…" : ctaLabel(statusState, forwardTransitions[0])}
-          </button>
-        )}
         <button
           className={`btn btn-secondary doc-drawer-toggle${drawerOpen ? " doc-drawer-toggle--open" : ""}`}
           onClick={onToggleDrawer}
@@ -190,7 +122,6 @@ export function DocumentWorkspace({
   brand,
   slug,
   timeline,
-  currentStatus,
   viewingSha,
   docVersion,
   pdfUrl,
@@ -202,7 +133,6 @@ export function DocumentWorkspace({
   brand: string;
   slug: string;
   timeline: TimelineEntry[];
-  currentStatus: string;
   viewingSha?: string;
   docVersion?: string;
   pdfUrl: string;
@@ -212,7 +142,7 @@ export function DocumentWorkspace({
   docTitle?: string;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerTab, setDrawerTab] = useState<DrawerTab>("changes");
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>("activity");
 
   const [docSourceState, setDocSourceState] = useState(docSource ?? "");
   const parsedComments = useMemo(() => parseComments(docSourceState), [docSourceState]);
@@ -272,7 +202,6 @@ export function DocumentWorkspace({
         brand={brand}
         slug={slug}
         title={title}
-        status={currentStatus}
         canEdit={canEdit}
         pdfUrl={pdfUrl}
         timeline={timeline}
@@ -347,7 +276,7 @@ export function DocumentWorkspace({
         {drawerOpen && (
           <div className="doc-drawer">
             <div className="doc-drawer-tabs">
-              {(["changes", "activity", "details", "comments"] as DrawerTab[]).map((t) => (
+              {(["activity", "details", "comments"] as DrawerTab[]).map((t) => (
                 <button
                   key={t}
                   className="doc-drawer-tab"
@@ -363,20 +292,12 @@ export function DocumentWorkspace({
             </div>
 
             <div className="doc-drawer-body">
-              {drawerTab === "changes" && (
-                <VersionPanel
-                  brand={brand} slug={slug} timeline={timeline}
-                  currentStatus={currentStatus} viewingSha={viewingSha}
-                  docVersion={docVersion} onCompare={runDiff}
-                  comparingSha={compareBase} show="approval"
-                />
-              )}
               {drawerTab === "activity" && (
                 <VersionPanel
                   brand={brand} slug={slug} timeline={timeline}
-                  currentStatus={currentStatus} viewingSha={viewingSha}
+                  viewingSha={viewingSha}
                   docVersion={docVersion} onCompare={runDiff}
-                  comparingSha={compareBase} show="activity"
+                  comparingSha={compareBase}
                 />
               )}
               {drawerTab === "details" && (

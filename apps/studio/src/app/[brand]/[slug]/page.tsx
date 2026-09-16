@@ -165,7 +165,6 @@ export default async function DocumentPage({ params, searchParams }: Props) {
               brand={brand}
               slug={slug}
               timeline={timeline}
-              currentStatus={fm.status || "draft"}
               viewingSha={commitSha}
               docVersion={fm.version}
               pdfUrl={pdfUrl}
@@ -190,19 +189,4 @@ export default async function DocumentPage({ params, searchParams }: Props) {
   );
 }
 
-/** Colour-coded status pill shown next to the document title. */
-function DocStatusPill({ status, timelineLength }: { status?: string; timelineLength: number }) {
-  const s = (status || "draft").toLowerCase();
-  const changeCount = Math.max(0, timelineLength - 1);
-  const label = (() => {
-    if (s === "review") return `🟠 Pending review${changeCount > 0 ? ` · ${changeCount} revision${changeCount === 1 ? "" : "s"}` : ""}`;
-    if (s === "approved") return "✅ Approved";
-    if (s === "released") return "🟢 Released";
-    return "🔵 Draft";
-  })();
-  return (
-    <span className="doc-status-pill" data-status={s}>
-      {label}
-    </span>
-  );
-}
+

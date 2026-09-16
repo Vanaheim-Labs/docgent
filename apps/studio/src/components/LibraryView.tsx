@@ -251,10 +251,7 @@ export function LibraryView({
 
       <div className="content">
         {documents.length === 0 && (
-          <div className="empty">
-            No documents yet. Create one with{" "}
-            <code>docgent new --brand &lt;id&gt; --title &quot;...&quot;</code>
-          </div>
+          <div className="empty">No documents yet.</div>
         )}
 
         {documents.length > 0 && filtered.length === 0 && (
