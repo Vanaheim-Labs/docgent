@@ -279,48 +279,13 @@ export function LibraryView({
                 <option value="last-opened">Last opened</option>
                 <option value="title-az">Title A–Z</option>
               </select>
-              <button
-                type="button"
-                className="view-toggle-btn"
-                data-active={viewMode === "list" ? "true" : "false"}
-                onClick={() => setViewMode("list")}
-                title="List view"
-              >
-                <ListIcon />
-              </button>
-              <button
-                type="button"
-                className="view-toggle-btn"
-                data-active={viewMode === "grid" ? "true" : "false"}
-                onClick={() => setViewMode("grid")}
-                title="Grid view"
-              >
-                <GridIcon />
-              </button>
+
             </div>
           </div>
         )}
 
-        {/* Grid view */}
-        {!bucketParam && viewMode === "grid" && timeGroups && (
-          <div className="doc-grid">
-            {TIME_GROUP_ORDER.map((group) =>
-              timeGroups[group].length > 0 ? (
-                <div className="doc-grid-group" key={group}>
-                  <div className="doc-grid-group-head">{group}</div>
-                  <div className="doc-grid-cards">
-                    {timeGroups[group].map((d) => (
-                      <DocGridCard key={d.path} doc={d} />
-                    ))}
-                  </div>
-                </div>
-              ) : null
-            )}
-          </div>
-        )}
-
         {/* List view */}
-        {(bucketParam || viewMode === "list") && (
+        {(bucketParam || true) && (
           <div className="queue-table">
             {bucketParam ? (
               // Bucket filter active: render workflow-bucket groups
