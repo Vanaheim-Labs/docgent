@@ -1,15 +1,13 @@
 import { auth } from "@/auth";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import type { Metadata } from "next";
 import {
   storesFor,
   repoSlug,
-  listAllDocuments,
-  type DocSummary,
   type TimelineEntry,
 } from "@/lib/store";
 import { fetchDocPreviewMeta } from "@/lib/metadata";
-import { Sidebar } from "@/components/Sidebar";
 import { UserChip } from "@/components/UserChip";
 import { DocumentWorkspace } from "@/components/DocumentWorkspace";
 import { SignInPreview } from "@/components/SignInPreview";
@@ -85,22 +83,11 @@ export default async function DocumentPage({ params, searchParams }: Props) {
   // brand, so what gates access to this brand is the signed-in account's
   // allowed-brand list (auth.ts), the same list middleware.ts already
   // checked to let this request through at all. Checking again here is
-  // defence in depth, and it also scopes the sidebar switcher below.
+  // defence in depth.
   const allowedBrands = (session.user as { allowedBrands?: string[] } | undefined)?.allowedBrands ?? [];
   if (!allowedBrands.includes(brand)) notFound();
 
   const { docs } = await storesFor(brand);
-
-  let documents: DocSummary[] = [];
-  try {
-    // Sidebar spans every brand the signed-in account can reach, so the
-    // switcher works from any document without ever offering one this
-    // account is not allowed to open.
-    const all = (await listAllDocuments()).documents;
-    documents = all.filter((d) => allowedBrands.includes(d.brand));
-  } catch {
-    // sidebar degrades to empty rather than failing the page
-  }
 
   let doc;
   try {
@@ -129,10 +116,12 @@ export default async function DocumentPage({ params, searchParams }: Props) {
     `/api/render/${brand}/${slug}` + (commitSha ? `?ref=${commitSha}` : "");
 
   return (
-    <div className="shell">
-      <Sidebar documents={documents} activeBrand={brand} activeSlug={slug} />
-      <div className="main doc-main">
+    <div className="doc-shell">
+      <div className="doc-main">
         <div className="topbar doc-topbar">
+          <Link href="/" className="doc-topbar-home" title="Docgent Studio">
+            <img src="/docgent-mark.svg" alt="Docgent" className="doc-topbar-logo" />
+          </Link>
           <UserChip />
         </div>
 
@@ -188,5 +177,3 @@ export default async function DocumentPage({ params, searchParams }: Props) {
     </div>
   );
 }
-
-
