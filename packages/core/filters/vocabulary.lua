@@ -89,7 +89,44 @@ function Div(el)
 
   local function has(c) return classes:includes(c) end
 
-  if has('callout') then
+  if has('native-cover') then
+    -- Explicit opt-in: pair with nocover: true. Content is the legal footer;
+    -- all display attributes are escaped text, never author-provided HTML.
+    local out = { raw('<section class="native-cover" aria-label="Document cover">') }
+    local function field(name, tag)
+      local value = el.attributes[name]
+      if value and value ~= '' then
+        tag = tag or 'div'
+        table.insert(out, raw('<' .. tag .. ' class="native-cover-' .. name .. '">' .. esc(value) .. '</' .. tag .. '>'))
+      end
+    end
+    table.insert(out, raw('<header class="native-cover-masthead">'))
+    local logo = el.attributes['logo']
+    if logo and logo ~= '' then
+      table.insert(out, raw('<img class="native-cover-logo" src="' .. esc(logo) .. '" alt="' .. esc(attrget(el, 'logo-alt', '')) .. '">'))
+    end
+    field('eyebrow')
+    table.insert(out, raw('</header><div class="native-cover-introduction">'))
+    field('subtitle')
+    table.insert(out, raw('</div><div class="native-cover-insight">'))
+    field('insight-label')
+    table.insert(out, raw('<p class="native-cover-thesis">'))
+    field('metric', 'strong')
+    field('statement', 'span')
+    field('demand', 'span')
+    table.insert(out, raw('</p>'))
+    field('source')
+    table.insert(out, raw('</div><footer class="native-cover-footer"><div class="native-cover-partners">'))
+    field('partner')
+    field('licence')
+    table.insert(out, raw('</div>'))
+    field('version')
+    table.insert(out, raw('<div class="native-cover-legal">'))
+    for _, b in ipairs(el.content) do table.insert(out, b) end
+    table.insert(out, raw('</div></footer></section>'))
+    return out
+
+  elseif has('callout') then
     -- Accept type=/label= (Tifin convention) alongside kind=/title= (core convention)
     local kind = attrget(el, 'kind', attrget(el, 'type', 'note'))
     local title = el.attributes['title'] or el.attributes['label']

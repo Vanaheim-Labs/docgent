@@ -4,6 +4,24 @@
 version: 1
 
 blocks:
+  - id: native-cover
+    syntax: '::: {.native-cover subtitle="An introduction"}'
+    description: 'Opt-in A4 editorial cover. Place first with nocover: true. Content is exact legal paragraphs; attributes are plain text except logo. Review pagination for each cover.'
+    attrs:
+      logo: { type: string, required: false }
+      logo-alt: { type: string, required: false }
+      eyebrow: { type: string, required: false }
+      subtitle: { type: string, required: true }
+      insight-label: { type: string, required: false }
+      metric: { type: string, required: false }
+      statement: { type: string, required: false }
+      demand: { type: string, required: false }
+      source: { type: string, required: false }
+      partner: { type: string, required: false }
+      licence: { type: string, required: false }
+      version: { type: string, required: false }
+    breakInside: page
+
   - id: callout
     syntax: "::: callout {kind=note|info|warning|risk|success}"
     description: Boxed aside for emphasis, warnings, or notes.
@@ -201,7 +219,8 @@ blocks:
 
   - id: financialtable
     syntax: "::: financialtable {caption=...}"
-    description: Financial statement table with semantic row types. Wrap a pipe
+    description: >-
+      Financial statement table with semantic row types. Wrap a pipe
       table in this block. Prefix the first cell of each row with section:,
       sub:, or tot: to get section-header, subtotal, or grand-total treatment.
       Unprefixed rows render as plain data rows. All columns from col 2 onward
@@ -335,6 +354,7 @@ frontmatter:
     - confidentiality
     - abstract
     - cover_image
+    - nocover
     - toc
     - footer_note
     # Deal/offer documents (investment memoranda, term sheets). Kept in the

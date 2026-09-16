@@ -1263,6 +1263,57 @@ h3 {
   color: var(--accent);
 }
 
+/* ---------- opt-in native editorial cover -------------------------------
+   A4 portrait contract; requires nocover: true and placement before body.
+   Nothing here selects the legacy .cover or changes ordinary page defaults.
+   Text remains native; logo is the only image. Do not hide overflow: overly
+   long author content must remain visible and be caught by pagination tests. */
+@page native-cover {
+  size: A4;
+  margin: 0;
+  @top-left { content: none; }
+  @top-center { content: none; }
+  @top-right { content: none; }
+  @bottom-left { content: none; }
+  @bottom-center { content: none; }
+  @bottom-right { content: none; }
+}
+.native-cover {
+  page: native-cover;
+  box-sizing: border-box;
+  width: 210mm;
+  height: 297mm;
+  position: relative;
+  padding: 23mm 24mm 20mm;
+  margin: 0;
+  break-after: page;
+  background: var(--native-cover-surface, #101e27);
+  color: var(--native-cover-ink, #f5f3ec);
+  font-family: var(--font-sans, sans-serif);
+  font-size: 12pt;
+  line-height: 1.4;
+  text-align: left;
+  hyphens: none;
+}
+.native-cover .native-cover-masthead {
+  border-bottom: 0.5pt solid var(--native-cover-rule, #526264);
+  padding-bottom: 10mm;
+}
+.native-cover .native-cover-logo { width: 61mm; height: auto; display: block; margin: 0 0 9mm; }
+.native-cover .native-cover-eyebrow,
+.native-cover .native-cover-insight-label { font-size: 12pt; letter-spacing: 0.13em; color: var(--native-cover-accent, #b8dcc9); }
+.native-cover .native-cover-introduction { margin-top: 18mm; }
+.native-cover .native-cover-subtitle { font-family: var(--font-serif, Georgia, serif); font-size: 35pt; font-weight: 500; line-height: 1.08; letter-spacing: -0.025em; max-width: 154mm; }
+.native-cover .native-cover-insight { margin-top: 20mm; }
+.native-cover .native-cover-thesis { font-family: var(--font-serif, Georgia, serif); font-size: 21pt; line-height: 1.32; color: inherit; margin: 6mm 0 5mm; text-align: left; }
+.native-cover .native-cover-metric { color: var(--native-cover-accent, #b8dcc9); font-weight: 600; }
+.native-cover .native-cover-source { font-size: 12pt; line-height: 1.45; color: var(--native-cover-muted, #c3cbc8); max-width: 151mm; }
+.native-cover .native-cover-footer { position: absolute; left: 24mm; right: 24mm; bottom: 20mm; border-top: 0.5pt solid var(--native-cover-rule, #526264); padding-top: 6mm; }
+.native-cover .native-cover-partners { display: flex; justify-content: space-between; gap: 8mm; font-size: 12pt; color: var(--native-cover-accent, #b8dcc9); margin-bottom: 6mm; }
+.native-cover .native-cover-partner, .native-cover .native-cover-licence { max-width: 78mm; }
+.native-cover .native-cover-version { font-size: 12pt; letter-spacing: 0.1em; margin-bottom: 4mm; }
+.native-cover .native-cover-legal p { font-size: 12pt; line-height: 1.45; color: var(--native-cover-muted, #c3cbc8); margin: 0; text-align: left; }
+
 /* Figures: tighten caption spacing */
 .figure-caption { margin-top: 0.3rem; }
 
