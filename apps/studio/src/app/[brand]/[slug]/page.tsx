@@ -76,7 +76,7 @@ export default async function DocumentPage({ params, searchParams }: Props) {
   if (!session) {
     const meta = await fetchDocPreviewMeta(brand, slug, commitSha);
     if (!meta) notFound();
-    return <SignInPreview meta={meta} brand={brand} slug={slug} />;
+    return <SignInPreview meta={meta} brand={brand} slug={slug} commitSha={commitSha} />;
   }
 
   // Docgent is one domain with the brand in the path, not one domain per
