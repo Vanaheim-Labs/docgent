@@ -44,7 +44,11 @@ export function Sidebar({
     <aside className="sidebar" data-collapsed={collapsed}>
       <div className="sidebar-head">
         <Link href="/" className="wordmark" style={{ color: "inherit" }} title="Docgent Studio">
-          <img src="/docgent-logo.svg" alt="Docgent" className="wordmark-logo" />
+          <img
+            src={collapsed ? "/docgent-mark.svg" : "/docgent-logo.svg"}
+            alt="Docgent"
+            className={collapsed ? "wordmark-mark" : "wordmark-logo"}
+          />
         </Link>
         {!collapsed && <div className="wordmark-sub">Studio</div>}
         <button
