@@ -51,14 +51,16 @@ export function Sidebar({
           />
         </Link>
         {!collapsed && <div className="wordmark-sub">Studio</div>}
-        <button
-          className="sidebar-collapse-btn"
-          onClick={() => setCollapsed((v) => !v)}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? "›" : "‹"}
-        </button>
+        {!collapsed && (
+          <button
+            className="sidebar-collapse-btn"
+            onClick={() => setCollapsed((v) => !v)}
+            title="Collapse sidebar"
+            aria-label="Collapse sidebar"
+          >
+            ‹
+          </button>
+        )}
       </div>
 
       {collapsed ? (
@@ -79,6 +81,14 @@ export function Sidebar({
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
             </svg>
           </Link>
+          <button
+            className="sidebar-icon-btn sidebar-expand-btn"
+            onClick={() => setCollapsed(false)}
+            title="Expand sidebar"
+            aria-label="Expand sidebar"
+          >
+            ›
+          </button>
         </nav>
       ) : (
         <>

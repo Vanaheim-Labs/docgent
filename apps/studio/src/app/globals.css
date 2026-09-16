@@ -2918,7 +2918,8 @@ kbd {
 .sidebar[data-collapsed="true"] { width: 52px; overflow: hidden; }
 .sidebar[data-collapsed="true"] .sidebar-head { padding: 14px 0; display: flex; flex-direction: column; align-items: center; }
 .sidebar[data-collapsed="true"] .wordmark { justify-content: center; }
-.sidebar-icon-rail { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; }
+.sidebar-icon-rail { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; flex: 1; }
+.sidebar-expand-btn { margin-top: auto; color: var(--ink-faint); font-size: 16px; }
 .sidebar-icon-btn { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 8px; color: var(--ink-soft); text-decoration: none; }
 .sidebar-icon-btn:hover { background: var(--paper-alt); color: var(--ink); text-decoration: none; }
 .sidebar-icon-btn[data-active="true"] { background: var(--accent-soft); color: var(--accent); }
