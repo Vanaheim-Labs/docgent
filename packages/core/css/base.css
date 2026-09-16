@@ -580,6 +580,9 @@ table:not(.datatable table) td {
 .signature-role, .signature-date { color: var(--ink-faint); font-size: 0.78rem; }
 
 /* ---------- toc ---------- */
+/* h1.toc-anchor: native Header node re-inserted by vocabulary.lua so pandoc
+   includes eyebrow-styled H1s in the auto-TOC. Hidden from body flow. */
+h1.toc-anchor { display: none; }
 .toc { break-after: page; }
 .toc h2 { font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); border-bottom: 1pt solid var(--rule); padding-bottom: 0.4rem; }
 .toc ul { list-style: none; padding-left: 0; }

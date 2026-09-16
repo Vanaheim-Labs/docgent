@@ -935,10 +935,19 @@ function Header(el)
     logo_el = raw('<img class="section-opener-logo" src="' .. BRAND_LOGO .. '" alt="" aria-hidden="true">')
   end
 
+  -- Re-insert a native pandoc Header (level 1, unnumbered, hidden via CSS)
+  -- so pandoc's TOC generation includes the H1 group label.  Without this,
+  -- the filter's raw-HTML replacement causes pandoc to drop the H1 from the
+  -- auto-TOC entirely, leaving only H2 entries in the nav (flat, ungrouped).
+  -- The native header is visually hidden (display:none handled by .toc-anchor)
+  -- and must not break page flow, so it is placed *before* the opener div.
+  local toc_anchor = pandoc.Header(1, el.content,
+    pandoc.Attr(el.identifier, {'unnumbered', 'toc-anchor'}, {}))
+
   if logo_el then
-    return { open, ghost, logo_el, string_set, eyebrow, heading, close }
+    return { toc_anchor, open, ghost, logo_el, string_set, eyebrow, heading, close }
   else
-    return { open, ghost, string_set, eyebrow, heading, close }
+    return { toc_anchor, open, ghost, string_set, eyebrow, heading, close }
   end
 end
 
