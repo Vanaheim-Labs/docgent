@@ -58,16 +58,20 @@ export async function GET(
       ? await docs.readAt(brand, slug, ref)
       : await docs.readDocument(brand, slug);
 
-    // Assets live beside the document; the renderer needs them inlined.
+    // Assets (assets/ and figures/) live beside the document; the renderer
+    // needs them inlined.  figures/ holds external SVG files referenced by
+    // ::figure{src="figures/chart.svg"} primitives.
     const dir = `documents/${slug}`;
-    let assetPaths: string[] = [];
-    try {
-      const tree = await git.tree({ ref, prefix: `${dir}/assets/` });
-      assetPaths = tree.entries
-        .filter((e: { type: string; path: string }) => e.type === "file")
-        .map((e: { path: string }) => e.path.slice(dir.length + 1));
-    } catch {
-      // no assets directory is fine
+    const assetPaths: string[] = [];
+    for (const prefix of [`${dir}/assets/`, `${dir}/figures/`]) {
+      try {
+        const tree = await git.tree({ ref, prefix });
+        for (const e of tree.entries as { type: string; path: string }[]) {
+          if (e.type === "file") assetPaths.push(e.path.slice(dir.length + 1));
+        }
+      } catch {
+        // missing directory is fine
+      }
     }
 
     const assets = await collectAssetsFromGit(git, dir, assetPaths, ref);
