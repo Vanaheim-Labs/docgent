@@ -120,7 +120,7 @@ export default async function DocumentPage({ params, searchParams }: Props) {
       <div className="doc-main">
         <div className="topbar doc-topbar">
           <Link href="/" className="doc-topbar-home" title="Docgent Studio">
-            <img src="/docgent-mark.svg" alt="Docgent" className="doc-topbar-logo" />
+            <img src="/docgent-logo.svg" alt="Docgent" className="doc-topbar-logo" />
           </Link>
           <UserChip />
         </div>

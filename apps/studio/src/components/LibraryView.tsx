@@ -244,7 +244,9 @@ export function LibraryView({
               {filtered.length} of {documents.length} document{documents.length === 1 ? "" : "s"}
             </div>
           )}
-          <h1 className="doc-title">Documents</h1>
+          <a href="/" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
+            <img src="/docgent-logo.svg" alt="Docgent" style={{ height: 22, width: "auto", display: "block" }} />
+          </a>
         </div>
         {userChip}
       </div>
