@@ -151,6 +151,8 @@ export function VersionPanel({
   docVersion,
   onCompare,
   comparingSha,
+  baseSha,
+  editLockReason,
 }: {
   brand: string;
   slug: string;
@@ -159,6 +161,8 @@ export function VersionPanel({
   onCompare: (baseSha: string, revision?: number) => void;
   comparingSha?: string | null;
   docVersion?: string;
+  baseSha?: string;
+  editLockReason?: string;
 }) {
   const [restoring, setRestoring] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
@@ -192,12 +196,12 @@ export function VersionPanel({
    * rather than opening in the editor first.
    */
   const restore = useCallback(async (sha: string, revision: number) => {
+    if (editLockReason || !baseSha) return;
     if (!window.confirm(
       `Restore revision ${revision} (${sha.slice(0, 7)})?\n\n` +
       "This writes its content back as a new revision on top of the current one. " +
       "Nothing in the history is rewritten.\n\n" +
-      "Note: this also restores that revision's frontmatter version, which may " +
-      "move the document version backwards."
+      "The document version will advance. Signed-off issues cannot be restored."
     )) return;
 
     setRestoring(sha);
@@ -206,7 +210,7 @@ export function VersionPanel({
       const res = await fetch(`/api/restore/${brand}/${slug}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ref: sha }),
+        body: JSON.stringify({ ref: sha, baseSha }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -219,7 +223,7 @@ export function VersionPanel({
     } finally {
       setRestoring(null);
     }
-  }, [brand, slug]);
+  }, [brand, slug, baseSha, editLockReason]);
 
   return (
     <>
@@ -368,7 +372,8 @@ export function VersionPanel({
                         {!t.isCurrent && (
                           <button
                             className="version-action"
-                            disabled={restoring !== null}
+                            disabled={restoring !== null || !baseSha || Boolean(editLockReason)}
+                            title={editLockReason || (!baseSha ? "Return to the current document before restoring." : undefined)}
                             onClick={() => restore(t.sha, t.version)}
                           >
                             {restoring === t.sha ? "Restoring…" : "Restore"}

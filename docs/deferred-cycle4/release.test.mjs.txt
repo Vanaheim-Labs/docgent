@@ -1,0 +1,57 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {load} from './load-module.mjs';
+const ctx={params:Promise.resolve({brand:'example',slug:'doc'})}, sha='a'.repeat(40);
+const auth={'@/lib/agent-auth':{authorizeRequest:async()=>({ok:true,via:'session',author:{name:'Human',email:'human@example.test'}})}};
+test('cycle 4: release fails closed without a durable archive, before status commit',async()=>{
+ let writes=0;
+ const cache=load('lib/pdf-cache.ts');
+ const route=load('app/api/status/[brand]/[slug]/route.ts',{
+  ...auth,'@/lib/pdf-cache':cache,
+  '@/lib/release':{archiveRelease:async()=>{throw new Error('release archive unavailable');}},
+  '@/lib/vocabulary':{loadVocabulary:()=>({frontmatter:{enums:{status:['released']}}})},
+  '@/lib/store':{storesFor:async()=>({docs:{readDocument:async()=>({sha,content:'---\nstatus: approved\n---\nBody',frontmatter:{status:'approved'}}),saveDocument:async()=>{writes++;return {changed:true};}}})},
+ });
+ const res=await route.POST(new Request('https://local',{method:'POST',body:JSON.stringify({to:'released',baseSha:sha})}),ctx);
+ assert.equal(res.status,503);assert.equal(writes,0);
+});
+test('cycle 4: preview pins source and assets to the resolved commit, not moving HEAD',async()=>{
+ const reads=[];
+ const cache={pdfStore:()=>({get:async()=>null,put:async()=>{throw new Error('offline');}}),cacheKey:()=> 'key',cacheDriver:()=> 'memory'};
+ const route=load('app/api/render/[brand]/[slug]/route.ts',{
+  ...auth,'@/lib/pdf-cache':cache,'@/lib/release':{releaseKey:()=> 'release-key'},
+  '@/lib/store':{storesFor:async()=>({git:{head:async()=>sha,tree:async(opts)=>{reads.push(opts.ref);return {entries:[]};}},docs:{timeline:async()=>[{sha}],readAt:async(b,s,ref)=>{reads.push(ref);return {content:'draft',frontmatter:{status:'draft'}};},readDocument:async()=>{reads.push('MOVING_HEAD');return {content:'draft'};}}})},
+  '@/lib/render':{collectAssetsFromGit:async(g,d,p,ref)=>{reads.push(ref);return {};},renderMarkdown:async()=>({pdf:Buffer.from('%PDF-test'),renderMs:1})},
+ });
+ const res=await route.GET(new Request('https://local'),ctx);
+ assert.equal(res.status,200);assert.ok(reads.length>=3);assert.ok(reads.every(x=>x===sha),JSON.stringify(reads));
+});
+test('cycle 4: mutable ref is rejected, never cached as immutable output',async()=>{
+ let touched=false;
+ const route=load('app/api/render/[brand]/[slug]/route.ts',{
+ ...auth,'@/lib/store':{storesFor:async()=>{touched=true;throw new Error('unexpected');}},'@/lib/render':{},'@/lib/pdf-cache':{},'@/lib/release':{},
+ });
+ assert.equal((await route.GET(new Request('https://local?ref=main'),ctx)).status,400);assert.equal(touched,false);
+});
+test('cycle 4: archive writes and verifies exact rendered bytes; rejects memory and readback mismatch',async()=>{
+ for(const mode of ['memory','mismatch','durable']){
+  const events=[];let stored;
+  const {archiveRelease}=load('lib/release.ts',{
+   '@/lib/pdf-cache':{cacheDriver:()=>mode==='memory'?'memory':'r2',pdfStore:()=>({get:async()=>mode==='mismatch'?Buffer.from('wrong'):stored,put:async(k,p)=>{events.push('put');stored=p;}})},
+   '@/lib/render':{renderMarkdown:async(text)=>{events.push(text);return {pdf:Buffer.from('%PDF-exact')};}},
+  });
+  const run=()=>archiveRelease({brand:'example',slug:'doc',content:'---\nstatus: released\n---\nBody',baseSha:sha,git:{head:async()=>sha,tree:async()=>({entries:[],truncated:false})},docs:{readDocument:async()=>({sha})}});
+  if(mode==='durable'){await run();assert.equal(stored.toString(),'%PDF-exact');assert.equal(events.length,2);}else await assert.rejects(run());
+ }
+});
+test('cycle 4: durable driver propagates write failure and uses conditional creation',async()=>{
+ const saved={...process.env};const oldFetch=globalThis.fetch;
+ try{
+  process.env.DOCGENT_PDF_CACHE_ENDPOINT='https://archive.invalid';process.env.DOCGENT_PDF_CACHE_BUCKET='test';process.env.DOCGENT_PDF_CACHE_TOKEN='test-placeholder';
+  let headers;
+  globalThis.fetch=async(url,opts)=>{headers=opts.headers;return new Response('',{status:503});};
+  const {pdfStore}=load('lib/pdf-cache.ts');
+  await assert.rejects(pdfStore().put('key',Buffer.from('pdf')));
+  assert.equal(headers['If-None-Match'],'*');
+ }finally{globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in saved))delete process.env[k];Object.assign(process.env,saved);}
+});

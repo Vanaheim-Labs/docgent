@@ -155,6 +155,7 @@ export default async function DocumentPage({ params, searchParams }: Props) {
               slug={slug}
               timeline={timeline}
               viewingSha={commitSha}
+              baseSha={!commitSha && "sha" in doc ? doc.sha : undefined}
               docVersion={fm.version}
               pdfUrl={pdfUrl}
               canEdit={!commitSha}

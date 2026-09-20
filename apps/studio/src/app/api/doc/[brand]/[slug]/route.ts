@@ -1,4 +1,4 @@
-import { auth } from "@/auth";
+import { editorialGuard } from "@/lib/editorial-policy";
 import { storesFor, agentTokenValidForBrand } from "@/lib/store";
 import { loadVocabulary } from "@/lib/vocabulary";
 import { validateMarkdown } from "@/lib/validate-client";
@@ -101,6 +101,13 @@ export async function PUT(
     const { docs } = await storesFor(brand);
     const author = authz.author;
 
+    const head = await docs.readDocument(brand, slug).catch((e: { name?: string }) => {
+      if (e.name === "NotFoundError") return null;
+      throw e;
+    });
+    const blocked = editorialGuard(head, content, baseSha);
+    if (blocked) return blocked;
+
     const result = await docs.saveDocument(brand, slug, content, {
       baseSha,
       author,
@@ -151,12 +158,20 @@ export async function DELETE(
 
   try {
     const { docs } = await storesFor(brand);
+    const head = await docs.readDocument(brand, slug);
+    const baseSha = req.headers.get("if-match");
+    const blocked = editorialGuard(head, head.content, baseSha);
+    if (blocked) return blocked;
     const result = await docs.deleteDocument(brand, slug, {
+      baseSha,
       author: authz.author,
       message: `docs(${brand}/${slug}): delete via agent API`,
     });
     return Response.json({ deleted: result.deleted, slug, commit: result.commit });
   } catch (e) {
+    if ((e as { name?: string }).name === "StaleWriteError") {
+      return Response.json({ error: "stale", hint: "Reload and inspect the changed document before deleting." }, { status: 409 });
+    }
     if (e instanceof NotFoundError || (e as { name?: string }).name === "NotFoundError") {
       return Response.json({ error: `document not found: ${brand}/${slug}` }, { status: 404 });
     }
