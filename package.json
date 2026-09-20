@@ -14,5 +14,10 @@
     "test": "node --test packages/git-store/test/*.test.mjs apps/studio/test/*.test.mjs",
     "validate": "node packages/vocabulary/src/validate.mjs",
     "docgent": "node packages/cli/src/docgent.mjs"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.23"
+    }
   }
 }

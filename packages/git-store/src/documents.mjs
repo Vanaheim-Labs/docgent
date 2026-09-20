@@ -5,7 +5,7 @@
  * documents: where they live, what a version timeline means, and how to
  * commit an edit with proper attribution and a useful message.
  */
-import { GitStore, NotFoundError } from "./index.mjs";
+import { GitStore, NotFoundError, StaleWriteError } from "./index.mjs";
 import { parseFrontmatter } from "@docgent/core/yaml";
 
 const DOC_ROOT = "documents";
@@ -201,11 +201,12 @@ export class DocumentStore {
    * The message defaults to a conventional commit that clearly identifies
    * the deletion in the brand's document history.
    */
-  async deleteDocument(brand, slug, { author, message } = {}) {
+  async deleteDocument(brand, slug, { author, message, baseSha } = {}) {
     const path = docPath(brand, slug);
     // readFile throws NotFoundError when the file is absent — let it bubble
     // so the API route can turn it into a 404 without an extra check here.
     const current = await this.git.readFile(path);
+    if (!baseSha || current.sha !== baseSha) throw new StaleWriteError(path, { expected: baseSha, actual: current.sha });
     const commitMessage = message || `docs(${brand}/${slug}): delete via agent API`;
     const result = await this.git.deleteFile(path, {
       message: commitMessage,

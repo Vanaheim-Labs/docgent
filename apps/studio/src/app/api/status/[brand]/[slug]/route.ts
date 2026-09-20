@@ -40,7 +40,10 @@ export async function POST(
     return Response.json({ error: "expected a JSON body" }, { status: 400 });
   }
 
+  if (!body || typeof body !== "object") return Response.json({ error: "expected an object" }, { status: 400 });
   const to = body.to;
+  if (authz.via !== "session") return Response.json({ error: "human_review_required", hint: "Sign in to Studio to change lifecycle status." }, { status: 403 });
+  if (typeof body.baseSha !== "string" || !/^[a-f0-9]{40}$/.test(body.baseSha)) return Response.json({ error: "version_required", hint: "Read the document and send its exact blob SHA as baseSha." }, { status: 428 });
   if (!to) return Response.json({ error: "'to' status is required" }, { status: 400 });
 
   const vocab = loadVocabulary();
@@ -55,6 +58,7 @@ export async function POST(
   try {
     const { docs } = await storesFor(brand);
     const doc = await docs.readDocument(brand, slug);
+    if (body.baseSha !== doc.sha) return Response.json({ error: "stale", hint: "Reload and inspect the changed document before reviewing." }, { status: 409 });
     const from = doc.frontmatter?.status || "draft";
 
     const permitted = TRANSITIONS[from] ?? [];
@@ -82,11 +86,14 @@ export async function POST(
       : `${fmBody}\nstatus: ${to}`;
     const newContent = open + newFm + close + content.slice(fmMatch[0].length);
 
+    // Legacy lifecycle transition only; durable PDF release is deferred.
+
     const who = authz.author.name;
     const email = authz.author.email;
 
     // Commit trailers keep the audit trail inside git itself.
     const trailers = [
+      `Reviewed-Blob: ${body.baseSha}`,
       `Status-From: ${from}`,
       `Status-To: ${to}`,
       `Approved-By: ${who} <${email}>`,
@@ -100,7 +107,7 @@ export async function POST(
       trailers.join("\n");
 
     const result = await docs.saveDocument(brand, slug, newContent, {
-      baseSha: body.baseSha || doc.sha,
+      baseSha: body.baseSha,
       author: { name: who, email },
       message,
     });

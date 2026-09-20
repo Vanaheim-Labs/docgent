@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { TimelineEntry } from "@/lib/store";
 import { VersionPanel } from "@/components/VersionPanel";
+import { ReviewControls } from "@/components/ReviewControls";
 import { DiffView, type DiffResult } from "@/components/DiffView";
 import { CommentsPanel } from "@/components/CommentsPanel";
 import { parseComments, setCommentResolved } from "@/lib/comments";
@@ -129,6 +130,7 @@ export function DocumentWorkspace({
   docMeta,
   docSource,
   docTitle,
+  baseSha,
 }: {
   brand: string;
   slug: string;
@@ -140,6 +142,7 @@ export function DocumentWorkspace({
   docMeta?: DocMeta;
   docSource?: string;
   docTitle?: string;
+  baseSha?: string;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("activity");
@@ -193,6 +196,13 @@ export function DocumentWorkspace({
     ? `r${timeline.find((t) => t.sha === viewingSha)?.version ?? "?"}`
     : "current";
 
+  const status = docMeta?.status || "draft";
+  const editLockReason = !["draft", "review"].includes(status)
+    ? status === "approved"
+      ? "This issue is locked. Return approved work to review through the human status controls before editing or restoring."
+      : "This issue is locked. Create a new document for released or superseded work."
+    : undefined;
+  const editorialCanEdit = canEdit && !editLockReason;
   const title = docTitle || docMeta?.type || slug;
 
   return (
@@ -202,7 +212,7 @@ export function DocumentWorkspace({
         brand={brand}
         slug={slug}
         title={title}
-        canEdit={canEdit}
+        canEdit={editorialCanEdit}
         pdfUrl={pdfUrl}
         timeline={timeline}
         onCompare={runDiff}
@@ -211,6 +221,7 @@ export function DocumentWorkspace({
         openCommentCount={openCommentCount}
       />
 
+      {editLockReason && <div className="banner" role="status">{editLockReason}</div>}
       {/* Main content area: PDF (or diff) + optional drawer */}
       <div className="doc-workspace-body" data-drawer-open={drawerOpen}>
         {/* PDF / Diff pane — fills the space */}
@@ -296,12 +307,15 @@ export function DocumentWorkspace({
                 <VersionPanel
                   brand={brand} slug={slug} timeline={timeline}
                   viewingSha={viewingSha}
+                  baseSha={baseSha}
+                  editLockReason={editLockReason}
                   docVersion={docVersion} onCompare={runDiff}
                   comparingSha={compareBase}
                 />
               )}
               {drawerTab === "details" && (
                 <div className="panel">
+                  <ReviewControls brand={brand} slug={slug} baseSha={baseSha} status={docMeta?.status} source={docSource ?? ""} />
                   <div className="panel-head">Details</div>
                   <div className="panel-body">
                     {docMeta ? (
@@ -324,9 +338,9 @@ export function DocumentWorkspace({
               {drawerTab === "comments" && (
                 <CommentsPanel
                   comments={parsedComments}
-                  onResolve={canEdit ? handleResolveComment : undefined}
-                  canEdit={canEdit}
-                  editHref={canEdit ? `/${brand}/${slug}/edit` : undefined}
+                  onResolve={editorialCanEdit ? handleResolveComment : undefined}
+                  canEdit={editorialCanEdit}
+                  editHref={editorialCanEdit ? `/${brand}/${slug}/edit` : undefined}
                 />
               )}
             </div>

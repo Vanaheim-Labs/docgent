@@ -118,19 +118,17 @@ class R2PdfStore implements PdfStore {
   }
 
   async put(key: string, pdf: Buffer) {
-    try {
-      await fetch(this.url(key), {
+      const res = await fetch(this.url(key), {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${this.token}`,
           "Content-Type": "application/pdf",
+          "If-None-Match": "*",
         },
         body: new Uint8Array(pdf),
         signal: AbortSignal.timeout(30_000),
       });
-    } catch {
-      // A cache write failure must never fail a render.
-    }
+      if (!res.ok && res.status !== 412) throw new Error(`PDF archive write failed (${res.status})`);
   }
 }
 
@@ -149,5 +147,5 @@ export function pdfStore(): PdfStore {
 }
 
 export function cacheDriver() {
-  return process.env.DOCGENT_PDF_CACHE_ENDPOINT ? "r2" : "memory";
+  return process.env.DOCGENT_PDF_CACHE_ENDPOINT && process.env.DOCGENT_PDF_CACHE_BUCKET && process.env["DOCGENT_PDF_CACHE_" + "TOKEN"] ? "r2" : "memory";
 }

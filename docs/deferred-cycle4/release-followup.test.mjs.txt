@@ -1,0 +1,41 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {load} from './load-module.mjs';
+const sha='a'.repeat(40),ctx={params:Promise.resolve({brand:'example',slug:'doc'})};
+test('cycle 2 follow-up: explicit agent credential never inherits human session authority',async()=>{
+ const {authorizeRequest}=load('lib/agent-auth.ts',{
+  '@/auth':{auth:async()=>({user:{email:'human@example.test',allowedBrands:['example']}})},
+  '@/lib/store':{agentTokenValidForBrand:()=>true,agentAuthorForBrand:()=>({name:'Agent',email:'agent@example.test'})},
+ });
+ assert.equal((await authorizeRequest(new Request('https://local',{headers:{authorization:'Bearer test-placeholder'}}),'example')).via,'agent-token');
+});
+test('cycle 4 follow-up: superseding preserves exact archived identity including blank lines',()=>{
+ const {releaseKey}=load('lib/release.ts',{'@/lib/pdf-cache':{},'@/lib/render':{}});
+ const content='---\nstatus: released\n\ntitle: Test\n---\nBody\nstatus: superseded\n';
+ assert.equal(releaseKey('example','doc',content),releaseKey('example','doc',content.replace('status: released','status: superseded')));
+});
+test('cycle 4 follow-up: released PDF is retrieved, never regenerated on archive miss',async()=>{
+ for(const hit of [true,false]){
+  let renders=0;
+  const route=load('app/api/render/[brand]/[slug]/route.ts',{
+   '@/lib/agent-auth':{authorizeRequest:async()=>({ok:true,via:'session'})},
+   '@/lib/store':{storesFor:async()=>({git:{head:async()=>sha},docs:{readAt:async()=>({content:'released',frontmatter:{status:'released'}})}})},
+   '@/lib/release':{releaseKey:()=> 'archive-key'},
+   '@/lib/pdf-cache':{cacheDriver:()=> 'r2',cacheKey:()=> 'preview-key',pdfStore:()=>({get:async key=>{assert.equal(key,'archive-key');return hit?Buffer.from('%PDF-issued'):null;}})},
+   '@/lib/render':{renderMarkdown:()=>{renders++;throw new Error('must not render');}},
+  });
+  const res=await route.GET(new Request('https://local'),ctx);
+  assert.equal(res.status,hit?200:503);assert.equal(renders,0);if(hit)assert.equal(await res.text(),'%PDF-issued');
+ }
+});
+test('cycle 4 follow-up: status commit follows verified archive and records its identity',async()=>{
+ const events=[];let written;
+ const route=load('app/api/status/[brand]/[slug]/route.ts',{
+  '@/lib/agent-auth':{authorizeRequest:async()=>({ok:true,via:'session',author:{name:'Human',email:'human@example.test'}})},
+  '@/lib/vocabulary':{loadVocabulary:()=>({frontmatter:{enums:{status:['released']}}})},
+  '@/lib/store':{storesFor:async()=>({git:{},docs:{readDocument:async()=>({sha,content:'---\nstatus: approved\n---\nBody',frontmatter:{status:'approved'}}),saveDocument:async(b,s,c,opts)=>{events.push('commit');written=opts;return {changed:true,sha};}}})},
+  '@/lib/release':{archiveRelease:async opts=>{assert.match(opts.content,/status: released/);assert.equal(opts.baseSha,sha);events.push('archive');return {sha256:'digest',sourceCommit:sha,key:'archive-key'};}},
+ });
+ assert.equal((await route.POST(new Request('https://local',{method:'POST',body:JSON.stringify({to:'released',baseSha:sha})}),ctx)).status,200);
+ assert.deepEqual(events,['archive','commit']);assert.match(written.message,/Release-PDF-SHA256: digest/);
+});

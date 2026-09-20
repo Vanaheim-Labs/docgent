@@ -14,8 +14,8 @@
     "@docgent/git-store": "*",
     "@docgent/vocabulary": "*",
     "@vercel/og": "^1.0.1",
-    "next": "15.5.23",
-    "next-auth": "5.0.0-beta.25",
+    "next": "15.5.25",
+    "next-auth": "5.0.0-beta.32",
     "react": "19.0.0",
     "react-dom": "19.0.0"
   },

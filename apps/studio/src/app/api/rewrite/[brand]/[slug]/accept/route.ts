@@ -1,4 +1,6 @@
 import { auth } from "@/auth";
+import { authorizeRequest } from "@/lib/agent-auth";
+import { editorialGuard } from "@/lib/editorial-policy";
 import { storesFor } from "@/lib/store";
 import { loadVocabulary } from "@/lib/vocabulary";
 import { validateMarkdown } from "@/lib/validate-client";
@@ -34,6 +36,8 @@ export async function POST(
   if (!session?.user) return new Response("unauthorised", { status: 401 });
 
   const { brand, slug } = await ctx.params;
+  const authz = await authorizeRequest(req, brand);
+  if (!authz.ok || authz.via !== "session") return new Response("forbidden", { status: 403 });
 
   let body: {
     content?: string;
@@ -92,6 +96,9 @@ export async function POST(
 
   try {
     const { docs } = await storesFor(brand);
+    const head = await docs.readDocument(brand, slug);
+    const blocked = editorialGuard(head, content, baseSha);
+    if (blocked) return blocked;
     const author = {
       name:
         session.user.name ||

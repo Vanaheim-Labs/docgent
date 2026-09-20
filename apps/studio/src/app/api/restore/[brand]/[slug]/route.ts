@@ -1,4 +1,5 @@
 import { storesFor } from "@/lib/store";
+import { editorialGuard } from "@/lib/editorial-policy";
 import { loadVocabulary } from "@/lib/vocabulary";
 import { validateMarkdown } from "@/lib/validate-client";
 import { authorizeRequest } from "@/lib/agent-auth";
@@ -72,7 +73,7 @@ export async function POST(
 
     // Carry HEAD's status forward into the restored content.
     let content: string = source.content;
-    const headStatus = head.frontmatter?.status;
+    const headStatus = head.frontmatter?.status || "draft";
     if (headStatus) {
       const fmMatch = content.match(/^(---\n)([\s\S]*?)(\n---\n)/);
       if (fmMatch) {
@@ -83,6 +84,9 @@ export async function POST(
         content = open + newFm + close + content.slice(fmMatch[0].length);
       }
     }
+
+    const blocked = editorialGuard(head, content, body.baseSha);
+    if (blocked) return blocked;
 
     // Reject a restore that would change nothing. Compared before the version
     // bump and with the version line normalised away, since the bump would
@@ -155,7 +159,7 @@ export async function POST(
       trailers.join("\n");
 
     const result = await docs.saveDocument(brand, slug, content, {
-      baseSha: body.baseSha || head.sha,
+      baseSha: body.baseSha,
       author: { name: who, email },
       message,
     });
