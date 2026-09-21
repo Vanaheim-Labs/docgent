@@ -32,12 +32,17 @@ Git-native version control, built for agent-speed editing:
   recommendation is recognised as moved, not deleted-and-recreated.
 - **Content-addressed, immutable rendering** — every PDF is keyed to the exact
   commit that produced it.
-- **Approval gates as ordinary git commits** — draft → review → approved →
-  released → superseded, with sign-off captured as commit trailers
-  (`Approved-By`, `Approved-At`).
-- AI rewrites are proposals, never direct commits — a rewrite request returns
-  text held in memory; a human sees a diff, and only an accepted proposal
-  commits.
+- **Nonblocking lifecycle labels** — draft, review, approved, released and
+  superseded remain valid statuses, not edit locks. Authorized humans and agents
+  can change status directly; changes are ordinary Git commits.
+- AI rewrite requests return proposals held in memory. Authorized humans or
+  brand-scoped bearer agents can accept them, or edit directly via PUT. Human
+  review is optional, not an API requirement. Every write is versioned.
+- Status labels persist across edits; they do not prove the current source was
+  reviewed. Earlier sign-offs refer to their recorded versions in Git history.
+
+See [free-flowing editing](docs/free-flowing-editing.md) for the API contract,
+remaining limits and companion skill updates.
 
 ## Layout
 
@@ -85,7 +90,7 @@ Key API surface (`apps/studio/src/app/api/`):
 
 - `docs/[brand]`, `doc/[brand]/[slug]` — document discovery + read
 - `diff/[brand]/[slug]`, `status/[brand]/[slug]` — semantic diff, lifecycle status
-- `rewrite/[brand]/[slug]` (+ `/accept`) — AI rewrite proposal → human-reviewed accept
+- `rewrite/[brand]/[slug]` (+ `/accept`) — AI rewrite proposal → human or agent accept
 - `render/[brand]/[slug]`, `preview/[brand]/[slug]` — PDF render, live HTML preview
 - `restore/[brand]/[slug]` — one-click version restore
 - `auth/check/[brand]` — per-brand access check

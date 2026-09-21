@@ -152,7 +152,6 @@ export function VersionPanel({
   onCompare,
   comparingSha,
   baseSha,
-  editLockReason,
 }: {
   brand: string;
   slug: string;
@@ -162,7 +161,6 @@ export function VersionPanel({
   comparingSha?: string | null;
   docVersion?: string;
   baseSha?: string;
-  editLockReason?: string;
 }) {
   const [restoring, setRestoring] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
@@ -196,12 +194,12 @@ export function VersionPanel({
    * rather than opening in the editor first.
    */
   const restore = useCallback(async (sha: string, revision: number) => {
-    if (editLockReason || !baseSha) return;
+    if (!baseSha) return;
     if (!window.confirm(
       `Restore revision ${revision} (${sha.slice(0, 7)})?\n\n` +
       "This writes its content back as a new revision on top of the current one. " +
       "Nothing in the history is rewritten.\n\n" +
-      "The document version will advance. Signed-off issues cannot be restored."
+      "The document version will advance. Lifecycle status does not prevent restoring."
     )) return;
 
     setRestoring(sha);
@@ -223,7 +221,7 @@ export function VersionPanel({
     } finally {
       setRestoring(null);
     }
-  }, [brand, slug, baseSha, editLockReason]);
+  }, [brand, slug, baseSha]);
 
   return (
     <>
@@ -372,8 +370,8 @@ export function VersionPanel({
                         {!t.isCurrent && (
                           <button
                             className="version-action"
-                            disabled={restoring !== null || !baseSha || Boolean(editLockReason)}
-                            title={editLockReason || (!baseSha ? "Return to the current document before restoring." : undefined)}
+                            disabled={restoring !== null || !baseSha}
+                            title={!baseSha ? "Return to the current document before restoring." : undefined}
                             onClick={() => restore(t.sha, t.version)}
                           >
                             {restoring === t.sha ? "Restoring…" : "Restore"}

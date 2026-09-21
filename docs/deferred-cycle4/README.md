@@ -11,7 +11,7 @@ The `.txt` snapshots in this directory preserve the rejected local archive helpe
 
 ## Current deployable subset
 
-No archive flag exists. Configuration cannot enable the experiment. The status route performs the legacy Git lifecycle transition with the new human/exact-source-SHA protections. All PDF statuses use disposable preview caching and regenerate on a miss. Preview source/assets are pinned to one commit, but renderer/template drift is possible. These are not archived/original issued PDFs. Diagnostics always report archive capability false and deferred, independently of cache configuration.
+No archive flag exists. Configuration cannot enable the experiment. The status route performs the legacy Git lifecycle transition with brand authorization and exact-source-SHA protections; humans and agents can change status. All PDF statuses use disposable preview caching and regenerate on a miss. Preview source/assets are pinned to one commit, but renderer/template drift is possible. These are not archived/original issued PDFs. Diagnostics always report archive capability false and deferred, independently of cache configuration.
 
 ## Re-entry acceptance gates
 

@@ -196,13 +196,6 @@ export function DocumentWorkspace({
     ? `r${timeline.find((t) => t.sha === viewingSha)?.version ?? "?"}`
     : "current";
 
-  const status = docMeta?.status || "draft";
-  const editLockReason = !["draft", "review"].includes(status)
-    ? status === "approved"
-      ? "This issue is locked. Return approved work to review through the human status controls before editing or restoring."
-      : "This issue is locked. Create a new document for released or superseded work."
-    : undefined;
-  const editorialCanEdit = canEdit && !editLockReason;
   const title = docTitle || docMeta?.type || slug;
 
   return (
@@ -212,7 +205,7 @@ export function DocumentWorkspace({
         brand={brand}
         slug={slug}
         title={title}
-        canEdit={editorialCanEdit}
+        canEdit={canEdit}
         pdfUrl={pdfUrl}
         timeline={timeline}
         onCompare={runDiff}
@@ -221,7 +214,6 @@ export function DocumentWorkspace({
         openCommentCount={openCommentCount}
       />
 
-      {editLockReason && <div className="banner" role="status">{editLockReason}</div>}
       {/* Main content area: PDF (or diff) + optional drawer */}
       <div className="doc-workspace-body" data-drawer-open={drawerOpen}>
         {/* PDF / Diff pane — fills the space */}
@@ -308,7 +300,6 @@ export function DocumentWorkspace({
                   brand={brand} slug={slug} timeline={timeline}
                   viewingSha={viewingSha}
                   baseSha={baseSha}
-                  editLockReason={editLockReason}
                   docVersion={docVersion} onCompare={runDiff}
                   comparingSha={compareBase}
                 />
@@ -338,9 +329,9 @@ export function DocumentWorkspace({
               {drawerTab === "comments" && (
                 <CommentsPanel
                   comments={parsedComments}
-                  onResolve={editorialCanEdit ? handleResolveComment : undefined}
-                  canEdit={editorialCanEdit}
-                  editHref={editorialCanEdit ? `/${brand}/${slug}/edit` : undefined}
+                  onResolve={canEdit ? handleResolveComment : undefined}
+                  canEdit={canEdit}
+                  editHref={canEdit ? `/${brand}/${slug}/edit` : undefined}
                 />
               )}
             </div>
