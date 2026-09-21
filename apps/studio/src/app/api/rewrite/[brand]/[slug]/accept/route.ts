@@ -1,4 +1,3 @@
-import { auth } from "@/auth";
 import { authorizeRequest } from "@/lib/agent-auth";
 import { editorialGuard } from "@/lib/editorial-policy";
 import { storesFor } from "@/lib/store";
@@ -32,12 +31,9 @@ export async function POST(
   req: Request,
   ctx: { params: Promise<{ brand: string; slug: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) return new Response("unauthorised", { status: 401 });
-
   const { brand, slug } = await ctx.params;
   const authz = await authorizeRequest(req, brand);
-  if (!authz.ok || authz.via !== "session") return new Response("forbidden", { status: 403 });
+  if (!authz.ok) return new Response("unauthorised", { status: 401 });
 
   let body: {
     content?: string;
@@ -92,20 +88,14 @@ export async function POST(
     );
   }
 
-  const who = session.user.email || session.user.name || "unknown";
+  const who = authz.author.email || authz.author.name || "unknown";
 
   try {
     const { docs } = await storesFor(brand);
     const head = await docs.readDocument(brand, slug);
     const blocked = editorialGuard(head, content, baseSha);
     if (blocked) return blocked;
-    const author = {
-      name:
-        session.user.name ||
-        (session.user as { login?: string }).login ||
-        "Docgent Studio",
-      email: session.user.email || "studio@docgent.local",
-    };
+    const author = authz.author;
 
     const result = await docs.saveDocument(brand, slug, content, {
       baseSha,

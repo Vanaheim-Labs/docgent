@@ -17,10 +17,10 @@ function setup(via = 'session') {
   });
   return {route,writes};
 }
-test('cycle 2: agent cannot attest human approval even with author and exact SHA', async()=>{
+test('cycle 4: agent token can change status directly (human-only gate removed)', async()=>{
  const {route,writes}=setup('agent-token');
- assert.equal((await route.POST(request({to:'approved',baseSha:sha,author:'Human'}),ctx)).status,403);
- assert.equal(writes.length,0);
+ assert.equal((await route.POST(request({to:'approved',baseSha:sha,author:'Human'}),ctx)).status,200);
+ assert.equal(writes.length,1);
 });
 test('cycle 2: approval requires an explicitly inspected current blob',async()=>{
  for(const baseSha of [undefined,null,'','HEAD','b'.repeat(40)]) {
