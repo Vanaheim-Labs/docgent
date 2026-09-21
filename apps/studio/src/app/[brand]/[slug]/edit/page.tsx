@@ -24,20 +24,6 @@ export default async function EditPage({ params }: Props) {
     notFound();
   }
 
-  const status = doc.frontmatter?.status || "draft";
-  if (!["draft", "review"].includes(status)) {
-    return (
-      <div className="content">
-        <div className="banner" role="status">
-          This issue is locked. {status === "approved"
-            ? "Return approved work to review through the document's human status controls before editing or restoring."
-            : "Create a new document for released or superseded work."}
-        </div>
-        <Link href={`/${brand}/${slug}`}>Back to document</Link>
-      </div>
-    );
-  }
-
   let vocabulary;
   try {
     vocabulary = loadVocabulary();

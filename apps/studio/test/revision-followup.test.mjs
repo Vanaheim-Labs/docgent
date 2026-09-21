@@ -6,8 +6,10 @@ import {parseFrontmatter} from '@docgent/core/yaml';
 import {GitStore,NotFoundError} from '../../../packages/git-store/src/index.mjs';
 import {DocumentStore} from '../../../packages/git-store/src/documents.mjs';
 const require=createRequire(import.meta.url),sha='a'.repeat(40),ctx={params:Promise.resolve({brand:'example',slug:'doc'})};
-test('cycle 3 follow-up: delete cannot bypass signed-off lock or caller precondition',async()=>{
- for(const [status,baseSha,expected] of [['released',sha,409],['approved',sha,409],['draft',undefined,428],['draft','b'.repeat(40),409],['draft',sha,200]]){
+test('cycle 4: delete edit lock removed; stale-write protection remains',async()=>{
+ // approved/released are no longer locked — delete goes through with correct SHA
+ // Only stale-write (missing or mismatched SHA) still blocks
+ for(const [status,baseSha,expected] of [['released',sha,200],['approved',sha,200],['draft',undefined,428],['draft','b'.repeat(40),409],['draft',sha,200]]){
   let writes=0,passed;
   const route=load('app/api/doc/[brand]/[slug]/route.ts',{
    '@/lib/editorial-policy':load('lib/editorial-policy.ts',{'@docgent/core/yaml':{parseFrontmatter}}),
@@ -31,7 +33,7 @@ test('cycle 3 follow-up: restore button sends the version supplied at page load'
  const oldFetch=globalThis.fetch,oldWindow=globalThis.window;let payload;
  const react=require('react');
  const {VersionPanel}=load('components/VersionPanel.tsx',{'react':{...react,useState:x=>[x,()=>{}],useCallback:f=>f,useEffect:()=>{}}});
- globalThis.window={confirm:()=>true,location:{}};
+ globalThis.window={confirm:text=>{assert.doesNotMatch(text,/cannot be restored/);return true;},location:{}};
  globalThis.fetch=async(url,opts)=>{payload=JSON.parse(opts.body);return Response.json({});};
  try{
   const tree=VersionPanel({brand:'example',slug:'doc',baseSha:sha,timeline:[{sha:'b'.repeat(40),shortSha:'bbbbbbb',version:1,isCurrent:false,author:{},subject:'old'}],onCompare:()=>{}});

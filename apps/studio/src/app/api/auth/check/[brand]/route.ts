@@ -35,6 +35,6 @@ export async function GET(req: Request, ctx: { params: Promise<{ brand: string }
     hint: "Durable release archiving is not implemented in this build. Release changes lifecycle status only; PDFs remain regenerable previews." };
   return reply({ valid: true, brand, brandName: record.name, via: authz.via,
     ready: repository.ok && renderer.ok, readinessScope: "repository read and renderer configuration; not release readiness",
-    capabilities: { editDraft: true, approve: authz.via === "session", release: authz.via === "session", archiveRelease: false },
+    capabilities: { editDraft: true, edit: true, acceptRewrite: true, restore: true, changeStatus: true, approve: true, release: true, archiveRelease: false },
     checks: { repository, renderer, releaseArchive } });
 }
