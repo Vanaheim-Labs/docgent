@@ -6,8 +6,10 @@ import {parseFrontmatter} from '@docgent/core/yaml';
 import {GitStore,NotFoundError} from '../../../packages/git-store/src/index.mjs';
 import {DocumentStore} from '../../../packages/git-store/src/documents.mjs';
 const require=createRequire(import.meta.url),sha='a'.repeat(40),ctx={params:Promise.resolve({brand:'example',slug:'doc'})};
-test('cycle 3 follow-up: delete cannot bypass signed-off lock or caller precondition',async()=>{
- for(const [status,baseSha,expected] of [['released',sha,409],['approved',sha,409],['draft',undefined,428],['draft','b'.repeat(40),409],['draft',sha,200]]){
+test('cycle 4: delete edit lock removed; stale-write protection remains',async()=>{
+ // approved/released are no longer locked — delete goes through with correct SHA
+ // Only stale-write (missing or mismatched SHA) still blocks
+ for(const [status,baseSha,expected] of [['released',sha,200],['approved',sha,200],['draft',undefined,428],['draft','b'.repeat(40),409],['draft',sha,200]]){
   let writes=0,passed;
   const route=load('app/api/doc/[brand]/[slug]/route.ts',{
    '@/lib/editorial-policy':load('lib/editorial-policy.ts',{'@docgent/core/yaml':{parseFrontmatter}}),

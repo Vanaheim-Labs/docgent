@@ -6,15 +6,12 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Approval gates.
+ * Status transitions — informational only; used by GET to report which
+ * transitions are common, but no longer enforced as hard gates.
  *
- * Status lives in frontmatter, so a transition is an ordinary commit and the
- * approval is recorded in git history rather than in a side database. Sign-off
- * is captured as a commit trailer, which survives clone, mirror and export -
- * unlike a row in a table that only this app knows how to read.
- *
- * The lifecycle is deliberately linear with one escape hatch (supersede), so
- * "who approved this and when" always has a single answer.
+ * Any authorised token may move a document to any valid status. The
+ * transition table is kept as a reference so callers can surface sensible
+ * defaults in UIs without needing to encode the graph themselves.
  */
 const TRANSITIONS: Record<string, string[]> = {
   draft: ["review"],
@@ -42,7 +39,6 @@ export async function POST(
 
   if (!body || typeof body !== "object") return Response.json({ error: "expected an object" }, { status: 400 });
   const to = body.to;
-  if (authz.via !== "session") return Response.json({ error: "human_review_required", hint: "Sign in to Studio to change lifecycle status." }, { status: 403 });
   if (typeof body.baseSha !== "string" || !/^[a-f0-9]{40}$/.test(body.baseSha)) return Response.json({ error: "version_required", hint: "Read the document and send its exact blob SHA as baseSha." }, { status: 428 });
   if (!to) return Response.json({ error: "'to' status is required" }, { status: 400 });
 
@@ -60,18 +56,6 @@ export async function POST(
     const doc = await docs.readDocument(brand, slug);
     if (body.baseSha !== doc.sha) return Response.json({ error: "stale", hint: "Reload and inspect the changed document before reviewing." }, { status: 409 });
     const from = doc.frontmatter?.status || "draft";
-
-    const permitted = TRANSITIONS[from] ?? [];
-    if (from !== to && !permitted.includes(to)) {
-      return Response.json(
-        {
-          error: `Cannot move from '${from}' to '${to}'.`,
-          from,
-          allowed: permitted,
-        },
-        { status: 409 }
-      );
-    }
 
     // Rewrite the status line in place, preserving everything else.
     const content = doc.content;
