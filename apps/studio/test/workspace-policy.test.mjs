@@ -173,6 +173,33 @@ for (const operation of ['review.complete', 'status.change']) {
   });
 }
 
+for (const operation of ['review.complete', 'status.change']) {
+  for (const policy of ['commercial', 'internal']) {
+    test(`${policy} agent ${operation} requires explicit live operation scope`, () => {
+      const { s, r } = policy === 'internal' ? internalAgentFixture(operation) : agentFixture(operation);
+      assert.deepEqual(decide(s, r, clock), { allowed: true });
+      for (const change of [
+        s => s.credential.operations = [],
+        s => s.credential.operations = ['document.edit'],
+        s => s.credential.operations = [operation === 'review.complete' ? 'status.change' : 'review.complete'],
+        s => s.credential.status = 'revoked',
+        s => s.credential.expiresAt = START,
+        s => s.credential.profileIds = [],
+        s => s.membership.status = 'revoked',
+        s => s.account.status = 'suspended',
+      ]) {
+        const copy = structuredClone(s); change(copy);
+        assert.deepEqual(decide(copy, r, clock), denied);
+      }
+      assert.deepEqual(decide(s, { ...r, workspaceId: 'w2' }, clock), denied);
+      if (policy === 'commercial') {
+        s.credential.expiresAt = null;
+        assert.deepEqual(decide(s, r, () => START + 14 * DAY), { allowed: false, code: 'trial_expired' });
+      }
+    });
+  }
+}
+
 test('trusted active paid term replaces trial deadline without resetting trial', () => {
   const s = fixture(); s.workspace.entitlement = { type: 'paid', status: 'active', paidThrough: START + 60 * DAY };
   assert.equal(decide(s, request('document.edit'), () => START + 60 * DAY - 1).allowed, true);
