@@ -22,9 +22,10 @@ test('cycle 5: valid token does not falsely imply repository readiness',async()=
   assert.equal(body.checks.repository.ok,false);assert.ok(body.checks.repository.hint);assert.doesNotMatch(JSON.stringify(body),/SECRET/);
  }
 });
-test('cycle 5: diagnostics state agent capability limits and archive configuration honestly',async()=>{
+test('cycle 5: diagnostics report free-flowing agent capabilities without promising archived releases',async()=>{
  const body=await (await route().GET(new Request('https://local'),ctx)).json();
- assert.equal(body.checks.repository.ok,true);assert.equal(body.capabilities.approve,false);
+ assert.equal(body.checks.repository.ok,true);
+ assert.deepEqual(body.capabilities,{editDraft:true,edit:true,acceptRewrite:true,restore:true,changeStatus:true,approve:true,release:true,archiveRelease:false});
  assert.equal(body.checks.releaseArchive.ok,false);assert.ok(body.checks.releaseArchive.hint);
  assert.equal(body.checks.releaseArchive.verified,false);
 });

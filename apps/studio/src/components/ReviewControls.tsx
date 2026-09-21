@@ -1,23 +1,20 @@
 "use client";
 import { useState } from "react";
 
-const actions: Record<string, [string, string][]> = {
-  draft: [["review", "Request review"]],
-  review: [["approved", "Approve"], ["draft", "Return to draft"]],
-  approved: [["released", "Mark as released"], ["review", "Return to review"]],
-  released: [["superseded", "Supersede"]],
-};
+const actions: [string, string][] = [
+  ["draft", "Return to draft"], ["review", "Request review"], ["approved", "Approve"],
+  ["released", "Mark as released"], ["superseded", "Supersede"],
+];
 
-/** Source review is explicit; a PDF loading event is not proof of inspection. */
+/** Optional review and version-bound status changes; never an editing gate. */
 export function ReviewControls({ brand, slug, baseSha, status = "draft", source }: {
   brand: string; slug: string; baseSha?: string; status?: string; source: string;
 }) {
-  const [confirmed, setConfirmed] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  if (!baseSha || !actions[status]?.length) return null;
+  if (!baseSha) return null;
   async function transition(to: string) {
-    if (!confirmed || pending) return;
+    if (pending) return;
     setPending(to);
     setError(null);
     try {
@@ -31,17 +28,16 @@ export function ReviewControls({ brand, slug, baseSha, status = "draft", source 
     } catch { setError("Could not confirm the change. Reload to check status before retrying."); }
     finally { setPending(null); }
   }
-  return <section aria-label="Human review" className="panel">
-    <div className="panel-head">Human review</div>
+  return <section aria-label="Review & status" className="panel">
+    <div className="panel-head">Review & status</div>
     <div className="panel-body">
-      <p>Review this exact source version before changing its status. Approval covers source, not factual accuracy or a frozen preview PDF.</p>
+      <p>Review is optional. Authorized people and agents can edit, accept rewrites, restore, or change status at any stage. Every change is versioned in Git.</p>
       <code style={{ overflowWrap: "anywhere" }}>{baseSha}</code>
       <details><summary>Inspect source for this version</summary>
         <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 360, overflow: "auto" }}>{source}</pre>
       </details>
-      <label><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} /> I have reviewed this source version and intend this status change.</label>
-      <p>Marking as released records a status change and locks this issue. No PDF is archived; subsequent downloads remain regenerable previews and can change with branding or renderer updates.</p>
-      {actions[status].map(([to, label]) => <button key={to} type="button" className="btn btn-secondary" disabled={!confirmed || pending !== null} onClick={() => transition(to)}>{label}</button>)}
+      <p>Status never locks editing. Status labels persist across edits and are not evidence that the current content was reviewed. Check version history for earlier sign-offs. No PDF is archived; subsequent downloads remain regenerable previews and can change with branding or renderer updates.</p>
+      {actions.filter(([to]) => to !== status).map(([to, label]) => <button key={to} type="button" className="btn btn-secondary" disabled={pending !== null} onClick={() => transition(to)}>{label}</button>)}
       {error && <p role="alert">{error}</p>}
     </div>
   </section>;

@@ -33,7 +33,7 @@ test('cycle 3 follow-up: restore button sends the version supplied at page load'
  const oldFetch=globalThis.fetch,oldWindow=globalThis.window;let payload;
  const react=require('react');
  const {VersionPanel}=load('components/VersionPanel.tsx',{'react':{...react,useState:x=>[x,()=>{}],useCallback:f=>f,useEffect:()=>{}}});
- globalThis.window={confirm:()=>true,location:{}};
+ globalThis.window={confirm:text=>{assert.doesNotMatch(text,/cannot be restored/);return true;},location:{}};
  globalThis.fetch=async(url,opts)=>{payload=JSON.parse(opts.body);return Response.json({});};
  try{
   const tree=VersionPanel({brand:'example',slug:'doc',baseSha:sha,timeline:[{sha:'b'.repeat(40),shortSha:'bbbbbbb',version:1,isCurrent:false,author:{},subject:'old'}],onCompare:()=>{}});
