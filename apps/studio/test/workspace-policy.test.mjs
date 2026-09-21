@@ -67,9 +67,14 @@ test('agents require live matching credential scope, never human privileges', ()
     s => s.credential.profileIds = ['p2'], s => s.account.status = 'suspended',
     s => s.membership.status = 'revoked',
   ]) { const copy = structuredClone(s); change(copy); assert.equal(decide(copy, r, clock).allowed, false); }
-  for (const operation of ['review.complete', 'status.change', 'credential.issue', 'credential.revoke', 'billing.manage', 'account.read']) {
+  for (const operation of ['credential.issue', 'credential.revoke', 'billing.manage', 'account.read']) {
     const { s, r } = agentFixture(operation);
     assert.equal(decide(s, r, clock).allowed, false, operation);
+    assert.equal(decide(fixture(), request(operation), clock).allowed, true, `owner ${operation}`);
+  }
+  for (const operation of ['review.complete', 'status.change']) {
+    const { s, r } = agentFixture(operation);
+    assert.equal(decide(s, r, clock).allowed, true, `agent ${operation} now allowed`);
     assert.equal(decide(fixture(), request(operation), clock).allowed, true, `owner ${operation}`);
   }
   const narrowed = agentFixture(); delete narrowed.r.profileId;
@@ -149,14 +154,22 @@ for (const operation of [...reads, 'document.create', 'document.edit', 'profile.
   });
 }
 
-for (const operation of ['review.complete', 'status.change', 'credential.issue', 'credential.revoke', 'billing.manage', 'account.read']) {
-  test(`internal agents cannot acquire human-only privilege: ${operation}`, () => {
+for (const operation of ['credential.issue', 'credential.revoke', 'billing.manage', 'account.read']) {
+  test(`internal agents cannot acquire credential/billing/account privilege: ${operation}`, () => {
     const { s, r } = internalAgentFixture(operation);
     assert.deepEqual(decide(s, r, clock), denied, 'even explicitly scoped credential is insufficient');
     const owner = { ...r, actor: request().actor };
     assert.deepEqual(decide(s, owner, clock), { allowed: true });
     s.membership.status = 'revoked';
     assert.deepEqual(decide(s, owner, clock), denied, 'revoked owner cannot use recovery privileges');
+  });
+}
+for (const operation of ['review.complete', 'status.change']) {
+  test(`internal agents with explicit credential scope can perform: ${operation}`, () => {
+    const { s, r } = internalAgentFixture(operation);
+    assert.deepEqual(decide(s, r, clock), { allowed: true }, 'scoped agent allowed');
+    const owner = { ...r, actor: request().actor };
+    assert.deepEqual(decide(s, owner, clock), { allowed: true });
   });
 }
 

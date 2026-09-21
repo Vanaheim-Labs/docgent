@@ -115,7 +115,7 @@ function evaluate(s: AuthoritySnapshot, r: PolicyRequest, now: number): PolicyDe
         (c.profileIds !== null && (!Array.isArray(c.profileIds) ||
           !c.profileIds.every(profile => id(profile) && s.profiles.some(p => p.id === profile)) ||
           !r.profileId || !c.profileIds.includes(r.profileId)))) return deny();
-    if (['review.complete', 'status.change', 'credential.issue', 'credential.revoke', 'billing.manage', 'account.read'].includes(r.operation)) return deny();
+    if (['credential.issue', 'credential.revoke', 'billing.manage', 'account.read'].includes(r.operation)) return deny();
   } else if (r.actor.type !== 'human') return deny();
   // Preserve the ready-workspace invariant for every policy, including internal.
   // Future mutation adapters must atomically enforce this against concurrent deletes.
