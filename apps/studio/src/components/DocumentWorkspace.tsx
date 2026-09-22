@@ -100,6 +100,13 @@ function DocActionBar({
         <a className="btn btn-secondary" href={pdfUrl} target="_blank" rel="noreferrer">
           Open PDF ↗
         </a>
+        <a
+          className="btn btn-secondary"
+          href={`/api/export/${brand}/${slug}?format=docx`}
+          download={`${slug}.docx`}
+        >
+          Export DOCX ↓
+        </a>
         <button
           className={`btn btn-secondary doc-drawer-toggle${drawerOpen ? " doc-drawer-toggle--open" : ""}`}
           onClick={onToggleDrawer}
