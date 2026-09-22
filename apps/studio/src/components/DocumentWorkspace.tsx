@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TimelineEntry } from "@/lib/store";
 import { VersionPanel } from "@/components/VersionPanel";
 import { ReviewControls } from "@/components/ReviewControls";
@@ -50,6 +50,37 @@ function timeAgo(dateStr: string | undefined): string {
   return `${Math.floor(day / 30)}mo ago`;
 }
 
+function ExportDropdown({ brand, slug, pdfUrl }: { brand: string; slug: string; pdfUrl: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div className="export-dropdown" ref={ref}>
+      <button className="btn btn-secondary export-dropdown-trigger" onClick={() => setOpen(o => !o)}>
+        Export ↓
+      </button>
+      {open && (
+        <div className="export-dropdown-menu">
+          <a className="export-dropdown-item" href={pdfUrl} target="_blank" rel="noreferrer" onClick={() => setOpen(false)}>
+            PDF ↗
+          </a>
+          <a className="export-dropdown-item" href={`/api/export/${brand}/${slug}?format=docx`} download={`${slug}.docx`} onClick={() => setOpen(false)}>
+            DOCX ↓
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Slim bar above the PDF: document title, primary CTA, drawer toggle.
  * Replaces the old right rail as the primary action surface.
@@ -97,16 +128,7 @@ function DocActionBar({
         {canEdit && (
           <a className="btn btn-secondary" href={`/${brand}/${slug}/edit`}>Edit</a>
         )}
-        <a className="btn btn-secondary" href={pdfUrl} target="_blank" rel="noreferrer">
-          Open PDF ↗
-        </a>
-        <a
-          className="btn btn-secondary"
-          href={`/api/export/${brand}/${slug}?format=docx`}
-          download={`${slug}.docx`}
-        >
-          Export DOCX ↓
-        </a>
+        <ExportDropdown brand={brand} slug={slug} pdfUrl={pdfUrl} />
         <button
           className={`btn btn-secondary doc-drawer-toggle${drawerOpen ? " doc-drawer-toggle--open" : ""}`}
           onClick={onToggleDrawer}
