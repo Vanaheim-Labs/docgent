@@ -77,6 +77,37 @@ type Heading = { line: number; level: number; text: string };
 // content is never modified, so a fold can never corrupt a document.
 type Fold = { startLine: number; endLine: number };
 
+function EditorExportDropdown({ brand, slug, previewUrl }: { brand: string; slug: string; previewUrl: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div className="export-dropdown" ref={ref}>
+      <button className="btn btn-secondary export-dropdown-trigger" onClick={() => setOpen(o => !o)}>
+        Export ↓
+      </button>
+      {open && (
+        <div className="export-dropdown-menu">
+          <a className="export-dropdown-item" href={previewUrl} download={`${slug}.pdf`} onClick={() => setOpen(false)}>
+            PDF ↓
+          </a>
+          <a className="export-dropdown-item" href={`/api/export/${brand}/${slug}?format=docx`} download={`${slug}.docx`} onClick={() => setOpen(false)}>
+            DOCX ↓
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: Props) {
   const [content, setContent] = useState(initialContent);
   const [baseSha, setBaseSha] = useState(initialSha);
@@ -2434,23 +2465,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                 {previewing ? "Generating…" : pdfStale ? "Refresh PDF" : "Refresh PDF"}
               </button>
               {previewUrl && !previewing && (
-                <a
-                  className="btn"
-                  href={previewUrl}
-                  download={`${slug}.pdf`}
-                  title="Download PDF"
-                >
-                  ↓ Download PDF
-                </a>
+                <EditorExportDropdown brand={brand} slug={slug} previewUrl={previewUrl} />
               )}
-              <a
-                className="btn btn-secondary"
-                href={`/api/export/${brand}/${slug}?format=docx`}
-                download={`${slug}.docx`}
-                title="Export DOCX"
-              >
-                Export DOCX ↓
-              </a>
             </>
           ) : (
             <button
