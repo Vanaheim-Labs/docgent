@@ -928,6 +928,143 @@ def thumbnail_route():
     )
 
 
+# --------------------------------------------------------------------------- #
+# DOCX export
+# --------------------------------------------------------------------------- #
+
+def render_docx(markdown: str, brand_id: str, assets: dict[str, str] | None) -> bytes:
+    """Markdown → pandoc → DOCX (skips WeasyPrint entirely)."""
+    brand = load_brand(brand_id)
+    fm = read_frontmatter(markdown)
+
+    with tempfile.TemporaryDirectory(prefix="docforge-docx-") as tmp:
+        work = Path(tmp)
+        md_path, _sheets = _stage(work, markdown, brand, fm, assets)
+
+        docx_path = work / "doc.docx"
+
+        cmd = [
+            "pandoc",
+            str(md_path),
+            "--from", PANDOC_EXTENSIONS,
+            "--to", "docx",
+            "--lua-filter", str(FILTER),
+            "--lua-filter", str(MICROTYPE_FILTER),
+            "--resource-path", str(md_path.parent),
+            "--metadata", f"brandname={brand.get('name', brand_id)}",
+        ]
+
+        # Brand cover logo — inline as base64 data URI (same as PDF path).
+        cover_logo_rel = (brand.get("cover") or {}).get("logo")
+        if cover_logo_rel:
+            logo_path = Path(brand["_dir"]) / cover_logo_rel
+            if logo_path.exists():
+                mime = "image/svg+xml" if logo_path.suffix == ".svg" else "image/png"
+                b64 = base64.b64encode(logo_path.read_bytes()).decode("ascii")
+                data_uri = f"data:{mime};base64,{b64}"
+                cmd += ["--metadata", f"brandlogo={data_uri}"]
+
+        # Disable section autonumbering if brand opts out.
+        no_autonumber = not (
+            (brand.get("numbering") or {}).get("sections", True)
+        )
+        if no_autonumber:
+            cmd += ["--metadata", "docforge_no_autonumber=1"]
+
+        # TOC support (pandoc handles TOC natively in DOCX).
+        if fm.get("toc"):
+            toc_depth = (brand.get("toc") or {}).get("depth", 2)
+            cmd += ["--toc", f"--toc-depth={toc_depth}"]
+
+        # Brand-supplied reference doc for styles/formatting.
+        ref_doc = BRANDS_DIR / brand_id / "docx-reference.docx"
+        if ref_doc.exists():
+            cmd += ["--reference-doc", str(ref_doc)]
+
+        cmd += ["-o", str(docx_path)]
+
+        t0 = time.time()
+        proc = subprocess.run(cmd, capture_output=True, timeout=RENDER_TIMEOUT)
+        g.docx_ms = int((time.time() - t0) * 1000)
+
+        if proc.returncode != 0:
+            raise RuntimeError(
+                "pandoc (docx) failed: " + proc.stderr.decode("utf-8", "replace")[:2000]
+            )
+        return docx_path.read_bytes()
+
+
+@app.post("/export/docx")
+def export_docx():
+    """Exports a document to DOCX via pandoc's native docx writer.
+
+    Same request contract as /render: {markdown, brand, assets?}.
+    Returns the .docx bytes directly — no WeasyPrint involved.
+    """
+    if not authorised():
+        jlog("export_docx.unauthorised", ip=request.remote_addr)
+        return jsonify(error="unauthorised"), 401
+
+    if request.content_length and request.content_length > MAX_BODY_BYTES:
+        return jsonify(error="payload too large"), 413
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify(error="expected a JSON object"), 400
+
+    markdown = body.get("markdown")
+    if not isinstance(markdown, str) or not markdown.strip():
+        return jsonify(error="'markdown' is required"), 400
+
+    fm = read_frontmatter(markdown)
+    brand_id = body.get("brand") or fm.get("brand")
+    if not brand_id:
+        return jsonify(error="no brand given (body 'brand' or frontmatter)"), 400
+
+    assets = body.get("assets") or {}
+    if not isinstance(assets, dict):
+        return jsonify(error="'assets' must be an object of path -> base64"), 400
+
+    # Derive a clean filename from the frontmatter `reference` field or title.
+    slug_raw = fm.get("reference") or fm.get("title") or "document"
+    slug = re.sub(r"[^\w\-]+", "-", str(slug_raw).lower()).strip("-") or "document"
+
+    try:
+        docx = render_docx(markdown, str(brand_id), assets)
+    except FileNotFoundError as e:
+        jlog("export_docx.unknown_brand", brand=brand_id, error=str(e))
+        return jsonify(error=str(e)), 404
+    except ValueError as e:
+        jlog("export_docx.bad_request", error=str(e))
+        return jsonify(error=str(e)), 400
+    except subprocess.TimeoutExpired:
+        jlog("export_docx.timeout", brand=brand_id)
+        return jsonify(error="render timed out"), 504
+    except RuntimeError as e:
+        jlog("export_docx.failed", brand=brand_id, error=str(e)[:500])
+        return jsonify(error=str(e)), 422
+
+    total_ms = int((time.time() - g.t_start) * 1000)
+    jlog(
+        "export_docx.ok",
+        brand=brand_id,
+        bytes=len(docx),
+        docx_ms=getattr(g, "docx_ms", None),
+        total_ms=total_ms,
+    )
+
+    return (
+        docx,
+        200,
+        {
+            "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "Content-Disposition": f'attachment; filename="{slug}.docx"',
+            "X-Docgent-Render-Ms": str(total_ms),
+            "X-DocForge-Request-Id": g.request_id,
+        },
+    )
+
+
 if not API_KEY:
     # Fail closed. An unauthenticated render endpoint is a free PDF farm.
     log.warning(

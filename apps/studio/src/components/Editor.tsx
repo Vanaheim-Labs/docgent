@@ -2443,6 +2443,14 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                   ↓ Download PDF
                 </a>
               )}
+              <a
+                className="btn btn-secondary"
+                href={`/api/export/${brand}/${slug}?format=docx`}
+                download={`${slug}.docx`}
+                title="Export DOCX"
+              >
+                Export DOCX ↓
+              </a>
             </>
           ) : (
             <button
