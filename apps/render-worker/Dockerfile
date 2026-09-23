@@ -88,9 +88,20 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 # --- app -------------------------------------------------------------------
 WORKDIR /app
 COPY server.py /app/server.py
+COPY generate_reference_docx.py /app/generate_reference_docx.py
 
 # Pipeline assets shipped from the monorepo (see build context note in fly.toml)
 COPY pipeline/ /app/pipeline/
+
+# --- brand reference.docx generation at build time -------------------------
+# Generate a brand-faithful reference.docx for every brand at Docker build
+# time.  This runs after fonts are installed and the pipeline/ is copied so
+# all brand.yaml files are available.  The generated files land in
+# /app/pipeline/brands/<id>/docx-reference.docx and are picked up by the
+# render_docx() --reference-doc flag automatically.
+ENV DOCGENT_PIPELINE_DIR=/app/pipeline
+RUN python3 /app/generate_reference_docx.py --all-brands && \
+    echo "reference.docx generation complete"
 
 EXPOSE 8080
 

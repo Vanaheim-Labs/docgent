@@ -1012,6 +1012,30 @@ def render_docx(markdown: str, brand_id: str, assets: dict[str, str] | None) -> 
             toc_depth = (brand.get("toc") or {}).get("depth", 2)
             cmd += ["--toc", f"--toc-depth={toc_depth}"]
 
+        # Pass brand palette and typography as pandoc metadata so the
+        # docx-output.lua filter can apply brand colours to primitives
+        # (KPI labels, callout borders, horizontal rules, cover page).
+        _pal = brand.get('palette', {}) or {}
+        _typ = brand.get('typography', {}) or {}
+        _accent = (_pal.get('accent') or '#333333').strip().strip('"').strip("'")
+        _ink    = (_pal.get('ink')    or '#111111').strip().strip('"').strip("'")
+        _rule   = (_pal.get('rule')   or '#cccccc').strip().strip('"').strip("'")
+        _band   = (_pal.get('band')   or _accent  ).strip().strip('"').strip("'")
+        # First family from CSS font stack (e.g. 'Crimson Pro, Georgia, serif' -> 'Crimson Pro')
+        import re as _re
+        def _first_family(stack: str) -> str:
+            stack = _re.sub(r',?\s*(serif|sans-serif|monospace|cursive|fantasy|system-ui)\s*$', '', stack.strip(), flags=_re.IGNORECASE)
+            first = stack.split(',')[0].strip().strip('"').strip("'")
+            return first or 'Calibri'
+        _sans   = _first_family(_typ.get('sans')  or 'Arial')
+        _serif  = _first_family(_typ.get('serif') or 'Georgia')
+        cmd += ['--metadata', f'brand_accent={_accent}']
+        cmd += ['--metadata', f'brand_ink={_ink}']
+        cmd += ['--metadata', f'brand_rule={_rule}']
+        cmd += ['--metadata', f'brand_band={_band}']
+        cmd += ['--metadata', f'brand_sans={_sans}']
+        cmd += ['--metadata', f'brand_serif={_serif}']
+
         # Brand-supplied reference doc for styles/formatting.
         ref_doc = BRANDS_DIR / brand_id / "docx-reference.docx"
         if ref_doc.exists():
