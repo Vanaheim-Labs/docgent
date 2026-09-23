@@ -112,6 +112,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [content, setContent] = useState(initialContent);
   const [baseSha, setBaseSha] = useState(initialSha);
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
+  // Brief informational banner shown after a successful soft reconcile.
+  const [reconcileNote, setReconcileNote] = useState<string | null>(null);
   // Mutable baseline: starts at initialContent but advances each time we
   // successfully commit (manual save OR accept-proposal). Used in the dirty
   // check so a freshly-accepted rewrite doesn't trigger a spurious autosave
@@ -417,10 +419,34 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     }
   }, [brand, slug, content, baseSha, errors.length, initialContent]);
 
+  /**
+   * Soft reconcile: fetch the latest doc SHA, update baseSha so the next
+   * save attempt uses the correct SHA, keep content untouched, and re-arm
+   * autosave by returning to idle. A brief banner confirms the resolution.
+   */
+  const handleReconcile = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/doc/${brand}/${slug}`);
+      if (!res.ok) {
+        setSave({ kind: "error", message: `Failed to fetch latest SHA (${res.status}).` });
+        return;
+      }
+      const data = await res.json();
+      if (data.sha) setBaseSha(data.sha);
+      setSave({ kind: "idle" });
+      setReconcileNote(
+        "Conflict resolved — your edits are intact and will be saved automatically."
+      );
+      setTimeout(() => setReconcileNote(null), 5000);
+    } catch (e) {
+      setSave({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+    }
+  }, [brand, slug]);
+
   // Autosave: 3 seconds after last content change, when dirty and no errors.
   useEffect(() => {
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    if (!dirty || errors.length > 0 || save.kind === "saving") return;
+    if (!dirty || errors.length > 0 || save.kind === "saving" || save.kind === "stale") return;
     autoSaveTimer.current = setTimeout(() => {
       doSave();
     }, 3000);
@@ -2512,7 +2538,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               ⚠ Save failed
             </button>
           ) : save.kind === "stale" ? (
-            <button className="autosave-status" data-state="stale" onClick={() => window.location.reload()}>
+            <button className="autosave-status" data-state="stale" onClick={handleReconcile}>
               ⚠ Conflict
             </button>
           ) : savedVisible ? (
@@ -2672,11 +2698,14 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           <strong>This document changed while you were editing.</strong>
           <div>{save.message}</div>
           <div style={{ marginTop: 8 }}>
-            <button className="btn btn-secondary" onClick={() => window.location.reload()}>
-              Reload and reapply
+            <button className="btn btn-secondary" onClick={handleReconcile}>
+              Keep my changes and retry
             </button>
           </div>
         </div>
+      )}
+      {reconcileNote && (
+        <div className="banner" data-kind="ok">{reconcileNote}</div>
       )}
       {save.kind === "error" && (
         <div className="banner" data-kind="error">{save.message}</div>
