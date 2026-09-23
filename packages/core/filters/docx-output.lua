@@ -898,6 +898,15 @@ end
 -- ============================================================
 -- Header level-1 → page-break-before OpenXML
 -- ============================================================
+-- Single shared counter for ALL H1s (toc-anchor or plain).
+-- Prevents the "first H1" skip from being reset when H1s use
+-- different code paths (e.g. .no-eyebrow skips toc-anchor path).
+local _h1_total = 0
+-- Flag set to true each time the toc-anchor handler emits an H1.
+-- The section-opener accumulated chunk always follows immediately;
+-- if this flag is true when we see a section-opener or a bare <h1>
+-- inside one, we suppress it (already rendered above).
+local _section_h1_emitted = false
 
 -- Emit a tiny invisible paragraph whose only purpose is to trigger
 -- a page break before the next (H1) paragraph.
@@ -947,10 +956,11 @@ function Pandoc(doc)
       -- Consume ALL the section-opener RawBlocks that follow so they produce
       -- no output of their own.
 
-      _h1_anchor_count = (_h1_anchor_count or 0) + 1
-      if _h1_anchor_count > 1 then
+      _h1_total = (_h1_total or 0) + 1
+      if _h1_total > 1 then
         out[#out+1] = page_break_para()
       end
+      _section_h1_emitted = true  -- suppress section-opener <h1> that follows
 
       -- Peek ahead: collect the section-opener RawBlocks and extract the
       -- eyebrow label from the section-number div.
@@ -1005,12 +1015,13 @@ function Pandoc(doc)
       local clean = pandoc.Header(1, b.content, pandoc.Attr(b.identifier, {}, {}))
       out[#out+1] = clean
 
-    -- Plain H1 headers (not toc-anchors): page break + heading as normal.
+    -- Plain H1 headers (.no-eyebrow etc): page break + heading, same counter.
     elseif b.t == 'Header' and b.level == 1 then
-      _h1_plain_count = (_h1_plain_count or 0) + 1
-      if _h1_plain_count > 1 then
+      _h1_total = (_h1_total or 0) + 1
+      if _h1_total > 1 then
         out[#out+1] = page_break_para()
       end
+      _section_h1_emitted = false  -- plain H1s have no section-opener following
       out[#out+1] = b
       i = i + 1
 
