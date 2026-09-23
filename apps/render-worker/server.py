@@ -48,6 +48,10 @@ FILTER = PIPELINE_DIR / "core" / "filters" / "vocabulary.lua"
 # vocabulary filter may itself have emitted. Order matters, so this is a
 # separate constant applied second rather than a glob over the filters dir.
 MICROTYPE_FILTER = PIPELINE_DIR / "core" / "filters" / "microtype.lua"
+# DOCX output filter: converts vocabulary.lua's RawBlock('html',...) elements
+# to native pandoc AST so they survive the DOCX writer. DOCX-only; not used
+# in the PDF path (which reads HTML via WeasyPrint, not pandoc's DOCX writer).
+DOCX_FILTER = PIPELINE_DIR / "core" / "filters" / "docx-output.lua"
 BASE_CSS = PIPELINE_DIR / "core" / "css" / "base.css"
 BRANDS_DIR = PIPELINE_DIR / "brands"
 
@@ -677,6 +681,7 @@ def health():
         "template": TEMPLATE.exists(),
         "filter": FILTER.exists(),
         "microtype_filter": MICROTYPE_FILTER.exists(),
+        "docx_filter": DOCX_FILTER.exists(),
         "base_css": BASE_CSS.exists(),
         "brands_dir": BRANDS_DIR.exists(),
     }
@@ -950,6 +955,7 @@ def render_docx(markdown: str, brand_id: str, assets: dict[str, str] | None) -> 
             "--to", "docx",
             "--lua-filter", str(FILTER),
             "--lua-filter", str(MICROTYPE_FILTER),
+            "--lua-filter", str(DOCX_FILTER),
             "--resource-path", str(md_path.parent),
             "--metadata", f"brandname={brand.get('name', brand_id)}",
         ]
