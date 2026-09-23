@@ -83,10 +83,16 @@ function EditorExportDropdown({ brand, slug, previewUrl }: { brand: string; slug
 
   useEffect(() => {
     function handler(e: MouseEvent) {
+      // Only close when clicking *outside* the dropdown. Using pointerdown on
+      // the document would fire before the <a> click event on a menu item,
+      // which cancels the navigation and swallows the download. Check that the
+      // target is outside the entire dropdown container before closing.
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    // Use click, not mousedown — mousedown fires before the <a> href navigation
+    // and would close the menu before the download link activates.
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
   }, []);
 
   return (
