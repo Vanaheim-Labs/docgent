@@ -344,8 +344,31 @@ def _filename_to_family(stem: str) -> str:
     return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", base)
 
 
+def _make_guid() -> str:
+    """Generate a GUID string in the form {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}."""
+    import uuid
+    return str(uuid.uuid4()).upper()
+
+
+def _obfuscate_font(font_bytes: bytes, guid: str) -> bytes:
+    """Apply OOXML font obfuscation per ECMA-376 Part 1 §17.8.1.
+
+    XOR the first 32 bytes of the font with the 16-byte GUID (reversed), applied
+    twice.  The result is stored as .odttf — Word refuses plain .ttf files.
+    """
+    key = bytes.fromhex(guid.strip('{}').replace('-', ''))[::-1]
+    key32 = key + key  # 32 bytes
+    data = bytearray(font_bytes)
+    for i in range(min(32, len(data))):
+        data[i] ^= key32[i]
+    return bytes(data)
+
+
 def embed_brand_fonts(docx_path: str | Path, font_dir: str | Path) -> int:
     """Embed all TTF files found in *font_dir* into the DOCX at *docx_path*.
+
+    Fonts are OOXML-obfuscated (.odttf, per ECMA-376 §17.8.1) — Word rejects
+    plain .ttf files regardless of content type declaration.
 
     Modifies the file in-place.  Returns the number of font variants embedded.
     Skips weight variants that have no OOXML slot (semibold, medium, light).
@@ -415,21 +438,29 @@ def embed_brand_fonts(docx_path: str | Path, font_dir: str | Path) -> int:
         default=0,
     )
 
-    # ---- 4. Embed each font variant ----------------------------------------
+    # ---- 4. Embed each font variant as OOXML-obfuscated .odttf ------------
+    # ECMA-376 §17.8.1: Word REQUIRES fonts to be XOR-obfuscated (.odttf).
+    # Plain .ttf files are rejected, triggering the recovery dialog regardless
+    # of content type declarations.  Algorithm: XOR first 32 bytes of the font
+    # with the 16-byte GUID (reversed, applied twice). The GUID is stored as
+    # w:fontKey on the embed element so Word can deobfuscate when rendering.
     w = "{" + _W_NS + "}"
     embedded = 0
     for family, variant_tag, ttf_path in plan:
-        arc_name = f"word/fonts/{ttf_path.name}"
-        files[arc_name] = ttf_path.read_bytes()
+        # Generate a unique GUID for this font variant
+        guid = _make_guid()
+        odttf_name = ttf_path.stem + ".odttf"
+        arc_name = f"word/fonts/{odttf_name}"
+        files[arc_name] = _obfuscate_font(ttf_path.read_bytes(), guid)
 
         rel_counter += 1
         rel_id = f"rId{rel_counter}"
 
-        # Add relationship
+        # Add relationship pointing to the .odttf file
         rel_el = _lxml_etree.SubElement(rels_root, "Relationship")
         rel_el.set("Id", rel_id)
         rel_el.set("Type", _FONT_REL_TYPE)
-        rel_el.set("Target", f"fonts/{ttf_path.name}")
+        rel_el.set("Target", f"fonts/{odttf_name}")
 
         # Find or create <w:font w:name="FamilyName"> in fontTable.xml
         font_el = None
@@ -441,22 +472,23 @@ def embed_brand_fonts(docx_path: str | Path, font_dir: str | Path) -> int:
             font_el = _lxml_etree.SubElement(ft_root, f"{w}font")
             font_el.set(f"{w}name", family)
 
-        # Add <w:embedRegular r:id="rId..."/> (or Bold/Italic/BoldItalic)
+        # Add <w:embedRegular r:id="rId..." w:fontKey="{GUID}"/>
+        # w:fontKey is required for Word to deobfuscate the .odttf on load.
         embed_el = _lxml_etree.SubElement(font_el, f"{w}{variant_tag}")
         embed_el.set(f"{{{_R_NS}}}id", rel_id)
+        embed_el.set(f"{w}fontKey", "{" + guid + "}")
         embedded += 1
 
-    # ---- 5. Patch [Content_Types].xml — declare .ttf content type ---------
-    # Without this Word cannot identify the font files, flags them as
-    # "unreadable content", strips them during recovery, and shows the
-    # scary repair dialog.  Adding a Default entry for .ttf is enough.
+    # ---- 5. Patch [Content_Types].xml — .odttf is already declared ---------
+    # The pandoc-generated DOCX already has:
+    #   <Default Extension="odttf"
+    #     ContentType="application/vnd.openxmlformats-officedocument.obfuscatedFont"/>
+    # So no patch needed for content types — our .odttf files are covered.
+    # (Remove the stale .ttf entry we added in a prior version, if present.)
     ct_xml = files.get("[Content_Types].xml", b"")
-    if ct_xml and b'Extension="ttf"' not in ct_xml:
-        ct_xml = ct_xml.replace(
-            b"</Types>",
-            b'<Default Extension="ttf"'
-            b' ContentType="application/x-font-ttf"/>'
-            b"</Types>",
+    if ct_xml and b'Extension="ttf"' in ct_xml:
+        ct_xml = re.sub(
+            rb'<Default Extension="ttf"[^/]*/>', b"", ct_xml
         )
         files["[Content_Types].xml"] = ct_xml
 
