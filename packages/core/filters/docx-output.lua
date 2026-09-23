@@ -11,6 +11,39 @@
 if FORMAT ~= "docx" then return {} end
 
 -- ============================================================
+-- SVG guard: pandoc requires rsvg-convert or inkscape to embed
+-- SVG images into DOCX.  These tools are not installed on the
+-- render worker.  Without this guard pandoc spins at 100% CPU
+-- until the process timeout fires (180 s), returning nothing.
+--
+-- Strategy: replace any Image whose src ends in .svg (or is a
+-- data:image/svg+xml URI) with a bordered plaintext placeholder
+-- carrying the alt text, so the document remains readable.
+-- ============================================================
+function Image(el)
+  local src = el.src or ''
+  local is_svg = src:match('%.svg$') or src:match('^data:image/svg')
+  if not is_svg then return el end
+  local alt = pandoc.utils.stringify(el.caption or el.alt or {})
+  if alt == '' then alt = src:match('[^/]+%.svg$') or 'SVG figure' end
+  -- xml_esc not yet in scope at filter-registration time; inline it here.
+  local function esc(s)
+    return (s or ''):gsub('&','&amp;'):gsub('<','&lt;'):gsub('>','&gt;'):gsub('"','&quot;')
+  end
+  return pandoc.RawBlock('openxml', string.format(
+    '<w:p><w:pPr><w:jc w:val="center"/>'
+    ..'<w:spacing w:before="120" w:after="120"/>'
+    ..'<w:pBdr>'
+    ..'<w:top    w:val="single" w:sz="4" w:space="2" w:color="AAAAAA"/>'
+    ..'<w:bottom w:val="single" w:sz="4" w:space="2" w:color="AAAAAA"/>'
+    ..'</w:pBdr></w:pPr>'
+    ..'<w:r><w:rPr><w:i/><w:sz w:val="18"/><w:color w:val="888888"/></w:rPr>'
+    ..'<w:t xml:space="preserve">[ Figure: %s ]</w:t></w:r></w:p>',
+    esc(alt)
+  ))
+end
+
+-- ============================================================
 -- Helpers
 -- ============================================================
 
