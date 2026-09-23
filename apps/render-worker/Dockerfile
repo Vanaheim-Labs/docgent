@@ -32,6 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       curl \
       ca-certificates \
       poppler-utils \
+      librsvg2-bin \
     && rm -rf /var/lib/apt/lists/*
 
 # --- pandoc (pinned) -------------------------------------------------------
