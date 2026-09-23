@@ -932,35 +932,78 @@ function Pandoc(doc)
     -- section-opener RawBlocks which would otherwise produce more duplicates.
     if b.t == 'Header' and b.level == 1
        and (b.classes:includes('toc-anchor') or b.classes:includes('unnumbered')) then
+      -- vocabulary.lua emits for every H1:
+      --   1. toc-anchor Header (for TOC — we are here)
+      --   2. RawBlock '<div class="section-opener">'
+      --   3. RawBlock '<div class="section-ghost" ...>NN</div>'
+      --   4. (optional) RawBlock '<img class="section-opener-logo" ...>'
+      --   5. (optional) RawBlock '<span class="section-string-set" ...>'
+      --   6. RawBlock '<div class="section-number" data-index="NN">...label...</div>'
+      --   7. RawBlock '<h1 ...>heading text</h1>'
+      --   8. RawBlock '</div>'
+      --
+      -- Goal: emit a page break (after the first section), then a small-caps
+      -- eyebrow paragraph ("03 · SECTION III" in accent colour), then the H1.
+      -- Consume ALL the section-opener RawBlocks that follow so they produce
+      -- no output of their own.
+
       _h1_anchor_count = (_h1_anchor_count or 0) + 1
       if _h1_anchor_count > 1 then
         out[#out+1] = page_break_para()
       end
-      -- Emit the H1 as a styled Heading 1 paragraph (reference.docx supplies
-      -- the font/colour). Strip 'toc-anchor'/'unnumbered' so it renders visibly.
-      local clean = pandoc.Header(1, b.content, pandoc.Attr(b.identifier, {}, {}))
-      out[#out+1] = clean
-      -- Skip the immediately following section-opener RawBlocks so they don't
-      -- produce duplicate plain-text paragraphs (ghost number, eyebrow, h1 tag).
-      i = i + 1
-      while i <= #doc.blocks do
-        local nb = doc.blocks[i]
+
+      -- Peek ahead: collect the section-opener RawBlocks and extract the
+      -- eyebrow label from the section-number div.
+      local eyebrow_num   = nil
+      local eyebrow_label = nil
+      local j = i + 1
+      while j <= #doc.blocks do
+        local nb = doc.blocks[j]
         if nb.t == 'RawBlock' and nb.format == 'html' then
-          local t = nb.text:match('^%s*(.-)%s*$') or ''
-          -- Consume section-opener open/close divs and their contents.
-          -- Stop at anything that is not part of the section-opener wrapper.
-          if t:match('section%-opener') or t:match('section%-ghost') or
-             t:match('section%-number') or t:match('section%-string%-set') or
-             t:match('section%-opener%-logo') or
-             t == '</div>' then
-            i = i + 1
-          else
-            break
+          local txt = nb.text
+          -- Extract section number and label from section-number div
+          local idx = txt:match('data%-index="(%d+)"')
+          if idx then eyebrow_num = idx end
+          local lbl = txt:match('<span class="section%-number%-label">(.-)</span>')
+          if lbl then
+            -- strip any inner HTML tags
+            eyebrow_label = lbl:gsub('<[^>]+>', '')
+                               :gsub('&amp;', '&'):gsub('&lt;', '<'):gsub('&gt;', '>')
+                               :gsub('&quot;', '"'):gsub('&#39;', "'")
           end
+          j = j + 1
+          -- Stop after the closing </div> of the section-opener wrapper
+          local t = txt:match('^%s*(.-)%s*$') or ''
+          if t == '</div>' then break end
         else
           break
         end
       end
+      i = j  -- advance past all consumed section-opener blocks
+
+      -- Emit eyebrow paragraph: "03 · SECTION LABEL" in small caps, accent colour
+      if eyebrow_num and eyebrow_label then
+        local accent = brand_accent()
+        local sans   = brand_sans()
+        local eyebrow_text = eyebrow_num .. ' · ' .. eyebrow_label:upper()
+        out[#out+1] = pandoc.RawBlock('openxml', string.format(
+          '<w:p><w:pPr><w:spacing w:before="240" w:after="60"/></w:pPr>'
+          ..'<w:r><w:rPr>'
+          ..'<w:rFonts w:ascii="%s" w:hAnsi="%s"/>'
+          ..'<w:smallCaps/>'
+          ..'<w:color w:val="%s"/>'
+          ..'<w:sz w:val="18"/><w:szCs w:val="18"/>'
+          ..'<w:spacing w:val="60"/>'
+          ..'</w:rPr>'
+          ..'<w:t xml:space="preserve">%s</w:t>'
+          ..'</w:r></w:p>',
+          xml_esc(sans), xml_esc(sans), accent, xml_esc(eyebrow_text)
+        ))
+      end
+
+      -- Emit clean H1 (reference.docx Heading 1 style supplies font/colour)
+      local clean = pandoc.Header(1, b.content, pandoc.Attr(b.identifier, {}, {}))
+      out[#out+1] = clean
 
     -- Plain H1 headers (not toc-anchors): page break + heading as normal.
     elseif b.t == 'Header' and b.level == 1 then
