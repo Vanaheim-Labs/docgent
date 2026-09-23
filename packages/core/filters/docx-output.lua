@@ -918,21 +918,45 @@ function Pandoc(doc)
     local b = doc.blocks[i]
 
     -- H1 toc-anchor headers (emitted by vocabulary.lua before each section):
-    -- Use them as a signal to inject a page break before the section.
-    -- The anchor itself is passed through unchanged so TOC links work.
-    -- We skip the very first toc-anchor (no page break before section 1)
-    -- by tracking whether we have already seen one.
+    -- These exist solely for pandoc TOC generation. vocabulary.lua also emits
+    -- a <div class="section-opener"> containing the actual rendered heading,
+    -- so if we pass the toc-anchor through as a visible Header we get a
+    -- duplicate. Instead: inject a page break (after the first section) and
+    -- emit the heading from the toc-anchor content, then skip the following
+    -- section-opener RawBlocks which would otherwise produce more duplicates.
     if b.t == 'Header' and b.level == 1
        and (b.classes:includes('toc-anchor') or b.classes:includes('unnumbered')) then
-      -- Track anchor count to skip the first one.
       _h1_anchor_count = (_h1_anchor_count or 0) + 1
       if _h1_anchor_count > 1 then
         out[#out+1] = page_break_para()
       end
-      out[#out+1] = b   -- pass the toc-anchor through for TOC links
+      -- Emit the H1 as a styled Heading 1 paragraph (reference.docx supplies
+      -- the font/colour). Strip 'toc-anchor'/'unnumbered' so it renders visibly.
+      local clean = pandoc.Header(1, b.content, pandoc.Attr(b.identifier, {}, {}))
+      out[#out+1] = clean
+      -- Skip the immediately following section-opener RawBlocks so they don't
+      -- produce duplicate plain-text paragraphs (ghost number, eyebrow, h1 tag).
       i = i + 1
+      while i <= #doc.blocks do
+        local nb = doc.blocks[i]
+        if nb.t == 'RawBlock' and nb.format == 'html' then
+          local t = nb.text:match('^%s*(.-)%s*$') or ''
+          -- Consume section-opener open/close divs and their contents.
+          -- Stop at anything that is not part of the section-opener wrapper.
+          if t:match('section%-opener') or t:match('section%-ghost') or
+             t:match('section%-number') or t:match('section%-string%-set') or
+             t:match('section%-opener%-logo') or
+             t == '</div>' then
+            i = i + 1
+          else
+            break
+          end
+        else
+          break
+        end
+      end
 
-    -- Plain H1 headers (not toc-anchors): also get page breaks when not first.
+    -- Plain H1 headers (not toc-anchors): page break + heading as normal.
     elseif b.t == 'Header' and b.level == 1 then
       _h1_plain_count = (_h1_plain_count or 0) + 1
       if _h1_plain_count > 1 then
