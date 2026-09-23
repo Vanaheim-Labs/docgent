@@ -57,7 +57,14 @@ export async function GET(
       }
     }
 
-    const assets = await collectAssetsFromGit(git, dir, assetPaths, commitSha);
+    // Strip SVG assets: pandoc requires rsvg-convert to embed SVGs into DOCX,
+    // which is not installed on the render-worker. Sending SVGs causes pandoc
+    // to hang at 100% CPU for the full process timeout. The Lua filter replaces
+    // any SVG Image nodes with a text placeholder, so stripping them here is
+    // belt-and-suspenders — the file must not reach the temp dir at all or
+    // pandoc will still try to resolve it before the filter runs.
+    const docxAssetPaths = assetPaths.filter(p => !/\.svg$/i.test(p));
+    const assets = await collectAssetsFromGit(git, dir, docxAssetPaths, commitSha);
     const brandId = doc.frontmatter?.brand || brand;
 
     const res = await fetch(`${url.replace(/\/$/, "")}/export/docx`, {
