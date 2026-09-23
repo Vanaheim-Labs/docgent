@@ -844,6 +844,12 @@ local function dispatch_with_class(html, eff_class)
     return handle_recommendation(html)
   elseif class:find('timeline') then
     return handle_timeline(html)
+  elseif class:find('section%-opener') or html:match('<div class="section%-opener"') then
+    -- section-opener divs are CSS/PDF-only constructs: ghost number, eyebrow
+    -- label, logo, and a raw <h1> tag. The heading is already emitted as a
+    -- clean Heading 1 paragraph by the toc-anchor handler in Pandoc() above.
+    -- Passing this through generic_html_to_blocks() produces a second copy.
+    return {}
   else
     return generic_html_to_blocks(html)
   end
