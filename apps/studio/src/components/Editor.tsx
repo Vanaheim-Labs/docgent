@@ -77,7 +77,7 @@ type Heading = { line: number; level: number; text: string };
 // content is never modified, so a fold can never corrupt a document.
 type Fold = { startLine: number; endLine: number };
 
-function EditorExportDropdown({ brand, slug, previewUrl }: { brand: string; slug: string; previewUrl: string }) {
+function EditorExportDropdown({ brand, slug, previewUrl }: { brand: string; slug: string; previewUrl: string | null }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -96,9 +96,15 @@ function EditorExportDropdown({ brand, slug, previewUrl }: { brand: string; slug
       </button>
       {open && (
         <div className="export-dropdown-menu">
-          <a className="export-dropdown-item" href={previewUrl} download={`${slug}.pdf`} onClick={() => setOpen(false)}>
-            PDF ↓
-          </a>
+          {previewUrl ? (
+            <a className="export-dropdown-item" href={previewUrl} download={`${slug}.pdf`} onClick={() => setOpen(false)}>
+              PDF ↓
+            </a>
+          ) : (
+            <span className="export-dropdown-item" style={{ opacity: 0.4, cursor: "default" }} title="Switch to Pages mode to generate a PDF first">
+              PDF (generate in Pages mode first)
+            </span>
+          )}
           <a className="export-dropdown-item" href={`/api/export/${brand}/${slug}?format=docx`} download={`${slug}.docx`} onClick={() => setOpen(false)}>
             DOCX ↓
           </a>
@@ -2490,19 +2496,12 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               >
                 {previewing ? "Generating…" : pdfStale ? "Refresh PDF" : "Refresh PDF"}
               </button>
-              {previewUrl && !previewing && (
+              {!previewing && (
                 <EditorExportDropdown brand={brand} slug={slug} previewUrl={previewUrl} />
               )}
             </>
           ) : (
-            <button
-              className="btn btn-secondary"
-              onClick={() => setEditorMode("pages")}
-              title="Generate and download PDF"
-              disabled={errors.length > 0}
-            >
-              Export PDF
-            </button>
+            <EditorExportDropdown brand={brand} slug={slug} previewUrl={null} />
           )}
           {previewing && editorMode === "pages" && <span className="editor-stat">generating PDF…</span>}
           {/* Health pill — collapses to one item, always right of Export */}
