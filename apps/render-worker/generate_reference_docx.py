@@ -626,6 +626,45 @@ def generate_reference_docx(brand_id: str, brands_dir: Path, output_path: Path) 
     vc_rFonts.set(qn("w:cs"), mono_font)
     vc_rPr.insert(0, vc_rFonts)
 
+    # --- Additional pandoc-generated styles that reference missing parents ----
+    # pandoc always emits these in styles.xml but never defines them, causing
+    # Word's "unreadable content" recovery dialog.
+
+    # BlockText: indented block quotation style
+    try:
+        bt_style = doc.styles["BlockText"]
+    except KeyError:
+        bt_style = doc.styles.add_style("BlockText", 1)  # paragraph
+    _apply_style(bt_style, font_name=sans_font, sz_pt=10.5, color=ink_rgb,
+                 space_before_pt=6, space_after_pt=6)
+    bt_style.paragraph_format.left_indent = Pt(24)
+
+    # Compact: tight-spaced paragraph (used for tight lists)
+    try:
+        compact_style = doc.styles["Compact"]
+    except KeyError:
+        compact_style = doc.styles.add_style("Compact", 1)  # paragraph
+    _apply_style(compact_style, font_name=sans_font, sz_pt=10.5, color=ink_rgb,
+                 space_before_pt=0, space_after_pt=2)
+
+    # Date: paragraph style for dates in metadata
+    try:
+        date_style = doc.styles["Date"]
+    except KeyError:
+        date_style = doc.styles.add_style("Date", 1)  # paragraph
+    _apply_style(date_style, font_name=sans_font, sz_pt=10.5, color=ink_rgb,
+                 space_before_pt=0, space_after_pt=6)
+
+    # Hyperlink: character style for links
+    try:
+        hl_style = doc.styles["Hyperlink"]
+    except KeyError:
+        hl_style = doc.styles.add_style("Hyperlink", 2)  # character
+    hl_style.font.name = sans_font
+    hl_style.font.size = Pt(10.5)
+    hl_style.font.underline = True
+    hl_style.font.color.rgb = _hex_to_rgb(pal("accent", "#0563C1"))
+
     # --- Dummy placeholder paragraphs so pandoc can see each style ----------
     # Pandoc reads the reference.docx and extracts the named styles.  We need
     # at least one paragraph in each style so the styles are "used" and thus
