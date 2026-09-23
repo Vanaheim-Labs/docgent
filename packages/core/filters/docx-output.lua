@@ -11,22 +11,25 @@
 if FORMAT ~= "docx" then return {} end
 
 -- ============================================================
--- SVG guard: pandoc requires rsvg-convert or inkscape to embed
--- SVG images into DOCX.  These tools are not installed on the
--- render worker.  Without this guard pandoc spins at 100% CPU
--- until the process timeout fires (180 s), returning nothing.
+-- SVG guards — two layers:
 --
--- Strategy: replace any Image whose src ends in .svg (or is a
--- data:image/svg+xml URI) with a bordered plaintext placeholder
--- carrying the alt text, so the document remains readable.
+-- 1. Image() filter: catches pandoc Image AST elements whose src
+--    is an .svg path or data:image/svg URI.  These arise when the
+--    HTML reader parses an <img src="..."> inside a RawBlock.
+--    rsvg-convert is installed on the render worker (2.54.7) but
+--    large SVGs (>200 KB) hang it on aarch64 Linux; replacing them
+--    with a placeholder is safer than size-gating here.
+--
+-- 2. RawBlock() filter: catches inline <svg>...</svg> XML bodies
+--    that vocabulary.lua places inside RawBlock('html', ...) when
+--    _inline_svg_figures() inlines SVG file content directly.
+--    These never become pandoc Image elements so Image() misses
+--    them; pandoc tries to embed them via rsvg-convert and hangs.
+--
+-- Both guards emit a bordered OpenXML paragraph placeholder.
 -- ============================================================
-function Image(el)
-  local src = el.src or ''
-  local is_svg = src:match('%.svg$') or src:match('^data:image/svg')
-  if not is_svg then return el end
-  local alt = pandoc.utils.stringify(el.caption or el.alt or {})
-  if alt == '' then alt = src:match('[^/]+%.svg$') or 'SVG figure' end
-  -- xml_esc not yet in scope at filter-registration time; inline it here.
+
+local function _svg_placeholder(label)
   local function esc(s)
     return (s or ''):gsub('&','&amp;'):gsub('<','&lt;'):gsub('>','&gt;'):gsub('"','&quot;')
   end
@@ -39,8 +42,49 @@ function Image(el)
     ..'</w:pBdr></w:pPr>'
     ..'<w:r><w:rPr><w:i/><w:sz w:val="18"/><w:color w:val="888888"/></w:rPr>'
     ..'<w:t xml:space="preserve">[ Figure: %s ]</w:t></w:r></w:p>',
-    esc(alt)
+    esc(label)
   ))
+end
+
+function Image(el)
+  local src = el.src or ''
+  local is_svg = src:match('%.svg$') or src:match('^data:image/svg')
+  if not is_svg then return el end
+  local alt = pandoc.utils.stringify(el.caption or el.alt or {})
+  if alt == '' then alt = src:match('[^/]+%.svg$') or 'SVG figure' end
+  return _svg_placeholder(alt)
+end
+
+-- RawBlock guard: strip inline <svg> bodies from HTML RawBlocks.
+-- When server.py's _inline_svg_figures() inlines an SVG file's content
+-- directly into the fenced-div body, vocabulary.lua wraps it in a
+-- <figure class="figure chart">...<svg>...</svg>...</figure> RawBlock.
+-- Pandoc's DOCX writer calls rsvg-convert on any embedded SVG XML,
+-- which hangs indefinitely on large files (>200 KB) on aarch64 Linux.
+-- This filter replaces any RawBlock whose text contains a bare <svg>
+-- opening tag with a placeholder — the docx_safe=True flag in server.py
+-- already handles the common case, but this is a belt-and-suspenders guard.
+function RawBlock(el)
+  if el.format ~= 'html' then return el end
+  -- Fast heuristic: look for a top-level <svg or <SVG tag in the block.
+  -- Inline data:image/svg URIs inside attributes are fine (they're small);
+  -- we target large SVG XML bodies that appear as direct block content.
+  -- Match <svg at the start of a line or after whitespace, not inside quotes.
+  local text = el.text or ''
+  -- Check for bare <svg tag as block content (not inside an attribute value).
+  -- An inline SVG body always starts with <svg at the top of the block or
+  -- shortly after the wrapping <figure> tag.
+  if text:match('[\n\r%s]<svg[%s>]') or text:match('^<svg[%s>]') then
+    -- Extract a useful label from the surrounding figure caption if present.
+    local caption = text:match('class="figure%-caption">(.-)</figcaption>')
+                 or text:match('class="chart%-title">(.-)</div>')
+                 or text:match('class="chart%-label">(.-)</div>')
+                 or 'SVG figure'
+    -- Strip any remaining HTML tags from the caption.
+    caption = caption:gsub('<[^>]+>', ''):gsub('^%s*(.-)%s*$', '%1')
+    return _svg_placeholder(caption)
+  end
+  return el
 end
 
 -- ============================================================
@@ -619,6 +663,13 @@ function Pandoc(doc)
               depth = depth - 1
               j = j + 1
               if depth <= 0 then break end  -- container closed
+            elseif #chunks == 0 then
+              -- Stray closer at the very start of a new accumulation cycle
+              -- (e.g. the </div> that vocabulary.lua emits after a native pandoc
+              -- Table/BulletList block inside a datatable fenced div).
+              -- SKIP it: advance past it so the outer loop does not spin forever.
+              j = j + 1
+              break
             else
               break  -- stray closer at depth 0 — stop
             end

@@ -300,7 +300,13 @@ _SRC_ATTR_RE = _re.compile(r'\bsrc="([^"]+\.svg)"', _re.IGNORECASE)
 _STRIP_SRC_RE = _re.compile(r'\s*\bsrc="[^"]*"', _re.IGNORECASE)
 
 
-def _inline_svg_figures(markdown: str, work: Path) -> str:
+# Maximum SVG file size (in bytes) to inline for PDF/HTML output.
+# SVGs larger than this are replaced with a placeholder in DOCX output
+# to prevent rsvg-convert from hanging on large SVGs on aarch64 Linux.
+_SVG_INLINE_MAX_BYTES = 200 * 1024  # 200 KB
+
+
+def _inline_svg_figures(markdown: str, work: Path, docx_safe: bool = False) -> str:
     """Replace ::figure/::chart{src="...svg"} shorthand with pandoc fenced divs.
 
     Blocks that reference an SVG file (src="figures/foo.svg") are rewritten
@@ -314,6 +320,11 @@ def _inline_svg_figures(markdown: str, work: Path) -> str:
     shorthand normalisation in _preprocess_markdown, which only handles
     blocks without body content).  Blocks whose src file cannot be resolved
     are left unchanged so the existing error-surface behaviour is preserved.
+
+    When docx_safe=True, SVG files larger than _SVG_INLINE_MAX_BYTES are
+    replaced with a text placeholder instead of inlined SVG content.  This
+    prevents rsvg-convert from hanging on large SVGs in pandoc's DOCX writer
+    on aarch64 Linux (Fly.io render worker).
     """
     def _replace(m: _re.Match) -> str:
         name = m.group(1)          # 'figure' or 'chart'
@@ -333,8 +344,6 @@ def _inline_svg_figures(markdown: str, work: Path) -> str:
         if not svg_path.is_file():
             return m.group(0)  # file absent — leave unchanged, not a hard error
 
-        svg_content = svg_path.read_text(encoding="utf-8").strip()
-
         # Build the remaining attrs without src=.
         remaining_attrs = _STRIP_SRC_RE.sub('', attrs).strip()
 
@@ -343,6 +352,21 @@ def _inline_svg_figures(markdown: str, work: Path) -> str:
         else:
             div_open = f':::{{.{name}}}'
 
+        # For DOCX output, replace oversized SVGs with a plain placeholder paragraph.
+        # rsvg-convert on aarch64 Linux (Fly.io) hangs when processing SVGs larger
+        # than ~200KB inside pandoc's DOCX writer, causing export_docx.timeout.
+        svg_size = svg_path.stat().st_size
+        if docx_safe and svg_size > _SVG_INLINE_MAX_BYTES:
+            # Extract caption/label attrs for a useful placeholder.
+            caption_m = _re.search(r'\bcaption="([^"]*)"', attrs)
+            label_m = _re.search(r'\blabel="([^"]*)"', attrs)
+            title_m = _re.search(r'\btitle="([^"]*)"', attrs)
+            desc = (caption_m or label_m or title_m)
+            desc_text = desc.group(1) if desc else src_val
+            # Emit a plain paragraph placeholder — no SVG, no rsvg-convert.
+            return f'{div_open}\n\n[Figure: {desc_text}]\n\n:::'
+
+        svg_content = svg_path.read_text(encoding="utf-8").strip()
         return f'{div_open}\n{svg_content}\n:::'
 
     return _SVG_SRC_RE.sub(_replace, markdown)
@@ -397,7 +421,8 @@ def _preprocess_markdown(md: str, comment_mode: str = 'strip') -> str:
 # --------------------------------------------------------------------------- #
 
 def _stage(work: Path, markdown: str, brand: dict, fm: dict,
-           assets: dict[str, str] | None, comment_mode: str = 'strip'):
+           assets: dict[str, str] | None, comment_mode: str = 'strip',
+           docx_safe: bool = False):
     """Writes markdown, assets and CSS into a working directory.
 
     Shared by the PDF and HTML paths so both render from identical inputs;
@@ -405,6 +430,9 @@ def _stage(work: Path, markdown: str, brand: dict, fm: dict,
 
     comment_mode='strip'  — comments removed entirely (PDF path).
     comment_mode='anchor' — comments replaced with <span data-comment-id> anchors (HTML preview).
+    docx_safe=True        — SVGs larger than _SVG_INLINE_MAX_BYTES are replaced with a text
+                            placeholder instead of inlined SVG content, preventing rsvg-convert
+                            from hanging on large SVGs in pandoc's DOCX writer (aarch64 Linux).
     """
     md_path = work / "doc.md"
 
@@ -419,7 +447,9 @@ def _stage(work: Path, markdown: str, brand: dict, fm: dict,
 
     # SVG inlining: replace ::figure/::chart{src="...svg"} with pandoc fenced
     # divs containing the SVG body, now that figures/ files are on disk.
-    processed = _inline_svg_figures(markdown, work)
+    # In DOCX mode, oversized SVGs are replaced with text placeholders to avoid
+    # rsvg-convert hanging on large files in pandoc's DOCX writer on aarch64.
+    processed = _inline_svg_figures(markdown, work, docx_safe=docx_safe)
     md_path.write_text(_preprocess_markdown(processed, comment_mode=comment_mode), encoding="utf-8")
 
     tokens_css = work / "_tokens.css"
@@ -944,7 +974,7 @@ def render_docx(markdown: str, brand_id: str, assets: dict[str, str] | None) -> 
 
     with tempfile.TemporaryDirectory(prefix="docforge-docx-") as tmp:
         work = Path(tmp)
-        md_path, _sheets = _stage(work, markdown, brand, fm, assets)
+        md_path, _sheets = _stage(work, markdown, brand, fm, assets, docx_safe=True)
 
         docx_path = work / "doc.docx"
 
