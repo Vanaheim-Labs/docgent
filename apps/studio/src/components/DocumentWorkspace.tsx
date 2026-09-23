@@ -58,8 +58,10 @@ function ExportDropdown({ brand, slug, pdfUrl }: { brand: string; slug: string; 
     function handler(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    // Use click not mousedown — mousedown fires before <a> href/download
+    // activates, swallowing the navigation before the browser can trigger it.
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
   }, []);
 
   return (
