@@ -603,6 +603,29 @@ def generate_reference_docx(brand_id: str, brands_dir: Path, output_path: Path) 
     _apply_style(first_style, font_name=sans_font, sz_pt=10.5,
                  color=ink_rgb, space_before_pt=0, space_after_pt=6)
 
+    # --- VerbatimChar (character style pandoc always references but never defines)
+    # 31 code-highlighting styles (SourceCode, KeywordTok, etc.) inherit from this.
+    # Without it, Word cannot resolve the basedOn chain and triggers recovery.
+    # WD_STYLE_TYPE.CHARACTER = 2
+    mono_font = _first_font_family(
+        t.get("mono") or "JetBrains Mono, Menlo, Courier New, monospace"
+    )
+    try:
+        vc_style = doc.styles["VerbatimChar"]
+    except KeyError:
+        vc_style = doc.styles.add_style("VerbatimChar", 2)  # 2 = character style
+    vc_style.font.name = mono_font
+    vc_style.font.size = Pt(9)
+    # Apply rFonts so Word uses the correct face consistently
+    vc_rPr = vc_style.element.get_or_add_rPr()
+    for el in vc_rPr.findall(qn("w:rFonts")):
+        vc_rPr.remove(el)
+    vc_rFonts = OxmlElement("w:rFonts")
+    vc_rFonts.set(qn("w:ascii"), mono_font)
+    vc_rFonts.set(qn("w:hAnsi"), mono_font)
+    vc_rFonts.set(qn("w:cs"), mono_font)
+    vc_rPr.insert(0, vc_rFonts)
+
     # --- Dummy placeholder paragraphs so pandoc can see each style ----------
     # Pandoc reads the reference.docx and extracts the named styles.  We need
     # at least one paragraph in each style so the styles are "used" and thus
