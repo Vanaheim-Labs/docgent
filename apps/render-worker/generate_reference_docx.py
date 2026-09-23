@@ -17,9 +17,11 @@ subdirectory of the render-worker directory when running locally).
 from __future__ import annotations
 
 import argparse
+import io
 import os
 import re
 import sys
+import zipfile
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -34,6 +36,12 @@ try:
 except ImportError:
     print("ERROR: python-docx is not installed.  Run: pip install python-docx", file=sys.stderr)
     sys.exit(1)
+
+try:
+    from lxml import etree as _lxml_etree
+    _HAVE_LXML = True
+except ImportError:
+    _HAVE_LXML = False
 
 try:
     import yaml as _yaml
@@ -293,6 +301,170 @@ def _add_rule_border_to_paragraph(paragraph, color_hex: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Font embedding
+# ---------------------------------------------------------------------------
+
+# OOXML namespaces used in fontTable.xml and its .rels file
+_W_NS  = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+_R_NS  = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+_PKG_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+_FONT_REL_TYPE = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/font"
+)
+
+# Map filename stem keywords → OOXML embed-variant element name
+# Order matters: check bolditalic before bold/italic.
+_VARIANT_RULES: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"bolditalic|boldit|bi",   re.I), "embedBoldItalic"),
+    (re.compile(r"semibolditalic|semibold", re.I), None),   # skip semibold — Word has no slot
+    (re.compile(r"bold",                   re.I), "embedBold"),
+    (re.compile(r"italic|it(?![a-z])",    re.I), "embedItalic"),
+    (re.compile(r"medium|light",           re.I), None),   # no standard OOXML slot
+]
+
+
+def _filename_to_variant(stem: str) -> str | None:
+    """Map a TTF filename stem to an OOXML embedXxx attribute name, or None to skip."""
+    for pattern, slot in _VARIANT_RULES:
+        if pattern.search(stem):
+            return slot   # None means 'recognised but no Word slot'
+    # No weight keyword → treat as Regular
+    return "embedRegular"
+
+
+def _filename_to_family(stem: str) -> str:
+    """Derive the CSS/Word family name from a TTF filename stem.
+
+    e.g. 'Figtree-Regular' → 'Figtree'
+         'CrimsonPro-Bold'  → 'Crimson Pro'
+    """
+    # Strip weight/style suffix after last hyphen (if any)
+    base = stem.split("-")[0]
+    # Insert spaces before CamelCase word boundaries (e.g. CrimsonPro → Crimson Pro)
+    return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", base)
+
+
+def embed_brand_fonts(docx_path: str | Path, font_dir: str | Path) -> int:
+    """Embed all TTF files found in *font_dir* into the DOCX at *docx_path*.
+
+    Modifies the file in-place.  Returns the number of font variants embedded.
+    Skips weight variants that have no OOXML slot (semibold, medium, light).
+    Requires lxml; no-ops silently if lxml is unavailable.
+    """
+    if not _HAVE_LXML:
+        print("  ⚠ lxml not available — font embedding skipped", file=sys.stderr)
+        return 0
+
+    font_dir = Path(font_dir)
+    ttf_files = sorted(font_dir.glob("*.ttf"))
+    if not ttf_files:
+        print(f"  ⚠ no TTF files found in {font_dir} — embedding skipped", file=sys.stderr)
+        return 0
+
+    # Build an embedding plan: [(family, variant_tag, path), ...]
+    plan: list[tuple[str, str, Path]] = []
+    for ttf in ttf_files:
+        stem = ttf.stem
+        variant = _filename_to_variant(stem)
+        if variant is None:
+            continue   # no OOXML slot for this weight
+        family = _filename_to_family(stem)
+        plan.append((family, variant, ttf))
+
+    if not plan:
+        return 0
+
+    # ---- Read entire DOCX zip into memory ----------------------------------
+    docx_path = Path(docx_path)
+    with zipfile.ZipFile(docx_path, "r") as z:
+        arc_names = z.namelist()
+        files: dict[str, bytes] = {n: z.read(n) for n in arc_names}
+
+    # ---- 1. Patch settings.xml — add embedTrueTypeFonts -------------------
+    settings_xml = files.get("word/settings.xml", b"")
+    if b"embedTrueTypeFonts" not in settings_xml:
+        settings_xml = settings_xml.replace(
+            b"</w:settings>",
+            b"<w:embedTrueTypeFonts/><w:embedSystemFonts/></w:settings>",
+        )
+        files["word/settings.xml"] = settings_xml
+
+    # ---- 2. Parse fontTable.xml -------------------------------------------
+    ft_path = "word/fontTable.xml"
+    ft_xml = files.get(ft_path, b"")
+    if ft_xml:
+        ft_root = _lxml_etree.fromstring(ft_xml)
+    else:
+        ft_root = _lxml_etree.fromstring(
+            b'<w:fonts xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>'
+        )
+
+    # ---- 3. Parse (or create) fontTable.xml.rels --------------------------
+    rels_path = "word/_rels/fontTable.xml.rels"
+    if rels_path in files:
+        rels_root = _lxml_etree.fromstring(files[rels_path])
+    else:
+        rels_root = _lxml_etree.fromstring(
+            b'<?xml version="1.0" encoding="UTF-8"?>'
+            b'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>'
+        )
+
+    existing_ids = {el.get("Id", "") for el in rels_root}
+    rel_counter = max(
+        (int(i[3:]) for i in existing_ids if i.startswith("rId") and i[3:].isdigit()),
+        default=0,
+    )
+
+    # ---- 4. Embed each font variant ----------------------------------------
+    w = "{" + _W_NS + "}"
+    embedded = 0
+    for family, variant_tag, ttf_path in plan:
+        arc_name = f"word/fonts/{ttf_path.name}"
+        files[arc_name] = ttf_path.read_bytes()
+
+        rel_counter += 1
+        rel_id = f"rId{rel_counter}"
+
+        # Add relationship
+        rel_el = _lxml_etree.SubElement(rels_root, "Relationship")
+        rel_el.set("Id", rel_id)
+        rel_el.set("Type", _FONT_REL_TYPE)
+        rel_el.set("Target", f"fonts/{ttf_path.name}")
+
+        # Find or create <w:font w:name="FamilyName"> in fontTable.xml
+        font_el = None
+        for f in ft_root.findall(f"{w}font"):
+            if f.get(f"{w}name") == family:
+                font_el = f
+                break
+        if font_el is None:
+            font_el = _lxml_etree.SubElement(ft_root, f"{w}font")
+            font_el.set(f"{w}name", family)
+
+        # Add <w:embedRegular r:id="rId..."/> (or Bold/Italic/BoldItalic)
+        embed_el = _lxml_etree.SubElement(font_el, f"{w}{variant_tag}")
+        embed_el.set(f"{{{_R_NS}}}id", rel_id)
+        embedded += 1
+
+    # ---- 5. Serialise patched XML back ------------------------------------
+    files[ft_path] = _lxml_etree.tostring(
+        ft_root, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
+    files[rels_path] = _lxml_etree.tostring(
+        rels_root, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
+
+    # ---- 6. Rewrite DOCX zip in-place -------------------------------------
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zout:
+        for name, data in files.items():
+            zout.writestr(name, data)
+
+    docx_path.write_bytes(buf.getvalue())
+    return embedded
+
+
+# ---------------------------------------------------------------------------
 # Page width helpers
 # ---------------------------------------------------------------------------
 
@@ -515,6 +687,29 @@ def generate_reference_docx(brand_id: str, brands_dir: Path, output_path: Path) 
     # --- Save ---------------------------------------------------------------
     output_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(output_path))
+
+    # --- Optional font embedding -------------------------------------------
+    if t.get("embed_fonts"):
+        # Fonts come from pipeline/fonts/<brand_id>/ (staged by stage.mjs).
+        # Resolve relative to the brands dir: fonts live one level up under
+        # pipeline/fonts/, i.e. brands_dir/../fonts/<brand_id>/ when staged,
+        # or brands/<brand_id>/fonts/ in the monorepo source tree.
+        font_dirs_to_try = [
+            brands_dir.parent / "fonts" / brand_id,        # staged pipeline layout
+            brands_dir / brand_id / "fonts",                # monorepo source layout
+        ]
+        font_dir = next((d for d in font_dirs_to_try if d.is_dir()), None)
+        if font_dir is None:
+            print(
+                f"  ⚠ {brand_id}: embed_fonts=true but no font directory found "
+                f"(tried: {', '.join(str(d) for d in font_dirs_to_try)})",
+                file=sys.stderr,
+            )
+        else:
+            n = embed_brand_fonts(output_path, font_dir)
+            size_kb = output_path.stat().st_size // 1024
+            print(f"    embedded {n} font variant(s) from {font_dir} → {size_kb} KB")
+
     print(f"  ✓ {brand_id}: {output_path}")
 
 
