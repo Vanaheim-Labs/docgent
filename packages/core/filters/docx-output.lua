@@ -927,6 +927,14 @@ local function page_break_para()
 end
 
 function Pandoc(doc)
+  -- Suppress pandoc's auto-generated title page (title/date/author from YAML
+  -- frontmatter). Documents with a ::native-cover{} block already have a
+  -- proper cover page; the pandoc title block produces a second unwanted one.
+  doc.meta['title']    = nil
+  doc.meta['date']     = nil
+  doc.meta['author']   = nil
+  doc.meta['subtitle'] = nil
+
   local out = {}
   local i   = 1
   while i <= #doc.blocks do
