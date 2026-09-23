@@ -446,7 +446,21 @@ def embed_brand_fonts(docx_path: str | Path, font_dir: str | Path) -> int:
         embed_el.set(f"{{{_R_NS}}}id", rel_id)
         embedded += 1
 
-    # ---- 5. Serialise patched XML back ------------------------------------
+    # ---- 5. Patch [Content_Types].xml — declare .ttf content type ---------
+    # Without this Word cannot identify the font files, flags them as
+    # "unreadable content", strips them during recovery, and shows the
+    # scary repair dialog.  Adding a Default entry for .ttf is enough.
+    ct_xml = files.get("[Content_Types].xml", b"")
+    if ct_xml and b'Extension="ttf"' not in ct_xml:
+        ct_xml = ct_xml.replace(
+            b"</Types>",
+            b'<Default Extension="ttf"'
+            b' ContentType="application/x-font-ttf"/>'
+            b"</Types>",
+        )
+        files["[Content_Types].xml"] = ct_xml
+
+    # ---- 6. Serialise patched XML back ------------------------------------
     files[ft_path] = _lxml_etree.tostring(
         ft_root, xml_declaration=True, encoding="UTF-8", standalone=True
     )
