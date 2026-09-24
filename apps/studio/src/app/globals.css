@@ -477,7 +477,7 @@ a:hover { text-decoration: underline; }
   flex-shrink: 0;
   position: sticky;
   top: var(--topbar-h);
-  z-index: 10;
+  z-index: 11;
 }
 .editor-toolbar-left,
 .editor-toolbar-right { display: flex; align-items: center; gap: 12px; }
