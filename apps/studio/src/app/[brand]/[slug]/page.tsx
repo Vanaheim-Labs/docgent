@@ -10,6 +10,8 @@ import {
 import { fetchDocPreviewMeta } from "@/lib/metadata";
 import { UserChip } from "@/components/UserChip";
 import { DocumentWorkspace } from "@/components/DocumentWorkspace";
+import { Editor } from "@/components/Editor";
+import { loadVocabulary } from "@/lib/vocabulary";
 import { SignInPreview } from "@/components/SignInPreview";
 
 export const dynamic = "force-dynamic";
@@ -108,6 +110,15 @@ export default async function DocumentPage({ params, searchParams }: Props) {
   }
 
   const fm = doc.frontmatter || {};
+  if (process.env.DOCGENT_UNIFIED_WORKSPACE === "1") {
+    return <div className="editor-shell"><Editor
+      key={`${brand}/${slug}/${commitSha || "latest"}`}
+      brand={brand} slug={slug} initialContent={doc.content}
+      initialSha={doc.sha ?? null} vocabulary={loadVocabulary()}
+      workspace={{ title: fm.title || slug, status: fm.status, timeline,
+        canEdit: !commitSha, viewingSha: commitSha, initialEditing: false }}
+    /></div>;
+  }
   const viewing = commitSha
     ? timeline.find((t) => t.sha === commitSha)
     : timeline[0];

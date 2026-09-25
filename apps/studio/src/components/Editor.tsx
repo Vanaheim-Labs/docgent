@@ -152,6 +152,14 @@ type Props = {
   initialContent: string;
   initialSha: string | null;
   vocabulary: Vocabulary;
+  workspace?: {
+    title: string;
+    timeline: import("@/lib/store").TimelineEntry[];
+    canEdit: boolean;
+    initialEditing?: boolean;
+    viewingSha?: string;
+    status?: string;
+  };
 };
 
 const PREVIEW_DEBOUNCE_MS = 1200;
@@ -217,7 +225,9 @@ function EditorExportDropdown({ brand, slug, previewUrl }: { brand: string; slug
   );
 }
 
-export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: Props) {
+export function Editor({ brand, slug, initialContent, initialSha, vocabulary, workspace }: Props) {
+  const [authoring, setAuthoring] = useState<"visual" | "source">("visual");
+  const [layout, setLayout] = useState<"editor" | "split" | "preview">(workspace?.initialEditing ? "editor" : "preview");
   const [content, setContent] = useState(initialContent);
   const [baseSha, setBaseSha] = useState(initialSha);
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
@@ -245,7 +255,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   // Unified editor mode. Replaces separate posture + previewMode.
-  const [editorMode, setEditorMode] = useState<EditorMode>("edit");
+  const [legacyEditorMode, setEditorMode] = useState<EditorMode>("edit");
+  const editorMode: EditorMode = workspace ? (layout === "preview" ? "pages" : authoring === "source" ? "source" : "edit") : legacyEditorMode;
   // Derived internal state for existing scroll sync / preview logic.
   const mode: PreviewMode = editorMode === "pages" ? "pdf" : "html";
   const posture: Posture = editorMode === "source" ? "edit" : "review";  // review/edit/pages all use review posture for preview
@@ -2623,7 +2634,22 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
 
   return (
-    <div className="editor">
+    <div className="editor" data-unified={!!workspace} data-layout={layout} data-authoring={authoring}>
+      {workspace && <header className="workspace-header">
+        <nav aria-label="Application navigation"><a href="/">Documents</a> · <a href="/primitives">Primitives</a></nav>
+        <h1>{workspace.title}</h1>
+        <span>{workspace.status || "Draft"}</span>
+        <div role="group" aria-label="Authoring mode">
+          <button aria-pressed={authoring === "visual"} onClick={() => setAuthoring("visual")}>Visual</button>
+          <button aria-pressed={authoring === "source"} onClick={() => setAuthoring("source")}>Source</button>
+        </div>
+        <div role="group" aria-label="Workspace layout">
+          <button disabled={!workspace.canEdit} aria-pressed={layout === "editor"} onClick={() => setLayout("editor")}>Editor only</button>
+          <button disabled={!workspace.canEdit} aria-pressed={layout === "split"} onClick={() => setLayout("split")}>Side by side</button>
+          <button aria-pressed={layout === "preview"} onClick={() => setLayout("preview")}>Preview only</button>
+        </div>
+        <span>{layout === "preview" ? "Read-only preview" : "Editing"}</span>
+      </header>}
       <div className="editor-toolbar">
         <div className="editor-toolbar-left">
           <button
