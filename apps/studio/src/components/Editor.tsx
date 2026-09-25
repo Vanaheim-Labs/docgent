@@ -3036,62 +3036,101 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                below the main toolbar in the DOM flow and never get clipped by
                the outer editor overflow:hidden. ── */}
           <div className="format-bars-wrap">
+            {/* ── ROW 1: Word-style formatting + most common Docgent primitives (Autype layout) ── */}
             <div
               className="format-bar format-bar-row1"
               role="toolbar"
-              aria-label="Markdown formatting"
+              aria-label="Formatting"
               onMouseEnter={() => { savedIframeSelection.current = getIframeSelection(); }}
             >
+              {/* Paragraph / heading style */}
               <div className="format-group">
-                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); transformLines((lines) => lines.map((l) => l.replace(/^#{1,6}\s+/, ""))); }} disabled={isFolded} title="Paragraph">P</button>
-                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(1); }} disabled={isFolded} title="Heading 1">H1</button>
-                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(2); }} disabled={isFolded} title="Heading 2">H2</button>
-                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(3); }} disabled={isFolded} title="Heading 3">H3</button>
-                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(4); }} disabled={isFolded} title="Heading 4">H4</button>
+                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); transformLines((lines) => lines.map((l) => l.replace(/^#{1,6}\s+/, ""))); }} disabled={isFolded} title="Paragraph" data-tooltip="Paragraph">P</button>
+                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(1); }} disabled={isFolded} title="Heading 1" data-tooltip="Heading 1">H1</button>
+                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(2); }} disabled={isFolded} title="Heading 2" data-tooltip="Heading 2">H2</button>
+                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(3); }} disabled={isFolded} title="Heading 3" data-tooltip="Heading 3">H3</button>
+                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(4); }} disabled={isFolded} title="Heading 4" data-tooltip="Heading 4">H4</button>
               </div>
               <div className="format-divider" />
+              {/* Inline marks */}
               <div className="format-group">
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("**", "bold text"); }} disabled={isFolded} title="Bold — ⌘B" aria-label="Bold"><Bold size={14} strokeWidth={2.5} /></button>
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("*", "italic text"); }} disabled={isFolded} title="Italic — ⌘I" aria-label="Italic"><Italic size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertUnderline(); }} disabled={isFolded} title="Underline" aria-label="Underline"><Underline size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("~~", "struck text"); }} disabled={isFolded} title="Strikethrough" aria-label="Strikethrough"><Strikethrough size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertHighlight(); }} disabled={isFolded} title="Highlight (==text==)" aria-label="Highlight"><Highlighter size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("**", "bold text"); }} disabled={isFolded} title="Bold — ⌘B" data-tooltip="Bold — ⌘B"><Bold size={14} strokeWidth={2.5} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("*", "italic text"); }} disabled={isFolded} title="Italic — ⌘I" data-tooltip="Italic — ⌘I"><Italic size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertUnderline(); }} disabled={isFolded} title="Underline" data-tooltip="Underline"><Underline size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("~~", "struck text"); }} disabled={isFolded} title="Strikethrough" data-tooltip="Strikethrough"><Strikethrough size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertHighlight(); }} disabled={isFolded} title="Highlight" data-tooltip="Highlight"><Highlighter size={14} strokeWidth={2} /></button>
               </div>
               <div className="format-divider" />
+              {/* Lists + insert */}
               <div className="format-group">
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertLink(); }} disabled={isFolded} title="Link — ⌘K" aria-label="Insert link"><Link2 size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); applyBullets(); }} disabled={isFolded} title="Bulleted list" aria-label="Bulleted list"><List size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); applyNumbered(); }} disabled={isFolded} title="Numbered list" aria-label="Numbered list"><ListOrdered size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertTable(); }} disabled={isFolded} title="Insert table" aria-label="Insert table"><Table size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertImage(); }} disabled={isFolded} title="Insert image" aria-label="Insert image"><Image size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onClick={insertCodeBlock} disabled={isFolded} title="Code block" aria-label="Code block"><Code2 size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onClick={insertRule} disabled={isFolded} title="Horizontal rule" aria-label="Horizontal rule"><Minus size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertLink(); }} disabled={isFolded} title="Link — ⌘K" data-tooltip="Link — ⌘K"><Link2 size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); applyBullets(); }} disabled={isFolded} title="Bulleted list" data-tooltip="Bulleted list"><List size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); applyNumbered(); }} disabled={isFolded} title="Numbered list" data-tooltip="Numbered list"><ListOrdered size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertTable(); }} disabled={isFolded} title="Table" data-tooltip="Table"><Table size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertImage(); }} disabled={isFolded} title="Image" data-tooltip="Image"><Image size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onClick={insertCodeBlock} disabled={isFolded} title="Code block" data-tooltip="Code block"><Code2 size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onClick={insertRule} disabled={isFolded} title="Horizontal rule" data-tooltip="Horizontal rule"><Minus size={14} strokeWidth={2} /></button>
               </div>
               <div className="format-divider" />
+              {/* Undo / redo */}
               <div className="format-group">
-                <button className="format-btn" onClick={doUndo} disabled={isFolded} title="Undo" aria-label="Undo"><Undo2 size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onClick={doRedo} disabled={isFolded} title="Redo" aria-label="Redo"><Redo2 size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onClick={doUndo} disabled={isFolded} title="Undo" data-tooltip="Undo"><Undo2 size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onClick={doRedo} disabled={isFolded} title="Redo" data-tooltip="Redo"><Redo2 size={14} strokeWidth={2} /></button>
               </div>
               <div className="format-divider" />
+              {/* Most common Docgent primitives — right on Row 1, matching Autype */}
+              {(() => {
+                const ROW1_PRIMS = ["summary", "callout", "pullquote", "keyfigure", "key-figure", "pagebreak", "toc"];
+                return snippets
+                  .filter(s => ROW1_PRIMS.includes(s.id))
+                  .sort((a, b) => ROW1_PRIMS.indexOf(a.id) - ROW1_PRIMS.indexOf(b.id))
+                  .map(s => {
+                    const Icon = BLOCK_ICONS[s.id];
+                    const tip = s.description ? `${s.id} — ${s.description}` : s.id;
+                    return (
+                      <button key={s.id}
+                        className={`format-btn format-btn-prim${s.id === "pagebreak" ? " format-btn-prim-accent" : ""}`}
+                        onClick={() => insertSnippet(s.snippet)}
+                        disabled={isFolded}
+                        title={tip} data-tooltip={tip}
+                      >
+                        {Icon ? <Icon size={14} strokeWidth={2} /> : null}
+                      </button>
+                    );
+                  });
+              })()}
+              <div className="format-divider" />
+              {/* AI rewrite */}
               <div className="format-group">
-                <button className="format-btn format-btn-wide" onClick={openSelectionRewrite} disabled={isFolded} title="Select text first, then direct a rewrite" aria-label="Rewrite selection">✨ Rewrite</button>
+                <button className="format-btn format-btn-wide" onClick={openSelectionRewrite} disabled={isFolded} title="Rewrite selection" data-tooltip="Rewrite selection">✨</button>
               </div>
               {isFolded && <span className="format-note">unfold a section to edit</span>}
             </div>
+            {/* ── ROW 2: Docgent structural blocks (matches Autype's second icon row) ── */}
             <div className="format-bar format-bar-row2" role="toolbar" aria-label="Docgent vocabulary blocks">
               {(() => {
-                // Primary blocks: most commonly reached-for in Word-style authoring.
-                // Ordered to match Autype: structure → emphasis → data → authorship.
-                const PRIMARY = [
-                  "pagebreak", "toc", "columns",
-                  "callout", "pullquote", "tensionbox",
-                  "summary", "recommendation", "note",
-                  "keyfigure", "key-figure", "chart", "figure", "image",
-                  "datatable", "signature",
+                // Row 2 primary: structural/layout/data blocks visible by default.
+                // Matches Autype's second row order: layout → content → data → planning.
+                const ROW2_PRIMARY = [
+                  // Layout
+                  "native-cover", "exec-intro", "columns", "landscape", "appendix", "pagebreak",
+                  // Content
+                  "summary", "recommendation", "callout", "pullquote", "tensionbox", "note",
+                  // Data / metrics
+                  "keyfigure", "key-figure", "kpigrid", "kpi-row", "chart", "allocation", "datatable", "financialtable",
+                  // Planning
+                  "funnel", "milestones", "timeline", "roadmap",
+                  // Authorship
+                  "signature", "toc",
                 ];
-                const primary = snippets.filter(s => PRIMARY.includes(s.id))
-                  .sort((a, b) => PRIMARY.indexOf(a.id) - PRIMARY.indexOf(b.id));
-                const secondary = snippets.filter(s => !PRIMARY.includes(s.id));
+                // Row 1 primitives already shown above — exclude from row 2
+                const ROW1_PRIMS = ["summary", "callout", "pullquote", "keyfigure", "key-figure", "pagebreak", "toc"];
+                const row2Primary = snippets
+                  .filter(s => ROW2_PRIMARY.includes(s.id) && !ROW1_PRIMS.includes(s.id))
+                  .sort((a, b) => ROW2_PRIMARY.indexOf(a.id) - ROW2_PRIMARY.indexOf(b.id));
+                const secondary = snippets.filter(s =>
+                  !ROW2_PRIMARY.includes(s.id) && !ROW1_PRIMS.includes(s.id)
+                );
 
                 const BlockBtn = (s: typeof snippets[0]) => {
                   const Icon = BLOCK_ICONS[s.id];
@@ -3099,7 +3138,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                   return (
                     <button
                       key={s.id}
-                      className={`format-btn format-btn-prim${s.id === "pagebreak" ? " format-btn-prim-accent" : ""}`}
+                      className="format-btn format-btn-prim"
                       onClick={() => { insertSnippet(s.snippet); setShowMoreBlocks(false); }}
                       disabled={isFolded}
                       title={tip}
@@ -3113,7 +3152,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
 
                 return (
                   <>
-                    {primary.map(BlockBtn)}
+                    {row2Primary.map(BlockBtn)}
                     <div className="format-divider" />
                     <div className="blocks-more-wrap">
                       <button
