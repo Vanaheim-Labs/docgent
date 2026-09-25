@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Vocabulary } from "@/lib/vocabulary";
 import { validateMarkdown, type Diagnostic } from "@/lib/validate-client";
 import { RewriteBar, type RewriteProposal } from "@/components/RewriteBar";
+import { Tooltip } from "@/components/Tooltip";
 import { ProposalReview } from "@/components/ProposalReview";
 import { CommentsPanel } from "@/components/CommentsPanel";
 import { parseComments, setCommentResolved, insertComment } from "@/lib/comments";
