@@ -2923,120 +2923,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
       )}
 
-      <div
-        className="editor-panes"
-        data-posture={posture}
-        data-mode={editorMode}
-        data-split={(splitView && editorMode === "edit") || (splitView && editorMode === "review")}
-        data-comments={showComments}
-        data-outline={showOutline && headings.length > 0}
-      >
-        {/* Collapsible outline sidebar (Phase 2b) — grid column, pushes content pane */}
-        {showOutline && headings.length > 0 && (
-          <nav
-            className="outline-sidebar"
-            aria-label="Document outline"
-          >
-            <div className="outline-head" style={{ position: "sticky", top: 0, zIndex: 1 }}>
-              <span>Outline</span>
-              <span className="outline-count">{headings.length}</span>
-              <button
-                className="outline-close"
-                onClick={() => setShowOutline(false)}
-                aria-label="Close outline"
-                title="Close outline"
-              >&times;</button>
-            </div>
-            <div className="outline-list">
-              {headings.map((h) => {
-                const foldable = sectionEnd(h) > h.line;
-                const isOpen = !folded.includes(h.line);
-                const struck = isStruck(h);
-                return (
-                  <div
-                    key={h.line}
-                    className="outline-row"
-                    data-level={h.level}
-                    data-struck={struck}
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData("text/x-docgent-line", String(h.line));
-                      e.dataTransfer.setData("text/x-docgent-level", String(h.level));
-                      e.dataTransfer.effectAllowed = "move";
-                    }}
-                    onDragOver={(e) => {
-                      if (e.dataTransfer.types.includes("text/x-docgent-line")) {
-                        e.preventDefault();
-                        e.dataTransfer.dropEffect = "move";
-                      }
-                    }}
-                    onDrop={(e) => {
-                      const fromLine = Number(e.dataTransfer.getData("text/x-docgent-line"));
-                      if (!Number.isFinite(fromLine) || fromLine === h.line) return;
-                      e.preventDefault();
-                      moveSection(fromLine, h.line);
-                    }}
-                    title="Drag to reorder"
-                  >
-                    <button
-                      className="outline-fold"
-                      onClick={() => toggleFold(h.line)}
-                      disabled={!foldable}
-                      aria-label={isOpen ? "Fold section" : "Unfold section"}
-                      title={foldable ? (isOpen ? "Fold section" : "Unfold section") : "Nothing to fold"}
-                    >
-                      {foldable ? (isOpen ? "▾" : "▸") : "·"}
-                    </button>
-                    <button
-                      className="outline-link"
-                      onClick={() => jumpToLine(h.line)}
-                      title={`${h.text} — line ${h.line}`}
-                    >
-                      {h.text}
-                    </button>
-                    <button
-                      className="outline-strike"
-                      onClick={() => toggleStrike(h)}
-                      data-active={struck}
-                      title={struck ? "Unstrike section" : "Strike section"}
-                      aria-label={struck ? `Unstrike ${h.text}` : `Strike ${h.text}`}
-                    >
-                      S
-                    </button>
-                    <button
-                      className="outline-direct"
-                      onClick={() => openSectionRewrite(h)}
-                      title={`Direct a rewrite of "${h.text}"`}
-                      aria-label={`Direct a rewrite of ${h.text}`}
-                    >
-                      ✨
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </nav>
-        )}
-        {/* Source pane: CM6 host is always in the DOM so the EditorView can mount on first render.
-             Visibility is controlled via CSS (display:none when not in source/split modes) so
-             the ref is never null when the mount effect runs. */}
-        <div
-          className="pane pane-source"
-          style={{
-            display: (editorMode === "source" || (editorMode === "edit" && splitView) || (editorMode === "review" && splitView))
-              ? undefined
-              : "none",
-          }}
-        >
-          {editorMode === "source" && (
-            <div className="source-mode-banner">
-              ‹› You are editing the document source
-            </div>
-          )}
-          {/* ── Format toolbars live here, inside the source pane, so they are always
-               below the main toolbar in the DOM flow and never get clipped by
-               the outer editor overflow:hidden. ── */}
-          <div className="format-bars-wrap">
+      {editorMode !== "pages" && (
+      <div className="format-bars-wrap">
             {/* ── ROW 1: Word-style formatting + most common Docgent primitives (Autype layout) ── */}
             <div
               className="format-bar format-bar-row1"
@@ -3182,7 +3070,119 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                 );
               })()}
             </div>
-          </div>
+      </div>
+      )}
+
+      <div
+        className="editor-panes"
+        data-posture={posture}
+        data-mode={editorMode}
+        data-split={(splitView && editorMode === "edit") || (splitView && editorMode === "review")}
+        data-comments={showComments}
+        data-outline={showOutline && headings.length > 0}
+      >
+        {/* Collapsible outline sidebar (Phase 2b) — grid column, pushes content pane */}
+        {showOutline && headings.length > 0 && (
+          <nav
+            className="outline-sidebar"
+            aria-label="Document outline"
+          >
+            <div className="outline-head" style={{ position: "sticky", top: 0, zIndex: 1 }}>
+              <span>Outline</span>
+              <span className="outline-count">{headings.length}</span>
+              <button
+                className="outline-close"
+                onClick={() => setShowOutline(false)}
+                aria-label="Close outline"
+                title="Close outline"
+              >&times;</button>
+            </div>
+            <div className="outline-list">
+              {headings.map((h) => {
+                const foldable = sectionEnd(h) > h.line;
+                const isOpen = !folded.includes(h.line);
+                const struck = isStruck(h);
+                return (
+                  <div
+                    key={h.line}
+                    className="outline-row"
+                    data-level={h.level}
+                    data-struck={struck}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("text/x-docgent-line", String(h.line));
+                      e.dataTransfer.setData("text/x-docgent-level", String(h.level));
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragOver={(e) => {
+                      if (e.dataTransfer.types.includes("text/x-docgent-line")) {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                      }
+                    }}
+                    onDrop={(e) => {
+                      const fromLine = Number(e.dataTransfer.getData("text/x-docgent-line"));
+                      if (!Number.isFinite(fromLine) || fromLine === h.line) return;
+                      e.preventDefault();
+                      moveSection(fromLine, h.line);
+                    }}
+                    title="Drag to reorder"
+                  >
+                    <button
+                      className="outline-fold"
+                      onClick={() => toggleFold(h.line)}
+                      disabled={!foldable}
+                      aria-label={isOpen ? "Fold section" : "Unfold section"}
+                      title={foldable ? (isOpen ? "Fold section" : "Unfold section") : "Nothing to fold"}
+                    >
+                      {foldable ? (isOpen ? "▾" : "▸") : "·"}
+                    </button>
+                    <button
+                      className="outline-link"
+                      onClick={() => jumpToLine(h.line)}
+                      title={`${h.text} — line ${h.line}`}
+                    >
+                      {h.text}
+                    </button>
+                    <button
+                      className="outline-strike"
+                      onClick={() => toggleStrike(h)}
+                      data-active={struck}
+                      title={struck ? "Unstrike section" : "Strike section"}
+                      aria-label={struck ? `Unstrike ${h.text}` : `Strike ${h.text}`}
+                    >
+                      S
+                    </button>
+                    <button
+                      className="outline-direct"
+                      onClick={() => openSectionRewrite(h)}
+                      title={`Direct a rewrite of "${h.text}"`}
+                      aria-label={`Direct a rewrite of ${h.text}`}
+                    >
+                      ✨
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </nav>
+        )}
+        {/* Source pane: CM6 host is always in the DOM so the EditorView can mount on first render.
+             Visibility is controlled via CSS (display:none when not in source/split modes) so
+             the ref is never null when the mount effect runs. */}
+        <div
+          className="pane pane-source"
+          style={{
+            display: (editorMode === "source" || (editorMode === "edit" && splitView) || (editorMode === "review" && splitView))
+              ? undefined
+              : "none",
+          }}
+        >
+          {editorMode === "source" && (
+            <div className="source-mode-banner">
+              ‹› You are editing the document source
+            </div>
+          )}
           {/* CodeMirror 6 editor host */}
           <div
             ref={cmContainerRef}
