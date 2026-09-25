@@ -1,0 +1,22 @@
+import {test,expect} from '@playwright/test';
+import {startNextFixture} from './next-fixture.mjs';
+let server;
+test.beforeAll(async()=>{test.setTimeout(120000);server=await startNextFixture();});
+test.afterAll(async()=>server?.close());
+test('Visual and Markdown switch only the left editor, retaining output and permissions',async({page,context})=>{
+ test.setTimeout(120000);await server.login(context);await page.setViewportSize({width:1440,height:1000});await page.goto(server.url+'/example/fixture/edit');
+ await expect(page.locator('.workspace-output')).toBeVisible();
+ const tools=await page.getByRole('toolbar',{name:'Formatting',exact:true}).boundingBox();
+ const output=await page.locator('.workspace-output').boundingBox();
+ expect(tools.x+tools.width).toBeLessThanOrEqual(output.x);
+ await expect(page.locator('.workspace-editor-heading')).toContainText('Click text to edit');
+ await expect(page.locator('.workspace-edit-tools-label')).toHaveText('Editor tools');
+ await expect(page.locator('.workspace-output-status')).toContainText('Read only');
+ await expect(page.getByRole('button',{name:/^(Read|Edit|Editor only|Side by side|Preview only)$/})).toHaveCount(0);
+ await page.getByRole('button',{name:'Markdown',exact:true}).click();await expect(page.locator('.cm-content')).toBeVisible();
+ await expect(page.locator('.workspace-output')).toBeVisible();await expect(page.locator('.workspace-output').getByRole('status',{name:'Preview status'})).toBeVisible();
+ await page.getByRole('button',{name:'Visual',exact:true}).click();await expect(page.locator('.workspace-output')).toBeVisible();await expect(page.locator('.editor')).toHaveAttribute('data-layout','split');
+ await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Preview',exact:true}).click();await expect(page.locator('.workspace-output')).toBeVisible();await expect(page.locator('.pane-preview')).toBeHidden();
+ await page.getByRole('button',{name:'Editor',exact:true}).click();await expect(page.getByRole('button',{name:'Visual',exact:true})).toHaveAttribute('aria-pressed','true');
+ await page.goto(server.url+'/example/fixture?v='+server.old);await expect(page.getByRole('status',{name:'Historical revision'})).toBeVisible();await expect(page.getByRole('button',{name:'Save',exact:true})).toBeDisabled();
+});

@@ -20,9 +20,16 @@
 .editor[data-unified="true"][data-layout="split"] .workspace-output { display:flex; border-left:1px solid var(--line,#ddd); }
 .editor[data-unified="true"] .workspace-mobile-toggle { display:none; }
 .editor[data-unified="true"] > .editor-toolbar { display:none; }
-.editor[data-unified="true"][data-insert="false"] .format-bars-wrap { display:none; }
-.workspace-format { display:flex; flex-wrap:wrap; gap:6px; padding:8px 20px; border-bottom:1px solid var(--line,#ddd); }
-.workspace-format button { min-height:32px; border:1px solid var(--line,#ccc); border-radius:4px; background:var(--paper,white); padding:4px 10px; }
+/* Formatting belongs to the left authoring pane, never to output. */
+.legacy-editor-panes { display:contents; }
+.editor[data-unified="true"] .workspace-editor { display:flex; flex-direction:column; flex:2 1 0; min-width:320px; min-height:0; }
+.editor[data-unified="true"] .workspace-editor > .pane { min-height:0; width:100%; flex:1; }
+.editor[data-unified="true"] .workspace-editor .format-bar { flex-wrap:wrap; }
+@media(max-width:760px) {
+ .editor[data-unified="true"] .workspace-editor { min-width:0; width:100%; }
+ .editor[data-unified="true"][data-mobile-pane="preview"] .workspace-editor { display:none; }
+}
+/* Keep the complete Markdown and vocabulary toolbars discoverable. */
 .editor[data-unified="true"] .editor-comments-rail { flex:0 0 320px; display:flex; overflow:auto; }
 .workspace-context { flex:0 0 340px; min-width:300px; overflow:auto; padding:12px; border-left:1px solid var(--line,#ddd); background:var(--paper,white); }
 .editor[data-unified="true"] .editor-panes { position:relative; }
@@ -30,15 +37,50 @@
  .editor[data-unified="true"] .workspace-context,
  .editor[data-unified="true"] .editor-comments-rail { position:absolute; inset:0 0 0 auto; width:340px; max-width:100%; min-width:0; z-index:20; background:var(--paper,white); box-shadow:-6px 0 18px #0002; }
 }
-.workspace-header .workspace-tools { display:contents; }
+.workspace-header .workspace-tools { display:flex; flex:1 0 100%; align-items:center; gap:6px; }
+.workspace-header .workspace-tools button { font-size:12px; padding:6px 8px; min-height:32px; }
+.workspace-header .workspace-tools [role="status"] { font-size:12px; color:var(--ink-soft); }
+/* Authoring first; document panels remain secondary. */
+.workspace-header .workspace-tools { gap:18px; padding-top:6px; }
+.workspace-header .workspace-tools [role="group"] { align-items:center; gap:2px; }
+.workspace-header .workspace-authoring { padding:3px; border-radius:8px; background:var(--surface,#f3f5f7); border:1px solid var(--line,#ddd); }
+.workspace-header .workspace-authoring button { border:0; min-width:66px; font-weight:600; background:transparent; }
+.workspace-header .workspace-authoring button[aria-pressed="true"] { background:var(--accent,#234c60); color:white; box-shadow:0 1px 3px #0002; }
+.workspace-control-label { font-size:11px; color:var(--ink-soft,#68727c); margin-right:6px; }
+.workspace-header .workspace-authoring button,
+.workspace-header .workspace-layout button { border-color:transparent; background:transparent; }
+.workspace-header .workspace-authoring button[aria-pressed="true"],
+.workspace-header .workspace-layout button[aria-pressed="true"] { background:var(--accent-soft,#e8eff2); color:var(--accent,#234c60); }
+.workspace-header .workspace-panels { margin-left:auto; padding-left:16px; border-left:1px solid var(--line,#ddd); }
+.workspace-header .workspace-panels button { background:transparent; border-color:transparent; color:var(--ink-soft,#68727c); }
+.workspace-header .workspace-panels button[aria-expanded="true"] { color:var(--accent,#234c60); background:var(--accent-soft,#e8eff2); }
+.workspace-output-status { display:flex; align-items:center; gap:8px; width:100%; font-size:11px; color:var(--ink-soft,#68727c); border-top:1px solid var(--line,#ddd); padding-top:6px; }
+.workspace-output-status button { border:0; background:transparent; color:inherit; font-size:11px; padding:2px 4px; min-height:24px; text-decoration:underline; text-underline-offset:3px; }
+.workspace-output-status[data-error="true"] button { background:var(--accent,#234c60); color:white; padding:4px 10px; text-decoration:none; }
 @media(max-width:760px) {
- .workspace-header .workspace-tools { display:flex; flex-wrap:nowrap; overflow-x:auto; width:100%; padding:3px 0 8px; }
- .workspace-tools > *, .workspace-tools [role="group"] { flex-shrink:0; white-space:nowrap; }
+ .workspace-header .workspace-tools { gap:8px 12px; }
+ .workspace-header .workspace-panels { margin-left:0; border:0; padding-left:0; }
+ .workspace-output-status { flex-wrap:wrap; gap:4px; }
+}
+/* Give output more room than raw source when a context panel is open. */
+.editor[data-unified="true"][data-layout="split"] .workspace-output { flex:3 1 0; }
+.editor[data-unified="true"][data-layout="split"] .pane-source,
+.editor[data-unified="true"][data-layout="split"] .pane-preview { flex:2 1 0; }
+@media(max-width:760px) {
+ .workspace-header .workspace-tools { flex-wrap:wrap; width:100%; padding:3px 0; }
+ .workspace-tools > *, .workspace-tools [role="group"] { white-space:nowrap; }
  .workspace-header .workspace-tools [role="group"] { flex-wrap:nowrap; }
- .editor[data-unified="true"][data-layout="split"][data-mobile-pane="preview"] .workspace-format { display:none; }
+ .editor[data-unified="true"][data-layout="split"][data-mobile-pane="preview"] .format-bars-wrap { display:none; }
  .workspace-context { position:absolute; inset:0; z-index:20; min-width:0; }
  .editor[data-unified="true"] .editor-panes { position:relative; }
- .workspace-header { gap:8px; padding:10px; }
+ .workspace-header { gap:3px; padding:6px 8px; font-size:11px; }
+ .workspace-header .workspace-tools { padding:0; row-gap:4px; }
+ .workspace-output-status { padding-top:2px; }
+ .workspace-header > button { font-size:11px; padding:5px 6px; min-height:28px; }
+ .workspace-header h1 { font-size:16px; }
+ .editor[data-unified="true"][data-layout="split"][data-mobile-pane="preview"] .workspace-authoring,
+ .editor[data-unified="true"][data-layout="split"][data-mobile-pane="preview"] .workspace-layout { display:none; }
+ .workspace-header button { min-height:32px; padding:6px 8px; }
  .workspace-header h1 { flex-basis:100%; }
  .editor[data-unified="true"] .editor-toolbar { flex-wrap:wrap; }
  .editor[data-unified="true"] .editor-toolbar-left, .editor[data-unified="true"] .editor-toolbar-right { flex-wrap:wrap; }
@@ -48,4 +90,21 @@
  .editor[data-unified="true"][data-layout="split"][data-mobile-pane="preview"] .pane-source,
  .editor[data-unified="true"][data-layout="split"][data-mobile-pane="preview"] .pane-preview { display:none!important; }
  .editor[data-unified="true"] .format-bars-wrap { overflow:auto; max-height:100px; }
+}
+/* Output owns its feedback; history never exposes the retained draft. */
+.workspace-output-status { padding:8px 12px; border-top:0; border-bottom:1px solid var(--line,#ddd); flex-shrink:0; min-height:36px; }
+.workspace-output-status button { margin-left:auto; cursor:pointer; }
+/* Authorship cues: tools and editable canvas share an accent; output stays neutral. */
+.workspace-edit-tools-label { padding:5px 12px 0; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--accent,#234c60); }
+.editor[data-unified="true"] .format-bars-wrap { border-left:3px solid var(--accent,#234c60); background:#f2f6f7; }
+.workspace-editor-heading { display:flex; flex-wrap:wrap; gap:4px 12px; align-items:center; padding:9px 12px; min-height:36px; flex-shrink:0; border-left:3px solid var(--accent,#234c60); border-bottom:1px solid var(--line,#ddd); background:#f2f6f7; font-size:11px; }
+.workspace-editor-heading span { color:var(--ink-soft,#68727c); }
+.workspace-readonly-label { font-size:10px; white-space:nowrap; padding:2px 6px; border:1px solid var(--line,#ddd); border-radius:3px; }
+.editor[data-unified="true"][data-historical="true"] .pane-preview,
+.editor[data-unified="true"][data-historical="true"] .pane-source { display:none!important; }
+.workspace-history-source { overflow:auto; }
+.workspace-history-source pre { white-space:pre-wrap; padding:20px; font:12px/1.7 monospace; }
+@media(max-width:760px) {
+ .editor[data-unified="true"] .workspace-mobile-toggle { display:flex; margin-left:auto; }
+ .editor[data-unified="true"][data-mobile-pane="preview"] .workspace-history-source { display:none; }
 }

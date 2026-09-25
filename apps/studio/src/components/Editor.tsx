@@ -240,7 +240,9 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   }, []);
   const [savedRevision, setSavedRevision] = useState<string | undefined>();
   const [authoring, setAuthoring] = useState<"visual" | "source">("visual");
-  const [layout, setLayout] = useState<"editor" | "split" | "preview">(workspace?.initialEditing ? "editor" : "preview");
+  // Retain legacy layout preference independently; unified desktop is always split.
+  const [storedLayout, setLayout] = useState<"editor" | "split" | "preview">("split");
+  const layout = workspace ? "split" : storedLayout;
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [libraryUrl, setLibraryUrl] = useState("/");
   useEffect(() => {
@@ -256,7 +258,6 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const [conflictHead, setConflictHead] = useState<{ content: string; sha: string } | null>(null);
   const [visualNotice, setVisualNotice] = useState("");
   const [contextPanel, setContextPanel] = useState<"history" | "details" | null>(null);
-  const [showInsert, setShowInsert] = useState(false);
   const [historicalSha, setHistoricalSha] = useState<string | undefined>(workspace?.viewingSha);
   const [historicalSource, setHistoricalSource] = useState<string | null>(workspace?.viewingSha ? initialContent : null);
   const [historicalError, setHistoricalError] = useState("");
@@ -297,8 +298,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   }, []);
   useEffect(() => {
     if (!workspace || !preferencesReady) return;
-    try { localStorage.setItem("docgent.workspace.preferences", JSON.stringify({ authoring, layout })); } catch { /* Optional preference. */ }
-  }, [authoring, layout, preferencesReady]);
+    try { localStorage.setItem("docgent.workspace.preferences", JSON.stringify({ authoring, layout: storedLayout })); } catch { /* Optional preference. */ }
+  }, [authoring, storedLayout, preferencesReady]);
   const canWrite = !workspace || (workspace.canEdit && !historicalSha);
   const writeAllowed = useRef(canWrite);
   writeAllowed.current = canWrite;
@@ -345,7 +346,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   // Unified editor mode. Replaces separate posture + previewMode.
   const [legacyEditorMode, setEditorMode] = useState<EditorMode>("edit");
-  const editorMode: EditorMode = workspace ? (layout === "preview" ? "pages" : authoring === "source" ? "source" : "edit") : legacyEditorMode;
+  const editorMode: EditorMode = workspace ? (historicalSha ? "pages" : authoring === "source" ? "source" : "edit") : legacyEditorMode;
   // Derived internal state for existing scroll sync / preview logic.
   const [pdfViewerAvailable, setPdfViewerAvailable] = useState(true);
   useEffect(() => { setPdfViewerAvailable(navigator.pdfViewerEnabled === true); }, []);
@@ -1546,7 +1547,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
       // exact plain-text mappings: never flatten markup, tables or directives.
       if (!/^(P|H[1-6]|LI)$/.test(el.tagName) || el.children.length ||
           /[\[\]{}*_`<>|\\]/.test(plain) || plain.trim() !== originalText.trim()) {
-        setVisualNotice("This block is preserved unchanged. Use Source to edit complex or formatted content safely.");
+        setVisualNotice("This block is preserved unchanged. Use Markdown to edit complex or formatted content safely.");
         return;
       }
       setVisualNotice("");
@@ -2844,37 +2845,187 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const lineCount = content.split("\n").length;
   const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
 
+  const formattingTools = (editorMode !== "pages" && (
+      <div className="format-bars-wrap">
+        {workspace && <div className="workspace-edit-tools-label">Editor tools</div>}
+            {/* ── ROW 1: Word-style formatting + most common Docgent primitives (Autype layout) ── */}
+            <div
+              className="format-bar format-bar-row1"
+              role="toolbar"
+              aria-label="Formatting"
+              onMouseDown={(event) => { event.preventDefault(); savedIframeSelection.current = getIframeSelection(); }}
+              onMouseEnter={() => { savedIframeSelection.current = getIframeSelection(); }}
+            >
+              {/* Paragraph / heading style */}
+              <div className="format-group">
+                <Tooltip text="Paragraph" disabled={isFolded}><button className="format-btn format-btn-style" onClick={(e) => { e.preventDefault(); transformLines((lines) => lines.map((l) => l.replace(/^#{1,6}\s+/, ""))); }} disabled={isFolded}>P</button></Tooltip>
+                <Tooltip text="Heading 1" disabled={isFolded}><button className="format-btn format-btn-style" onClick={(e) => { e.preventDefault(); applyHeading(1); }} disabled={isFolded}>H1</button></Tooltip>
+                <Tooltip text="Heading 2" disabled={isFolded}><button className="format-btn format-btn-style" onClick={(e) => { e.preventDefault(); applyHeading(2); }} disabled={isFolded}>H2</button></Tooltip>
+                <Tooltip text="Heading 3" disabled={isFolded}><button className="format-btn format-btn-style" onClick={(e) => { e.preventDefault(); applyHeading(3); }} disabled={isFolded}>H3</button></Tooltip>
+                <Tooltip text="Heading 4" disabled={isFolded}><button className="format-btn format-btn-style" onClick={(e) => { e.preventDefault(); applyHeading(4); }} disabled={isFolded}>H4</button></Tooltip>
+              </div>
+              <div className="format-divider" />
+              {/* Inline marks */}
+              <div className="format-group">
+                <Tooltip text="Bold — ⌘B" disabled={isFolded}><button aria-label="Bold — ⌘B" className="format-btn" onClick={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("**", "bold text"); }} disabled={isFolded}><Bold size={14} strokeWidth={2.5} /></button></Tooltip>
+                <Tooltip text="Italic — ⌘I" disabled={isFolded}><button aria-label="Italic — ⌘I" className="format-btn" onClick={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("*", "italic text"); }} disabled={isFolded}><Italic size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Underline" disabled={isFolded}><button aria-label="Underline" className="format-btn" onClick={(e) => { e.preventDefault(); insertUnderline(); }} disabled={isFolded}><Underline size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Strikethrough" disabled={isFolded}><button aria-label="Strikethrough" className="format-btn" onClick={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("~~", "struck text"); }} disabled={isFolded}><Strikethrough size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Highlight" disabled={isFolded}><button aria-label="Highlight" className="format-btn" onClick={(e) => { e.preventDefault(); insertHighlight(); }} disabled={isFolded}><Highlighter size={14} strokeWidth={2} /></button></Tooltip>
+              </div>
+              <div className="format-divider" />
+              {/* Lists + insert */}
+              <div className="format-group">
+                <Tooltip text="Link — ⌘K" disabled={isFolded}><button aria-label="Link — ⌘K" className="format-btn" onClick={(e) => { e.preventDefault(); insertLink(); }} disabled={isFolded}><Link2 size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Bulleted list" disabled={isFolded}><button aria-label="Bulleted list" className="format-btn" onClick={(e) => { e.preventDefault(); applyBullets(); }} disabled={isFolded}><List size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Numbered list" disabled={isFolded}><button aria-label="Numbered list" className="format-btn" onClick={(e) => { e.preventDefault(); applyNumbered(); }} disabled={isFolded}><ListOrdered size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Table" disabled={isFolded}><button aria-label="Table" className="format-btn" onClick={(e) => { e.preventDefault(); insertTable(); }} disabled={isFolded}><Table size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Image" disabled={isFolded}><button aria-label="Image" className="format-btn" onClick={(e) => { e.preventDefault(); insertImage(); }} disabled={isFolded}><Image size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Code block" disabled={isFolded}><button aria-label="Code block" className="format-btn" onClick={insertCodeBlock} disabled={isFolded}><Code2 size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Horizontal rule" disabled={isFolded}><button aria-label="Horizontal rule" className="format-btn" onClick={insertRule} disabled={isFolded}><Minus size={14} strokeWidth={2} /></button></Tooltip>
+              </div>
+              <div className="format-divider" />
+              {/* Undo / redo */}
+              <div className="format-group">
+                <Tooltip text="Undo"><button aria-label="Undo" className="format-btn" onClick={doUndo} disabled={isFolded}><Undo2 size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Redo"><button aria-label="Redo" className="format-btn" onClick={doRedo} disabled={isFolded}><Redo2 size={14} strokeWidth={2} /></button></Tooltip>
+              </div>
+              <div className="format-divider" />
+              {/* Most common Docgent primitives — right on Row 1, matching Autype */}
+              {(() => {
+                const ROW1_PRIMS = ["summary", "callout", "pullquote", "keyfigure", "key-figure", "pagebreak", "toc"];
+                return snippets
+                  .filter(s => ROW1_PRIMS.includes(s.id))
+                  .sort((a, b) => ROW1_PRIMS.indexOf(a.id) - ROW1_PRIMS.indexOf(b.id))
+                  .map(s => {
+                    const Icon = BLOCK_ICONS[s.id];
+                    const tip = s.description ? `${s.id} — ${s.description}` : s.id;
+                    return (
+                      <Tooltip key={s.id} text={tip} disabled={isFolded}>
+                        <button
+                          aria-label={tip}
+                          className={`format-btn format-btn-prim${s.id === "pagebreak" ? " format-btn-prim-accent" : ""}`}
+                          onClick={() => insertSnippet(s.snippet)}
+                          disabled={isFolded}
+                        >
+                          {Icon ? <Icon size={14} strokeWidth={2} /> : null}
+                        </button>
+                      </Tooltip>
+                    );
+                  });
+              })()}
+              <div className="format-divider" />
+              {/* AI rewrite */}
+              <div className="format-group">
+                <Tooltip text="Rewrite selection"><button aria-label="Rewrite selection" className="format-btn format-btn-wide" onClick={openSelectionRewrite} disabled={isFolded}>✨</button></Tooltip>
+              </div>
+              {isFolded && <span className="format-note">unfold a section to edit</span>}
+            </div>
+            {/* ── ROW 2: Docgent structural blocks (matches Autype's second icon row) ── */}
+            <div className="format-bar format-bar-row2" role="toolbar" aria-label="Docgent vocabulary blocks">
+              {(() => {
+                // Row 2 primary: structural/layout/data blocks visible by default.
+                // Matches Autype's second row order: layout → content → data → planning.
+                const ROW2_PRIMARY = [
+                  // Layout
+                  "native-cover", "exec-intro", "columns", "landscape", "appendix", "pagebreak",
+                  // Content
+                  "summary", "recommendation", "callout", "pullquote", "tensionbox", "note",
+                  // Data / metrics
+                  "keyfigure", "key-figure", "kpigrid", "kpi-row", "chart", "allocation", "datatable", "financialtable",
+                  // Planning
+                  "funnel", "milestones", "timeline", "roadmap",
+                  // Authorship
+                  "signature", "toc",
+                ];
+                // Row 1 primitives already shown above — exclude from row 2
+                const ROW1_PRIMS = ["summary", "callout", "pullquote", "keyfigure", "key-figure", "pagebreak", "toc"];
+                const row2Primary = snippets
+                  .filter(s => ROW2_PRIMARY.includes(s.id) && !ROW1_PRIMS.includes(s.id))
+                  .sort((a, b) => ROW2_PRIMARY.indexOf(a.id) - ROW2_PRIMARY.indexOf(b.id));
+                const secondary = snippets.filter(s =>
+                  !ROW2_PRIMARY.includes(s.id) && !ROW1_PRIMS.includes(s.id)
+                );
+
+                const BlockBtn = (s: typeof snippets[0]) => {
+                  const Icon = BLOCK_ICONS[s.id];
+                  const tip = s.description ? `${s.id} — ${s.description}` : s.id;
+                  return (
+                    <Tooltip key={s.id} text={tip} disabled={isFolded}>
+                      <button
+                        className="format-btn format-btn-prim"
+                        onClick={() => { insertSnippet(s.snippet); setShowMoreBlocks(false); }}
+                        disabled={isFolded}
+                        aria-label={s.description || s.id}
+                      >
+                        {Icon ? <Icon size={14} strokeWidth={2} /> : <span className="format-btn-prim-fallback">{s.id.slice(0, 2).toUpperCase()}</span>}
+                      </button>
+                    </Tooltip>
+                  );
+                };
+
+                return (
+                  <>
+                    {row2Primary.map(BlockBtn)}
+                    <div className="format-divider" />
+                    <div className="blocks-more-wrap">
+                      <button
+                        className="format-btn format-btn-prim blocks-more-btn"
+                        onClick={() => setShowMoreBlocks(v => !v)}
+                        disabled={isFolded}
+                        title="More blocks"
+                        data-tooltip="More blocks"
+                        aria-label="More blocks"
+                        data-active={showMoreBlocks}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
+                        </svg>
+                      </button>
+                      {showMoreBlocks && (
+                        <div className="blocks-overflow-menu" role="menu">
+                          <div className="blocks-overflow-label">More blocks</div>
+                          <div className="blocks-overflow-grid">
+                            {secondary.map(BlockBtn)}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+      </div>
+      ));
+
   return (
-    <div className="editor" data-unified={!!workspace} data-layout={layout} data-authoring={authoring} data-mobile-pane={mobilePane} data-insert={showInsert}>
+    <div className="editor" data-unified={!!workspace} data-layout={layout} data-authoring={authoring} data-mobile-pane={mobilePane} data-historical={!!historicalSha}>
       {workspace && <header className="workspace-header">
         <nav aria-label="Application navigation"><a href={libraryUrl}>Documents</a> · <a href="/primitives">Primitives</a></nav>
         <h1>{String(selectedMetadata.title || (historicalSha ? "Historical revision" : workspace.title))}</h1>
         <span>{String(selectedMetadata.status || workspace.status || "Draft")}</span>
         <button disabled={!workspace.canEdit || !!historicalSha || save.kind === "saving"} onClick={() => doSave()}>Save</button>
         <span role="status" aria-label="Save status">{save.kind === "saving" ? "Saving…" : save.kind === "stale" ? "Conflict — draft retained" : save.kind === "error" ? "Save failed — draft retained" : dirty ? "Unsaved changes" : "Saved"}</span>
-        <div className="workspace-tools" role="group" aria-label="Document tools">
         <button disabled={exporting || save.kind === "saving"} onClick={() => exportRevision("pdf")}>Export {historicalSha ? "revision" : "latest"} PDF</button>
         <button disabled={exporting || save.kind === "saving"} onClick={() => exportRevision("docx")}>Export {historicalSha ? "revision" : "latest"} DOCX</button>
         <span role="status" aria-label="Export status">{exportState}</span>
-        <span role="status" aria-label="Preview status">{previewError ? "Preview failed — last good output retained" : previewing ? "Updating preview…" : (mode === "pdf" ? content === lastPdfRendered.current && pdfRevision === historicalSha : content === htmlRenderedSource) ? "Preview up to date" : "Preview out of date"}{mode === "pdf" && previewUrl ? ` · showing ${pdfRevision ? pdfRevision.slice(0, 7) : "current draft"}` : ""}</span>
-        <button onClick={() => { lastPreviewed.current = ""; pendingPreviewAfterEdit.current = false; mode === "pdf" ? runPdfPreview(content) : runHtmlPreview(content); }}>Retry preview</button>
-        <div role="group" aria-label="Authoring mode">
-          <button aria-pressed={authoring === "visual"} onClick={() => setAuthoring("visual")}>Visual</button>
-          <button aria-pressed={authoring === "source"} onClick={() => setAuthoring("source")}>Source</button>
+        <div className="workspace-tools" role="group" aria-label="Document tools">
+        <div className="workspace-authoring" role="group" aria-label="Authoring mode">
+          <button disabled={!preferencesReady || !!historicalSha} aria-pressed={!historicalSha && authoring === "visual"} onClick={() => setAuthoring("visual")}>Visual</button>
+          <button disabled={!preferencesReady || !!historicalSha} aria-pressed={!!historicalSha || authoring === "source"} onClick={() => setAuthoring("source")}>Markdown</button>
         </div>
-        <div role="group" aria-label="Workspace layout">
-          <button disabled={!workspace.canEdit || !!historicalSha} aria-pressed={layout === "editor"} onClick={() => setLayout("editor")}>Editor only</button>
-          <button disabled={!workspace.canEdit || !!historicalSha} aria-pressed={layout === "split"} onClick={() => setLayout("split")}>Side by side</button>
-          <button aria-pressed={layout === "preview"} onClick={() => setLayout("preview")}>Preview only</button>
-        </div>
-        <span>{layout === "preview" ? "Read-only preview" : "Editing"}</span>
         {visualNotice && <span role="status" aria-label="Visual editing notice">{visualNotice}</span>}
-        <button aria-expanded={contextPanel === "history"} onClick={() => { setShowComments(false); setContextPanel(contextPanel === "history" ? null : "history"); }}>History</button>
-        <button aria-expanded={contextPanel === "details"} onClick={() => { setShowComments(false); setContextPanel(contextPanel === "details" ? null : "details"); }}>Details</button>
-        <button aria-expanded={showComments} onClick={() => { setContextPanel(null); setShowComments(!showComments); }}>Comments</button>
-        <button aria-expanded={showOutline} onClick={() => setShowOutline(!showOutline)}>Outline</button>
+        <div className="workspace-mobile-toggle" role="group" aria-label="Mobile pane">
+          <button aria-pressed={mobilePane === "editor"} onClick={() => setMobilePane("editor")}>Editor</button>
+          <button aria-pressed={mobilePane === "preview"} onClick={() => setMobilePane("preview")}>Preview</button>
         </div>
-        {layout === "split" && <button className="workspace-mobile-toggle" onClick={() => setMobilePane(mobilePane === "editor" ? "preview" : "editor")}>Show {mobilePane === "editor" ? "preview" : "editor"}</button>}
+        <div className="workspace-panels" role="group" aria-label="Document panels">
+        <button aria-expanded={contextPanel === "history"} onClick={() => { setShowOutline(false); setShowComments(false); setContextPanel(contextPanel === "history" ? null : "history"); }}>History</button>
+        <button aria-expanded={contextPanel === "details"} onClick={() => { setShowOutline(false); setShowComments(false); setContextPanel(contextPanel === "details" ? null : "details"); }}>Details</button>
+        <button aria-expanded={showComments} onClick={() => { setShowOutline(false); setContextPanel(null); setShowComments(!showComments); }}>Comments</button>
+        <button aria-expanded={showOutline} onClick={() => { setContextPanel(null); setShowComments(false); setShowOutline(!showOutline); }}>Outline</button>
+        </div>
+        </div>
       </header>}
       {historicalSha && <div className="banner" role="status" aria-label="Historical revision">
         Historical revision {historicalSha.slice(0, 7)} — read only. Your current draft is retained.
@@ -3197,164 +3348,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         </div>
       )}
 
-      {workspace && editorMode !== "pages" && <div className="workspace-format" role="toolbar" aria-label="Common formatting" onMouseDown={(event) => { event.preventDefault(); savedIframeSelection.current = getIframeSelection(); }}>
-        <button onClick={() => toggleInline("**", "bold text")}>Bold</button>
-        <button onClick={() => toggleInline("*", "italic text")}>Italic</button>
-        <button onClick={() => applyHeading(2)}>Heading</button>
-        <button onClick={applyBullets}>List</button>
-        <button onClick={insertLink}>Link</button>
-        <button onClick={doUndo}>Undo</button><button onClick={doRedo}>Redo</button>
-        <button aria-expanded={showInsert} onClick={() => setShowInsert(!showInsert)}>Insert</button>
-      </div>}
-      {editorMode !== "pages" && (
-      <div className="format-bars-wrap">
-            {/* ── ROW 1: Word-style formatting + most common Docgent primitives (Autype layout) ── */}
-            <div
-              className="format-bar format-bar-row1"
-              role="toolbar"
-              aria-label="Formatting"
-              onMouseEnter={() => { savedIframeSelection.current = getIframeSelection(); }}
-            >
-              {/* Paragraph / heading style */}
-              <div className="format-group">
-                <Tooltip text="Paragraph" disabled={isFolded}><button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); transformLines((lines) => lines.map((l) => l.replace(/^#{1,6}\s+/, ""))); }} disabled={isFolded}>P</button></Tooltip>
-                <Tooltip text="Heading 1" disabled={isFolded}><button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(1); }} disabled={isFolded}>H1</button></Tooltip>
-                <Tooltip text="Heading 2" disabled={isFolded}><button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(2); }} disabled={isFolded}>H2</button></Tooltip>
-                <Tooltip text="Heading 3" disabled={isFolded}><button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(3); }} disabled={isFolded}>H3</button></Tooltip>
-                <Tooltip text="Heading 4" disabled={isFolded}><button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(4); }} disabled={isFolded}>H4</button></Tooltip>
-              </div>
-              <div className="format-divider" />
-              {/* Inline marks */}
-              <div className="format-group">
-                <Tooltip text="Bold — ⌘B" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("**", "bold text"); }} disabled={isFolded}><Bold size={14} strokeWidth={2.5} /></button></Tooltip>
-                <Tooltip text="Italic — ⌘I" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("*", "italic text"); }} disabled={isFolded}><Italic size={14} strokeWidth={2} /></button></Tooltip>
-                <Tooltip text="Underline" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertUnderline(); }} disabled={isFolded}><Underline size={14} strokeWidth={2} /></button></Tooltip>
-                <Tooltip text="Strikethrough" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("~~", "struck text"); }} disabled={isFolded}><Strikethrough size={14} strokeWidth={2} /></button></Tooltip>
-                <Tooltip text="Highlight" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertHighlight(); }} disabled={isFolded}><Highlighter size={14} strokeWidth={2} /></button></Tooltip>
-              </div>
-              <div className="format-divider" />
-              {/* Lists + insert */}
-              <div className="format-group">
-                <Tooltip text="Link — ⌘K" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertLink(); }} disabled={isFolded}><Link2 size={14} strokeWidth={2} /></button></Tooltip>
-                <Tooltip text="Bulleted list" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); applyBullets(); }} disabled={isFolded}><List size={14} strokeWidth={2} /></button></Tooltip>
-                <Tooltip text="Numbered list" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); applyNumbered(); }} disabled={isFolded}><ListOrdered size={14} strokeWidth={2} /></button></Tooltip>
-                <Tooltip text="Table" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertTable(); }} disabled={isFolded}><Table size={14} strokeWidth={2} /></button></Tooltip>
-                <Tooltip text="Image" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertImage(); }} disabled={isFolded}><Image size={14} strokeWidth={2} /></button></Tooltip>
-                <Tooltip text="Code block" disabled={isFolded}><button className="format-btn" onClick={insertCodeBlock} disabled={isFolded}><Code2 size={14} strokeWidth={2} /></button></Tooltip>
-                <Tooltip text="Horizontal rule" disabled={isFolded}><button className="format-btn" onClick={insertRule} disabled={isFolded}><Minus size={14} strokeWidth={2} /></button></Tooltip>
-              </div>
-              <div className="format-divider" />
-              {/* Undo / redo */}
-              <div className="format-group">
-                <Tooltip text="Undo"><button className="format-btn" onClick={doUndo} disabled={isFolded}><Undo2 size={14} strokeWidth={2} /></button></Tooltip>
-                <Tooltip text="Redo"><button className="format-btn" onClick={doRedo} disabled={isFolded}><Redo2 size={14} strokeWidth={2} /></button></Tooltip>
-              </div>
-              <div className="format-divider" />
-              {/* Most common Docgent primitives — right on Row 1, matching Autype */}
-              {(() => {
-                const ROW1_PRIMS = ["summary", "callout", "pullquote", "keyfigure", "key-figure", "pagebreak", "toc"];
-                return snippets
-                  .filter(s => ROW1_PRIMS.includes(s.id))
-                  .sort((a, b) => ROW1_PRIMS.indexOf(a.id) - ROW1_PRIMS.indexOf(b.id))
-                  .map(s => {
-                    const Icon = BLOCK_ICONS[s.id];
-                    const tip = s.description ? `${s.id} — ${s.description}` : s.id;
-                    return (
-                      <Tooltip key={s.id} text={tip} disabled={isFolded}>
-                        <button
-                          className={`format-btn format-btn-prim${s.id === "pagebreak" ? " format-btn-prim-accent" : ""}`}
-                          onClick={() => insertSnippet(s.snippet)}
-                          disabled={isFolded}
-                        >
-                          {Icon ? <Icon size={14} strokeWidth={2} /> : null}
-                        </button>
-                      </Tooltip>
-                    );
-                  });
-              })()}
-              <div className="format-divider" />
-              {/* AI rewrite */}
-              <div className="format-group">
-                <Tooltip text="Rewrite selection"><button className="format-btn format-btn-wide" onClick={openSelectionRewrite} disabled={isFolded}>✨</button></Tooltip>
-              </div>
-              {isFolded && <span className="format-note">unfold a section to edit</span>}
-            </div>
-            {/* ── ROW 2: Docgent structural blocks (matches Autype's second icon row) ── */}
-            <div className="format-bar format-bar-row2" role="toolbar" aria-label="Docgent vocabulary blocks">
-              {(() => {
-                // Row 2 primary: structural/layout/data blocks visible by default.
-                // Matches Autype's second row order: layout → content → data → planning.
-                const ROW2_PRIMARY = [
-                  // Layout
-                  "native-cover", "exec-intro", "columns", "landscape", "appendix", "pagebreak",
-                  // Content
-                  "summary", "recommendation", "callout", "pullquote", "tensionbox", "note",
-                  // Data / metrics
-                  "keyfigure", "key-figure", "kpigrid", "kpi-row", "chart", "allocation", "datatable", "financialtable",
-                  // Planning
-                  "funnel", "milestones", "timeline", "roadmap",
-                  // Authorship
-                  "signature", "toc",
-                ];
-                // Row 1 primitives already shown above — exclude from row 2
-                const ROW1_PRIMS = ["summary", "callout", "pullquote", "keyfigure", "key-figure", "pagebreak", "toc"];
-                const row2Primary = snippets
-                  .filter(s => ROW2_PRIMARY.includes(s.id) && !ROW1_PRIMS.includes(s.id))
-                  .sort((a, b) => ROW2_PRIMARY.indexOf(a.id) - ROW2_PRIMARY.indexOf(b.id));
-                const secondary = snippets.filter(s =>
-                  !ROW2_PRIMARY.includes(s.id) && !ROW1_PRIMS.includes(s.id)
-                );
-
-                const BlockBtn = (s: typeof snippets[0]) => {
-                  const Icon = BLOCK_ICONS[s.id];
-                  const tip = s.description ? `${s.id} — ${s.description}` : s.id;
-                  return (
-                    <Tooltip key={s.id} text={tip} disabled={isFolded}>
-                      <button
-                        className="format-btn format-btn-prim"
-                        onClick={() => { insertSnippet(s.snippet); setShowMoreBlocks(false); }}
-                        disabled={isFolded}
-                        aria-label={s.description || s.id}
-                      >
-                        {Icon ? <Icon size={14} strokeWidth={2} /> : <span className="format-btn-prim-fallback">{s.id.slice(0, 2).toUpperCase()}</span>}
-                      </button>
-                    </Tooltip>
-                  );
-                };
-
-                return (
-                  <>
-                    {row2Primary.map(BlockBtn)}
-                    <div className="format-divider" />
-                    <div className="blocks-more-wrap">
-                      <button
-                        className="format-btn format-btn-prim blocks-more-btn"
-                        onClick={() => setShowMoreBlocks(v => !v)}
-                        disabled={isFolded}
-                        title="More blocks"
-                        data-tooltip="More blocks"
-                        aria-label="More blocks"
-                        data-active={showMoreBlocks}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
-                        </svg>
-                      </button>
-                      {showMoreBlocks && (
-                        <div className="blocks-overflow-menu" role="menu">
-                          <div className="blocks-overflow-label">More blocks</div>
-                          <div className="blocks-overflow-grid">
-                            {secondary.map(BlockBtn)}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-      </div>
-      )}
+      {!workspace && formattingTools}
 
       <div
         className="editor-panes"
@@ -3452,6 +3446,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
             </div>
           </nav>
         )}
+        <div className={workspace ? "workspace-editor" : "legacy-editor-panes"}>
+        {workspace && formattingTools}
         {/* Source pane: CM6 host is always in the DOM so the EditorView can mount on first render.
              Visibility is controlled via CSS (display:none when not in source/split modes) so
              the ref is never null when the mount effect runs. */}
@@ -3465,7 +3461,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         >
           {editorMode === "source" && (
             <div className="source-mode-banner">
-              ‹› You are editing the document source
+              {workspace ? "Markdown editor · changes update the output" : "‹› You are editing the document source"}
             </div>
           )}
           {/* CodeMirror 6 editor host */}
@@ -3521,6 +3517,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
           data-annotatable={posture === "review" && mode === "html"}
           onClick={onPreviewClick}
         >
+          {workspace && <div className="workspace-editor-heading"><strong>Visual editor</strong><span>Click text to edit · complex blocks in Markdown</span></div>}
           {/* Phase 5b: Review mode banner */}
           {editorMode === "review" && (
             <div className="review-mode-banner">
@@ -3579,9 +3576,16 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         </div>
         )}
 
+        {workspace && historicalSha && <section className="pane workspace-history-source" aria-label="Historical source"><div className="source-mode-banner">Markdown · read only</div><pre>{selectedSource}</pre></section>}
+        </div>
         {workspace && layout === "split" && <section className="pane workspace-output" aria-label="Read-only output" tabIndex={0}>
-          <div className="source-mode-banner">Read-only output · draft HTML preview</div>
-          {previewHtml ? <iframe title="Read-only output preview" className="preview-frame" srcDoc={previewHtml} sandbox="" /> : <p>Waiting for preview…</p>}
+        <div className="workspace-output-status" data-error={!!previewError}>
+          <span className="workspace-control-label">{historicalSha ? "Revision output" : "Output"}</span><span className="workspace-readonly-label">Read only</span>
+          <span role="status" aria-label="Preview status">{previewError ? "Preview failed — last good output retained" : previewing ? "Updating preview…" : (mode === "pdf" ? content === lastPdfRendered.current && pdfRevision === historicalSha : content === htmlRenderedSource) ? "Preview up to date" : "Preview out of date"}{mode === "pdf" && previewUrl ? ` · showing ${pdfRevision ? pdfRevision.slice(0, 7) : "current draft"}` : ""}</span>
+          <button onClick={() => { lastPreviewed.current = ""; pendingPreviewAfterEdit.current = false; mode === "pdf" ? runPdfPreview(content) : runHtmlPreview(content); }}>Retry preview</button>
+        </div>
+
+          {historicalSha ? (previewUrl && pdfRevision === historicalSha ? (pdfViewerAvailable ? <iframe title="Historical output preview" className="preview-frame" src={previewUrl} /> : <p>Historical PDF ready. <a href={previewUrl} download={`${slug}.pdf`}>Download revision PDF</a></p>) : <p>Rendering historical revision…</p>) : previewHtml ? <iframe title="Read-only output preview" className="preview-frame" srcDoc={previewHtml} sandbox="" /> : <p>Waiting for preview…</p>}
         </section>}
         {workspace && contextPanel === "history" && <aside className="workspace-context" aria-label="History panel">
           <button onClick={() => setContextPanel(null)}>Close history</button>
