@@ -9,6 +9,31 @@ test.beforeEach(async({page})=>{
   return route.fulfill({status:502,body:'Fixture renderer unavailable'});
  });
 });
+test('overlapping save shortcuts serialize writes and retain edits typed during a save',async({page})=>{
+ const writes=[];let release;
+ const gate=new Promise(resolve=>release=resolve);
+ await page.route('**/api/doc/**',async route=>{writes.push(route.request().postDataJSON());if(writes.length===1)await gate;await route.fulfill({json:{sha:'c'.repeat(40),revision:'a'.repeat(40)}});});
+ await page.goto(server.url);await page.getByRole('button',{name:'Source',exact:true}).click();await page.getByRole('button',{name:'Editor only',exact:true}).click();
+ await page.locator('.cm-content').press('ControlOrMeta+End');await page.keyboard.type(' First edit');await page.keyboard.press('ControlOrMeta+s');
+ await expect.poll(()=>writes.length).toBe(1);
+ await page.keyboard.type(' During save');await page.keyboard.press('ControlOrMeta+s');
+ await page.waitForTimeout(100);expect(writes.length).toBe(1);release();
+ await expect.poll(()=>writes.length,{timeout:6000}).toBe(2);
+ expect(writes[1].baseSha).toBe('c'.repeat(40));expect(writes[1].content).toContain('During save');
+});
+test('conflict inspection cannot silently adopt the latest SHA and overwrite another author',async({page})=>{
+ let writes=0;
+ await page.route('**/api/doc/**',async route=>{
+  if(route.request().method()==='PUT'){writes++;return route.fulfill({status:409,json:{message:'Changed by another author'}});}
+  return route.fulfill({json:{sha:'d'.repeat(40),content:'# Other author'}});
+ });
+ await page.goto(server.url);await page.getByRole('button',{name:'Save',exact:true}).click();
+ await expect(page.getByRole('status',{name:'Save status'})).toContainText('Conflict');
+ await page.getByRole('button',{name:'Inspect latest',exact:true}).click();
+ await expect(page.getByText('# Other author',{exact:true})).toBeVisible();
+ await page.keyboard.press('ControlOrMeta+s');await page.waitForTimeout(3500);
+ expect(writes).toBe(1);await expect(page.getByRole('status',{name:'Save status'})).toContainText('Conflict');
+});
 test('save failure retains a recoverable draft across reload and never exports stale content',async({page})=>{
  let exported=false;
  await page.route('**/api/doc/**',route=>route.fulfill({status:503,json:{error:'fixture offline'}}));

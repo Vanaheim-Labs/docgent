@@ -232,6 +232,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const [mobilePane, setMobilePane] = useState<"editor" | "preview">("editor");
   const [exportState, setExportState] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [conflictHead, setConflictHead] = useState<{ content: string; sha: string } | null>(null);
   const draftKey = `docgent.draft:${brand}/${slug}`;
   const [recoveredDraft, setRecoveredDraft] = useState<{ content: string; baseSha: string | null } | null>(null);
   const [draftStorageReady, setDraftStorageReady] = useState(false);
@@ -259,6 +260,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const [content, setContent] = useState(initialContent);
   const [baseSha, setBaseSha] = useState(initialSha);
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
+  const savingRef = useRef(false);
   // Brief informational banner shown after a successful soft reconcile.
   const [reconcileNote, setReconcileNote] = useState<string | null>(null);
   // Mutable baseline: starts at initialContent but advances each time we
@@ -586,11 +588,14 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   /* ---------------- save ---------------- */
 
   const doSave = useCallback(async () => {
+    if (savingRef.current) return;
     if (workspace && !workspace.canEdit) return;
+    if (workspace && save.kind === "stale") return;
     if (errors.length > 0) {
       setSave({ kind: "error", message: `${errors.length} validation error${errors.length > 1 ? "s" : ""} — fix before saving.` });
       return;
     }
+    savingRef.current = true;
     setSave({ kind: "saving" });
     try {
       const res = await fetch(`/api/doc/${brand}/${slug}`, {
@@ -634,8 +639,10 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
       return data.revision as string | undefined;
     } catch (e) {
       setSave({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      savingRef.current = false;
     }
-  }, [brand, slug, content, baseSha, errors.length, initialContent]);
+  }, [brand, slug, content, baseSha, errors.length, initialContent, save.kind, workspace]);
 
   const exportRevision = async (format: "pdf" | "docx") => {
     setExporting(true);
@@ -673,6 +680,10 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         return;
       }
       const data = await res.json();
+      if (workspace) {
+        setConflictHead({ content: data.content, sha: data.sha });
+        return; // Inspection is not reconciliation; never silently adopt a newer base.
+      }
       if (data.sha) setBaseSha(data.sha);
       setSave({ kind: "idle" });
       setReconcileNote(
@@ -687,7 +698,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   // Autosave: 3 seconds after last content change, when dirty and no errors.
   useEffect(() => {
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    if (!dirty || errors.length > 0 || save.kind === "saving" || save.kind === "stale") return;
+    if (!dirty || errors.length > 0 || save.kind === "saving" || save.kind === "stale" || save.kind === "error") return;
     autoSaveTimer.current = setTimeout(() => {
       doSave();
     }, 3000);
@@ -695,7 +706,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content, dirty, errors.length]);
+  }, [content, dirty, errors.length, save.kind, baseSha]);
 
   // Show "Saved ✓" indicator for 3 seconds after a successful save.
   useEffect(() => {
@@ -2917,7 +2928,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
           <div>{save.message}</div>
           <div style={{ marginTop: 8 }}>
             <button className="btn btn-secondary" onClick={handleReconcile}>
-              Keep my changes and retry
+              {workspace ? "Inspect latest" : "Keep my changes and retry"}
             </button>
           </div>
         </div>
@@ -2925,6 +2936,12 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
       {reconcileNote && (
         <div className="banner" data-kind="ok">{reconcileNote}</div>
       )}
+      {workspace && conflictHead && <section className="banner" aria-label="Concurrent version">
+        <h2>Latest server content — your draft is unchanged</h2>
+        <pre style={{ maxHeight: 180, overflow: "auto", whiteSpace: "pre-wrap" }}>{conflictHead.content}</pre>
+        <p>Copy your draft before reloading, then apply the changes you want to the latest version.</p>
+        <button onClick={() => navigator.clipboard.writeText(content).catch(() => setReconcileNote("Copy failed. Select and copy in Source mode."))}>Copy my draft</button>
+      </section>}
       {save.kind === "error" && (
         <div className="banner" data-kind="error">{save.message}</div>
       )}
