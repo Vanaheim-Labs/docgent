@@ -9,6 +9,15 @@ test.beforeEach(async({page})=>{
   return route.fulfill({status:502,body:'Fixture renderer unavailable'});
  });
 });
+test('historical render retry stays pinned and reports HTTP failures rather than iframe load success',async({page})=>{
+ const refs=[];let failed=true;
+ await page.route('**/api/render/**',async route=>{refs.push(new URL(route.request().url()).searchParams.get('ref'));await route.fulfill(failed?{status:502,body:'historical fixture unavailable'}:{contentType:'application/pdf',body:'explicit PDF fixture bytes'});});
+ await page.goto(server.url);await page.getByRole('button',{name:'History',exact:true}).click();await page.getByRole('link',{name:'View',exact:true}).last().click();
+ await expect(page.getByRole('status',{name:'Preview status'})).toContainText('failed');failed=false;
+ await page.getByRole('button',{name:'Retry preview',exact:true}).click();await expect.poll(()=>refs.length).toBe(2);
+ expect(refs).toEqual(['d'.repeat(40),'d'.repeat(40)]);
+ await expect(page.getByRole('status',{name:'Preview status'})).toContainText('ddddddd');
+});
 test('new document uses the existing guarded save endpoint and opens the preserved edit route',async({page})=>{
  let payload;
  await page.route('**/api/doc/example/new-fixture',async route=>{payload=route.request().postDataJSON();await route.fulfill({json:{changed:true,sha:'a'.repeat(40)}});});

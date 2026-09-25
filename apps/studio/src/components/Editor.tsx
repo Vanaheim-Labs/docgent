@@ -290,6 +290,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
    */
   // summary removed — commit messages are auto-generated from the diff
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [pdfRevision, setPdfRevision] = useState<string | undefined>();
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   // Unified editor mode. Replaces separate posture + previewMode.
   const [legacyEditorMode, setEditorMode] = useState<EditorMode>("edit");
@@ -497,7 +498,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
     setPreviewing(true);
     setPreviewError(null);
     try {
-      const res = await fetch(`/api/preview/${brand}/${slug}`, {
+      const res = historicalSha ? await fetch(`/api/render/${brand}/${slug}?ref=${historicalSha}`) : await fetch(`/api/preview/${brand}/${slug}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: src }),
@@ -512,6 +513,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
       if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
       objectUrl.current = URL.createObjectURL(blob);
       setPreviewUrl(objectUrl.current);
+      setPdfRevision(historicalSha);
       lastPdfRendered.current = src;
       setPdfStale(false);
     } catch (e) {
@@ -520,7 +522,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
     } finally {
       if (request === previewRequest.current) setPreviewing(false);
     }
-  }, [brand, slug]);
+  }, [brand, slug, historicalSha]);
 
   // Debounced preview. Skipped while the document has errors — rendering
   // invalid markdown wastes a worker call and shows the author nothing useful.
@@ -587,10 +589,10 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   useEffect(() => {
     if (editorMode !== "pages") return;
     if (errors.length > 0) return;
-    if (content === lastPdfRendered.current && previewUrl) return;
+    if (content === lastPdfRendered.current && previewUrl && pdfRevision === historicalSha) return;
     runPdfPreview(content);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorMode]);
+  }, [editorMode, historicalSha]);
 
   /* ---------------- save ---------------- */
 
@@ -2745,7 +2747,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         <button disabled={exporting || save.kind === "saving"} onClick={() => exportRevision("pdf")}>Export {historicalSha ? "revision" : "latest"} PDF</button>
         <button disabled={exporting || save.kind === "saving"} onClick={() => exportRevision("docx")}>Export {historicalSha ? "revision" : "latest"} DOCX</button>
         <span role="status" aria-label="Export status">{exportState}</span>
-        <span role="status" aria-label="Preview status">{previewError ? "Preview failed — last good output retained" : previewing ? "Updating preview…" : (mode === "pdf" ? content === lastPdfRendered.current : content === htmlRenderedSource) ? "Preview up to date" : "Preview out of date"}</span>
+        <span role="status" aria-label="Preview status">{previewError ? "Preview failed — last good output retained" : previewing ? "Updating preview…" : (mode === "pdf" ? content === lastPdfRendered.current && pdfRevision === historicalSha : content === htmlRenderedSource) ? "Preview up to date" : "Preview out of date"}{mode === "pdf" && previewUrl ? ` · showing ${pdfRevision ? pdfRevision.slice(0, 7) : "current draft"}` : ""}</span>
         <button onClick={() => { lastPreviewed.current = ""; pendingPreviewAfterEdit.current = false; mode === "pdf" ? runPdfPreview(content) : runHtmlPreview(content); }}>Retry preview</button>
         <div role="group" aria-label="Authoring mode">
           <button aria-pressed={authoring === "visual"} onClick={() => setAuthoring("visual")}>Visual</button>
@@ -3416,7 +3418,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
               <div><code>{previewError}</code></div>
             </div>
           )}
-          {historicalSha ? <iframe title="Historical preview" className="preview-frame" src={`/api/render/${brand}/${slug}?ref=${historicalSha}`} /> : mode === "html" ? (
+          {mode === "html" ? (
             previewHtml ? (
               <iframe
                 ref={frameRef}
