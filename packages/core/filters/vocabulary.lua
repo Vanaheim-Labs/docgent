@@ -285,8 +285,13 @@ function Div(el)
     return out
 
   elseif has('pagebreak') then
-    local to = attrget(el, 'to', 'any')
-    return { raw('<div class="pagebreak" data-to="' .. esc(to) .. '"></div>') }
+    -- WeasyPrint always allocates a full page for any block-level element,
+    -- even at height:0, and display:none kills CSS adjacent-sibling selectors.
+    -- Solution: emit nothing and let the Pandoc function below inject
+    -- break-before:page as an inline style on the *next* block.
+    el.classes = pandoc.List({'pb-marker'})
+    el.attributes['data-pb-to'] = attrget(el, 'to', 'any')
+    return el  -- consumed by Pandoc function walk below
 
   elseif has('landscape') then
     local out = { raw('<section class="landscape">') }
@@ -1088,7 +1093,53 @@ function Pandoc(doc)
     return result
   end
 
-  local blocks = wrap_struck_sections(inject_logo_into_blocks(doc.blocks))
+  -- pagebreak pass: find pb-marker divs and inject break-before:page onto
+  -- the *next* sibling block as an inline style, then discard the marker.
+  -- This avoids WeasyPrint's behaviour of allocating a full page for any
+  -- block-level element (even at height:0), and works around display:none
+  -- killing CSS adjacent-sibling selectors.
+  local function inject_pagebreaks(blocks_in)
+    local result = {}
+    local i = 1
+    while i <= #blocks_in do
+      local b = blocks_in[i]
+      local is_pb = (b.t == 'Div' and b.classes and b.classes:includes('pb-marker'))
+      if is_pb then
+        local to = b.attributes['data-pb-to'] or 'any'
+        -- peek at next block and inject the break style onto it
+        local j = i + 1
+        if j <= #blocks_in then
+          local nxt = blocks_in[j]
+          local break_val = (to == 'left' and 'left' or to == 'right' and 'right' or 'page')
+          if nxt.t == 'Para' or nxt.t == 'Plain' then
+            -- wrap plain paragraphs in a div so we can set inline style
+            local wrapper = pandoc.Div({nxt})
+            wrapper.attributes['style'] = 'break-before:' .. break_val
+            table.insert(result, wrapper)
+            i = j + 1
+          elseif nxt.t == 'Div' or nxt.t == 'Header' or nxt.t == 'BulletList' or nxt.t == 'OrderedList' or nxt.t == 'Table' then
+            -- patch existing block directly
+            local existing = nxt.attributes['style'] or ''
+            nxt.attributes['style'] = (existing ~= '' and existing .. '; ' or '') .. 'break-before:' .. break_val
+            table.insert(result, nxt)
+            i = j + 1
+          else
+            -- fallback: emit a zero-size display:none element (best effort)
+            table.insert(result, raw('<div style="display:none;break-after:' .. break_val .. '"></div>'))
+            table.insert(result, nxt)
+            i = j + 1
+          end
+        end
+        -- if pb-marker is the last block, just discard it (no-op)
+      else
+        table.insert(result, b)
+        i = i + 1
+      end
+    end
+    return result
+  end
+
+  local blocks = inject_pagebreaks(wrap_struck_sections(inject_logo_into_blocks(doc.blocks)))
 
   if not doc.meta or not doc.meta.docforge_source_lines then
     return pandoc.Pandoc(blocks, doc.meta)

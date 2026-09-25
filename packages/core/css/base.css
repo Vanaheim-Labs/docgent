@@ -551,11 +551,8 @@ table:not(.datatable table) td {
 .columns[data-count="3"] { column-count: 3; font-size: 0.92rem; }
 
 /* ---------- structural ---------- */
-/* pagebreak: hidden zero-size marker; break fires on the following sibling */
-.pagebreak { display: block; height: 0; margin: 0; padding: 0; visibility: hidden; overflow: hidden; }
-.pagebreak + * { break-before: page; }
-.pagebreak[data-to="left"] + * { break-before: left; }
-.pagebreak[data-to="right"] + * { break-before: right; }
+/* pagebreak: break is injected by vocabulary.lua directly onto the following
+   block as an inline style; no marker element appears in the rendered HTML. */
 .landscape { page: landscape; break-before: page; break-after: page; }
 .appendix { break-before: page; }
 .appendix h1 { string-set: section "Appendix"; break-before: avoid; }
