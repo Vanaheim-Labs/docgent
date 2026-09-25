@@ -2725,89 +2725,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
       </div>
 
-      {/* ── Rich format toolbar: both rows wrapped in a single flex-shrink:0 block so the
-           editor-panes below always starts below both bars. Without this the second row
-           either gets clipped by overflow:hidden or stacks on top of the editor area. ── */}
-      {editorMode !== "pages" && <div className="format-bars-wrap">
-      <div
-        className="format-bar format-bar-row1"
-        role="toolbar"
-        aria-label="Markdown formatting"
-        onMouseEnter={() => { savedIframeSelection.current = getIframeSelection(); }}
-      >
-        {/* Paragraph / heading dropdown */}
-        <div className="format-group">
-          <select
-            className="heading-select"
-            disabled={isFolded}
-            defaultValue=""
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === "p") { transformLines((lines) => lines.map((l) => l.replace(/^#{1,6}\s+/, ""))); }
-              else if (v) { applyHeading(parseInt(v, 10)); }
-              e.target.value = "";
-            }}
-            title="Paragraph style" aria-label="Paragraph style"
-          >
-            <option value="" disabled>Paragraph</option>
-            <option value="p">Paragraph</option>
-            <option value="1">Heading 1</option>
-            <option value="2">Heading 2</option>
-            <option value="3">Heading 3</option>
-            <option value="4">Heading 4</option>
-          </select>
-        </div>
-        <div className="format-divider" />
-        <div className="format-group">
-          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("**", "bold text"); }} disabled={isFolded} title="Bold — ⌘B" aria-label="Bold"><Bold size={14} strokeWidth={2.5} /></button>
-          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("*", "italic text"); }} disabled={isFolded} title="Italic — ⌘I" aria-label="Italic"><Italic size={14} strokeWidth={2} /></button>
-          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertUnderline(); }} disabled={isFolded} title="Underline" aria-label="Underline"><Underline size={14} strokeWidth={2} /></button>
-          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("~~", "struck text"); }} disabled={isFolded} title="Strikethrough" aria-label="Strikethrough"><Strikethrough size={14} strokeWidth={2} /></button>
-          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertHighlight(); }} disabled={isFolded} title="Highlight (==text==)" aria-label="Highlight"><Highlighter size={14} strokeWidth={2} /></button>
-        </div>
-        <div className="format-divider" />
-        <div className="format-group">
-          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertLink(); }} disabled={isFolded} title="Link — ⌘K" aria-label="Insert link"><Link2 size={14} strokeWidth={2} /></button>
-          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); applyBullets(); }} disabled={isFolded} title="Bulleted list" aria-label="Bulleted list"><List size={14} strokeWidth={2} /></button>
-          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); applyNumbered(); }} disabled={isFolded} title="Numbered list" aria-label="Numbered list"><ListOrdered size={14} strokeWidth={2} /></button>
-          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertTable(); }} disabled={isFolded} title="Insert table" aria-label="Insert table"><Table size={14} strokeWidth={2} /></button>
-          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertImage(); }} disabled={isFolded} title="Insert image" aria-label="Insert image"><Image size={14} strokeWidth={2} /></button>
-          <button className="format-btn" onClick={insertCodeBlock} disabled={isFolded} title="Code block" aria-label="Code block"><Code2 size={14} strokeWidth={2} /></button>
-          <button className="format-btn" onClick={insertRule} disabled={isFolded} title="Horizontal rule" aria-label="Horizontal rule"><Minus size={14} strokeWidth={2} /></button>
-        </div>
-        <div className="format-divider" />
-        <div className="format-group">
-          <button className="format-btn" onClick={doUndo} disabled={isFolded} title="Undo" aria-label="Undo"><Undo2 size={14} strokeWidth={2} /></button>
-          <button className="format-btn" onClick={doRedo} disabled={isFolded} title="Redo" aria-label="Redo"><Redo2 size={14} strokeWidth={2} /></button>
-        </div>
-        <div className="format-divider" />
-        <div className="format-group">
-          <button className="format-btn format-btn-wide" onClick={openSelectionRewrite} disabled={isFolded} title="Select text first, then direct a rewrite" aria-label="Rewrite selection">✨ Rewrite</button>
-        </div>
-        {isFolded && <span className="format-note">unfold a section to edit</span>}
-      </div>
 
-      {/* ── Rich format toolbar: Row 2 (vocabulary blocks) ── */}
-      <div className="format-bar format-bar-row2" role="toolbar" aria-label="Docgent vocabulary blocks">
-        <span className="format-bar-label">Blocks</span>
-        {snippets.map((s) => {
-          const Icon = BLOCK_ICONS[s.id];
-          return (
-            <button
-              key={s.id}
-              className={`format-btn format-btn-prim${s.id === "pagebreak" ? " format-btn-prim-accent" : ""}`}
-              onClick={() => insertSnippet(s.snippet)}
-              disabled={isFolded}
-              title={s.description || s.id}
-              aria-label={s.description || s.id}
-            >
-              {Icon ? <Icon size={14} strokeWidth={2} /> : null}
-              <span className="format-btn-prim-label">{s.id}</span>
-            </button>
-          );
-        })}
-      </div>
-      </div>}
+      {/* stale/error banners */}
 
       {save.kind === "stale" && (
         <div className="banner" data-kind="stale">
@@ -3043,6 +2962,86 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               ‹› You are editing the document source
             </div>
           )}
+          {/* ── Format toolbars live here, inside the source pane, so they are always
+               below the main toolbar in the DOM flow and never get clipped by
+               the outer editor overflow:hidden. ── */}
+          <div className="format-bars-wrap">
+            <div
+              className="format-bar format-bar-row1"
+              role="toolbar"
+              aria-label="Markdown formatting"
+              onMouseEnter={() => { savedIframeSelection.current = getIframeSelection(); }}
+            >
+              <div className="format-group">
+                <select
+                  className="heading-select"
+                  disabled={isFolded}
+                  defaultValue=""
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === "p") { transformLines((lines) => lines.map((l) => l.replace(/^#{1,6}\s+/, ""))); }
+                    else if (v) { applyHeading(parseInt(v, 10)); }
+                    e.target.value = "";
+                  }}
+                  title="Paragraph style" aria-label="Paragraph style"
+                >
+                  <option value="" disabled>Paragraph</option>
+                  <option value="p">Paragraph</option>
+                  <option value="1">Heading 1</option>
+                  <option value="2">Heading 2</option>
+                  <option value="3">Heading 3</option>
+                  <option value="4">Heading 4</option>
+                </select>
+              </div>
+              <div className="format-divider" />
+              <div className="format-group">
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("**", "bold text"); }} disabled={isFolded} title="Bold — ⌘B" aria-label="Bold"><Bold size={14} strokeWidth={2.5} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("*", "italic text"); }} disabled={isFolded} title="Italic — ⌘I" aria-label="Italic"><Italic size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertUnderline(); }} disabled={isFolded} title="Underline" aria-label="Underline"><Underline size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("~~", "struck text"); }} disabled={isFolded} title="Strikethrough" aria-label="Strikethrough"><Strikethrough size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertHighlight(); }} disabled={isFolded} title="Highlight (==text==)" aria-label="Highlight"><Highlighter size={14} strokeWidth={2} /></button>
+              </div>
+              <div className="format-divider" />
+              <div className="format-group">
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertLink(); }} disabled={isFolded} title="Link — ⌘K" aria-label="Insert link"><Link2 size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); applyBullets(); }} disabled={isFolded} title="Bulleted list" aria-label="Bulleted list"><List size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); applyNumbered(); }} disabled={isFolded} title="Numbered list" aria-label="Numbered list"><ListOrdered size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertTable(); }} disabled={isFolded} title="Insert table" aria-label="Insert table"><Table size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertImage(); }} disabled={isFolded} title="Insert image" aria-label="Insert image"><Image size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onClick={insertCodeBlock} disabled={isFolded} title="Code block" aria-label="Code block"><Code2 size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onClick={insertRule} disabled={isFolded} title="Horizontal rule" aria-label="Horizontal rule"><Minus size={14} strokeWidth={2} /></button>
+              </div>
+              <div className="format-divider" />
+              <div className="format-group">
+                <button className="format-btn" onClick={doUndo} disabled={isFolded} title="Undo" aria-label="Undo"><Undo2 size={14} strokeWidth={2} /></button>
+                <button className="format-btn" onClick={doRedo} disabled={isFolded} title="Redo" aria-label="Redo"><Redo2 size={14} strokeWidth={2} /></button>
+              </div>
+              <div className="format-divider" />
+              <div className="format-group">
+                <button className="format-btn format-btn-wide" onClick={openSelectionRewrite} disabled={isFolded} title="Select text first, then direct a rewrite" aria-label="Rewrite selection">✨ Rewrite</button>
+              </div>
+              {isFolded && <span className="format-note">unfold a section to edit</span>}
+            </div>
+            <div className="format-bar format-bar-row2" role="toolbar" aria-label="Docgent vocabulary blocks">
+              <span className="format-bar-label">Blocks</span>
+              {snippets.map((s) => {
+                const Icon = BLOCK_ICONS[s.id];
+                return (
+                  <button
+                    key={s.id}
+                    className={`format-btn format-btn-prim${s.id === "pagebreak" ? " format-btn-prim-accent" : ""}`}
+                    onClick={() => insertSnippet(s.snippet)}
+                    disabled={isFolded}
+                    title={s.description || s.id}
+                    aria-label={s.description || s.id}
+                  >
+                    {Icon ? <Icon size={14} strokeWidth={2} /> : null}
+                    <span className="format-btn-prim-label">{s.id}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           {/* CodeMirror 6 editor host */}
           <div
             ref={cmContainerRef}
