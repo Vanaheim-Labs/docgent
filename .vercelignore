@@ -1,0 +1,6 @@
+.qa/
+test-results/
+playwright-report/
+node_modules/
+.venv/
+__pycache__/
