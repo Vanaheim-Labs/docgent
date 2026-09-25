@@ -152,6 +152,7 @@ export function VersionPanel({
   onCompare,
   comparingSha,
   baseSha,
+  onView,
 }: {
   brand: string;
   slug: string;
@@ -161,6 +162,7 @@ export function VersionPanel({
   comparingSha?: string | null;
   docVersion?: string;
   baseSha?: string;
+  onView?: (sha?: string) => void;
 }) {
   const [restoring, setRestoring] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
@@ -249,7 +251,7 @@ export function VersionPanel({
                   active={isViewing}
                   diffStat={diffStats[t.sha]}
                   onSelect={() =>
-                    (window.location.href = t.isCurrent
+                    onView ? onView(t.isCurrent ? undefined : t.sha) : (window.location.href = t.isCurrent
                       ? `/${brand}/${slug}`
                       : `/${brand}/${slug}?v=${t.sha}`)
                   }
@@ -352,6 +354,7 @@ export function VersionPanel({
                         <a
                           className="version-action"
                           href={t.isCurrent ? `/${brand}/${slug}` : `/${brand}/${slug}?v=${t.sha}`}
+                          onClick={onView ? (event) => { event.preventDefault(); onView(t.isCurrent ? undefined : t.sha); } : undefined}
                         >
                           View
                         </a>

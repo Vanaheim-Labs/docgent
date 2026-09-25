@@ -9,6 +9,20 @@ test.beforeEach(async({page})=>{
   return route.fulfill({status:502,body:'Fixture renderer unavailable'});
  });
 });
+test('history preview is read-only and returning to latest preserves the current draft',async({page})=>{
+ await page.goto(server.url);await page.getByRole('button',{name:'Source',exact:true}).click();await page.getByRole('button',{name:'Editor only',exact:true}).click();
+ await page.locator('.cm-content').press('ControlOrMeta+End');await page.keyboard.type(' Keep while viewing history');
+ await page.getByRole('button',{name:'History',exact:true}).click();
+ await expect(page.getByText('Add initial table',{exact:true})).toBeVisible();
+ await page.getByRole('link',{name:'View',exact:true}).last().click();
+ await expect(page.getByRole('status',{name:'Historical revision'})).toContainText('ddddddd');
+ await expect(page.getByRole('button',{name:'Save',exact:true})).toBeDisabled();
+ await page.getByRole('button',{name:'Return to latest',exact:true}).click();
+ await page.getByRole('button',{name:'Editor only',exact:true}).click();
+ await expect(page.locator('.cm-content')).toContainText('Keep while viewing history');
+ await page.getByRole('button',{name:'Compare',exact:true}).click();
+ await expect(page.getByText('Comparison failed',{exact:false})).toBeVisible();
+});
 test('overlapping save shortcuts serialize writes and retain edits typed during a save',async({page})=>{
  const writes=[];let release;
  const gate=new Promise(resolve=>release=resolve);

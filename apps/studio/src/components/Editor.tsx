@@ -7,6 +7,7 @@ import { RewriteBar, type RewriteProposal } from "@/components/RewriteBar";
 import { Tooltip } from "@/components/Tooltip";
 import { ProposalReview } from "@/components/ProposalReview";
 import { CommentsPanel } from "@/components/CommentsPanel";
+import { WorkspaceHistory } from "@/components/WorkspaceHistory";
 import { parseComments, setCommentResolved, insertComment } from "@/lib/comments";
 
 // CodeMirror 6
@@ -233,6 +234,9 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const [exportState, setExportState] = useState("");
   const [exporting, setExporting] = useState(false);
   const [conflictHead, setConflictHead] = useState<{ content: string; sha: string } | null>(null);
+  const [contextPanel, setContextPanel] = useState<"history" | null>(null);
+  const [historicalSha, setHistoricalSha] = useState<string | undefined>(workspace?.viewingSha);
+  const viewRevision = (sha?: string) => { setHistoricalSha(sha); setLayout("preview"); };
   const draftKey = `docgent.draft:${brand}/${slug}`;
   const [recoveredDraft, setRecoveredDraft] = useState<{ content: string; baseSha: string | null } | null>(null);
   const [draftStorageReady, setDraftStorageReady] = useState(false);
@@ -590,6 +594,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const doSave = useCallback(async () => {
     if (savingRef.current) return;
     if (workspace && !workspace.canEdit) return;
+    if (historicalSha) return;
     if (workspace && save.kind === "stale") return;
     if (errors.length > 0) {
       setSave({ kind: "error", message: `${errors.length} validation error${errors.length > 1 ? "s" : ""} — fix before saving.` });
@@ -642,13 +647,13 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
     } finally {
       savingRef.current = false;
     }
-  }, [brand, slug, content, baseSha, errors.length, initialContent, save.kind, workspace]);
+  }, [brand, slug, content, baseSha, errors.length, initialContent, save.kind, workspace, historicalSha]);
 
   const exportRevision = async (format: "pdf" | "docx") => {
     setExporting(true);
     setExportState("Preparing saved revision…");
     try {
-      const revision = workspace?.viewingSha || await doSave();
+      const revision = historicalSha || await doSave();
       if (!revision || !/^[a-f0-9]{40}$/.test(revision)) throw new Error("Save must succeed before exporting. Your draft has not been exported.");
       setExportState(`Rendering saved revision ${revision.slice(0, 7)}…`);
       const url = format === "pdf" ? `/api/render/${brand}/${slug}?ref=${revision}` : `/api/export/${brand}/${slug}?format=docx&ref=${revision}`;
@@ -698,7 +703,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   // Autosave: 3 seconds after last content change, when dirty and no errors.
   useEffect(() => {
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    if (!dirty || errors.length > 0 || save.kind === "saving" || save.kind === "stale" || save.kind === "error") return;
+    if (historicalSha || !dirty || errors.length > 0 || save.kind === "saving" || save.kind === "stale" || save.kind === "error") return;
     autoSaveTimer.current = setTimeout(() => {
       doSave();
     }, 3000);
@@ -706,7 +711,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content, dirty, errors.length, save.kind, baseSha]);
+  }, [content, dirty, errors.length, save.kind, baseSha, historicalSha]);
 
   // Show "Saved ✓" indicator for 3 seconds after a successful save.
   useEffect(() => {
@@ -2719,10 +2724,10 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         <nav aria-label="Application navigation"><a href="/">Documents</a> · <a href="/primitives">Primitives</a></nav>
         <h1>{workspace.title}</h1>
         <span>{workspace.status || "Draft"}</span>
-        <button disabled={!workspace.canEdit || save.kind === "saving"} onClick={() => doSave()}>Save</button>
+        <button disabled={!workspace.canEdit || !!historicalSha || save.kind === "saving"} onClick={() => doSave()}>Save</button>
         <span role="status" aria-label="Save status">{save.kind === "saving" ? "Saving…" : save.kind === "stale" ? "Conflict — draft retained" : save.kind === "error" ? "Save failed — draft retained" : dirty ? "Unsaved changes" : "Saved"}</span>
-        <button disabled={exporting || save.kind === "saving"} onClick={() => exportRevision("pdf")}>Export {workspace.viewingSha ? "revision" : "latest"} PDF</button>
-        <button disabled={exporting || save.kind === "saving"} onClick={() => exportRevision("docx")}>Export {workspace.viewingSha ? "revision" : "latest"} DOCX</button>
+        <button disabled={exporting || save.kind === "saving"} onClick={() => exportRevision("pdf")}>Export {historicalSha ? "revision" : "latest"} PDF</button>
+        <button disabled={exporting || save.kind === "saving"} onClick={() => exportRevision("docx")}>Export {historicalSha ? "revision" : "latest"} DOCX</button>
         <span role="status" aria-label="Export status">{exportState}</span>
         <span role="status" aria-label="Preview status">{previewError ? "Preview failed — last good output retained" : previewing ? "Updating preview…" : (mode === "pdf" ? content === lastPdfRendered.current : content === htmlRenderedSource) ? "Preview up to date" : "Preview out of date"}</span>
         <button onClick={() => { lastPreviewed.current = ""; pendingPreviewAfterEdit.current = false; mode === "pdf" ? runPdfPreview(content) : runHtmlPreview(content); }}>Retry preview</button>
@@ -2731,13 +2736,18 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
           <button aria-pressed={authoring === "source"} onClick={() => setAuthoring("source")}>Source</button>
         </div>
         <div role="group" aria-label="Workspace layout">
-          <button disabled={!workspace.canEdit} aria-pressed={layout === "editor"} onClick={() => setLayout("editor")}>Editor only</button>
-          <button disabled={!workspace.canEdit} aria-pressed={layout === "split"} onClick={() => setLayout("split")}>Side by side</button>
+          <button disabled={!workspace.canEdit || !!historicalSha} aria-pressed={layout === "editor"} onClick={() => setLayout("editor")}>Editor only</button>
+          <button disabled={!workspace.canEdit || !!historicalSha} aria-pressed={layout === "split"} onClick={() => setLayout("split")}>Side by side</button>
           <button aria-pressed={layout === "preview"} onClick={() => setLayout("preview")}>Preview only</button>
         </div>
         <span>{layout === "preview" ? "Read-only preview" : "Editing"}</span>
+        <button aria-expanded={contextPanel === "history"} onClick={() => setContextPanel(contextPanel === "history" ? null : "history")}>History</button>
         {layout === "split" && <button className="workspace-mobile-toggle" onClick={() => setMobilePane(mobilePane === "editor" ? "preview" : "editor")}>Show {mobilePane === "editor" ? "preview" : "editor"}</button>}
       </header>}
+      {historicalSha && <div className="banner" role="status" aria-label="Historical revision">
+        Historical revision {historicalSha.slice(0, 7)} — read only. Your current draft is retained.
+        {workspace?.viewingSha ? <a href={`/${brand}/${slug}`}>Return to latest</a> : <button onClick={() => viewRevision()}>Return to latest</button>}
+      </div>}
       {workspace && recoveredDraft && <div className="banner" role="status">
         An unsaved draft from this tab is available. It has not been saved to the server.
         <button onClick={() => {
@@ -3377,7 +3387,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
               <div><code>{previewError}</code></div>
             </div>
           )}
-          {mode === "html" ? (
+          {historicalSha ? <iframe title="Historical preview" className="preview-frame" src={`/api/render/${brand}/${slug}?ref=${historicalSha}`} /> : mode === "html" ? (
             previewHtml ? (
               <iframe
                 ref={frameRef}
@@ -3421,6 +3431,10 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
           <div className="source-mode-banner">Read-only output · draft HTML preview</div>
           {previewHtml ? <iframe title="Read-only output preview" className="preview-frame" srcDoc={previewHtml} sandbox="" /> : <p>Waiting for preview…</p>}
         </section>}
+        {workspace && contextPanel === "history" && <aside className="workspace-context" aria-label="History panel">
+          <button onClick={() => setContextPanel(null)}>Close history</button>
+          <WorkspaceHistory brand={brand} slug={slug} timeline={workspace.timeline} baseSha={!dirty && workspace.canEdit ? baseSha || undefined : undefined} viewingSha={historicalSha} onView={viewRevision} />
+        </aside>}
         {/* Comments rail — shown to the right of editor panes when toggled */}
         {showComments && (
           <div className="editor-comments-rail">
