@@ -257,6 +257,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [showComments, setShowComments] = useState(false);
   const [folded, setFolded] = useState<number[]>([]);
   const [showErrors, setShowErrors] = useState(false);
+  const [showMoreBlocks, setShowMoreBlocks] = useState(false);
 
   /**
    * Directed rewrite: bar open state plus the scope it was opened against.
@@ -3078,22 +3079,68 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               {isFolded && <span className="format-note">unfold a section to edit</span>}
             </div>
             <div className="format-bar format-bar-row2" role="toolbar" aria-label="Docgent vocabulary blocks">
-              {snippets.map((s) => {
-                const Icon = BLOCK_ICONS[s.id];
+              {(() => {
+                // Primary blocks: most commonly reached-for in Word-style authoring.
+                // Ordered to match Autype: structure → emphasis → data → authorship.
+                const PRIMARY = [
+                  "pagebreak", "toc", "columns",
+                  "callout", "pullquote", "tensionbox",
+                  "summary", "recommendation", "note",
+                  "keyfigure", "key-figure", "chart", "figure", "image",
+                  "datatable", "signature",
+                ];
+                const primary = snippets.filter(s => PRIMARY.includes(s.id))
+                  .sort((a, b) => PRIMARY.indexOf(a.id) - PRIMARY.indexOf(b.id));
+                const secondary = snippets.filter(s => !PRIMARY.includes(s.id));
+
+                const BlockBtn = (s: typeof snippets[0]) => {
+                  const Icon = BLOCK_ICONS[s.id];
+                  const tip = s.description ? `${s.id} — ${s.description}` : s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      className={`format-btn format-btn-prim${s.id === "pagebreak" ? " format-btn-prim-accent" : ""}`}
+                      onClick={() => { insertSnippet(s.snippet); setShowMoreBlocks(false); }}
+                      disabled={isFolded}
+                      title={tip}
+                      data-tooltip={tip}
+                      aria-label={s.description || s.id}
+                    >
+                      {Icon ? <Icon size={14} strokeWidth={2} /> : <span className="format-btn-prim-fallback">{s.id.slice(0, 2).toUpperCase()}</span>}
+                    </button>
+                  );
+                };
+
                 return (
-                  <button
-                    key={s.id}
-                    className={`format-btn format-btn-prim${s.id === "pagebreak" ? " format-btn-prim-accent" : ""}`}
-                    onClick={() => insertSnippet(s.snippet)}
-                    disabled={isFolded}
-                    title={s.description ? `${s.id} — ${s.description}` : s.id}
-                    data-tooltip={s.description ? `${s.id} — ${s.description}` : s.id}
-                    aria-label={s.description || s.id}
-                  >
-                    {Icon ? <Icon size={14} strokeWidth={2} /> : <span className="format-btn-prim-fallback">{s.id.slice(0, 2).toUpperCase()}</span>}
-                  </button>
+                  <>
+                    {primary.map(BlockBtn)}
+                    <div className="format-divider" />
+                    <div className="blocks-more-wrap">
+                      <button
+                        className="format-btn format-btn-prim blocks-more-btn"
+                        onClick={() => setShowMoreBlocks(v => !v)}
+                        disabled={isFolded}
+                        title="More blocks"
+                        data-tooltip="More blocks"
+                        aria-label="More blocks"
+                        data-active={showMoreBlocks}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
+                        </svg>
+                      </button>
+                      {showMoreBlocks && (
+                        <div className="blocks-overflow-menu" role="menu">
+                          <div className="blocks-overflow-label">More blocks</div>
+                          <div className="blocks-overflow-grid">
+                            {secondary.map(BlockBtn)}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
                 );
-              })}
+              })()}
             </div>
           </div>
           {/* CodeMirror 6 editor host */}
