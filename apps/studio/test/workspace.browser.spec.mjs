@@ -9,6 +9,39 @@ test.beforeEach(async({page})=>{
   return route.fulfill({status:502,body:'Fixture renderer unavailable'});
  });
 });
+test('save failure retains a recoverable draft across reload and never exports stale content',async({page})=>{
+ let exported=false;
+ await page.route('**/api/doc/**',route=>route.fulfill({status:503,json:{error:'fixture offline'}}));
+ await page.route('**/api/export/**',route=>{exported=true;return route.fulfill({body:'must not happen'});});
+ await page.goto(server.url);
+ await page.getByRole('button',{name:'Source',exact:true}).click();await page.getByRole('button',{name:'Editor only',exact:true}).click();
+ await page.locator('.cm-content').press('ControlOrMeta+End');await page.keyboard.type(' Retain my draft');
+ await page.getByRole('button',{name:'Save',exact:true}).click();
+ await expect(page.getByRole('status',{name:'Save status'})).toContainText('failed');
+ await page.getByRole('button',{name:'Export latest DOCX',exact:true}).click();
+ await expect(page.getByRole('status',{name:'Export status'})).toContainText('failed');expect(exported).toBe(false);
+ page.on('dialog',dialog=>dialog.accept());await page.reload();
+ await page.getByRole('button',{name:'Recover draft',exact:true}).click();
+ await page.getByRole('button',{name:'Editor only',exact:true}).click();
+ await expect(page.locator('.cm-content')).toContainText('Retain my draft');
+});
+test('preview failures keep the last good output and retry the same draft',async({page})=>{
+ let fail=false;let requests=0;
+ await page.route('**/api/preview/**/html',async route=>{requests++;return route.fulfill(fail?{status:502,body:'fixture render failed'}:{contentType:'text/html',body:'<p data-source-line="12">Last good fixture</p>'});});
+ await page.goto(server.url);
+ await page.getByRole('button',{name:'Visual',exact:true}).click();
+ await page.getByRole('button',{name:'Editor only',exact:true}).click();
+ await expect(page.frameLocator('iframe[title="Live preview"]').getByText('Last good fixture')).toBeVisible();
+ fail=true;
+ await page.getByRole('button',{name:'Source',exact:true}).click();
+ await page.locator('.cm-content').press('ControlOrMeta+End');await page.keyboard.type(' Extra');
+ await expect(page.getByRole('status',{name:'Preview status'})).toContainText('failed');
+ await page.getByRole('button',{name:'Visual',exact:true}).click();
+ await expect(page.frameLocator('iframe[title="Live preview"]').getByText('Last good fixture')).toBeVisible();
+ fail=false;const before=requests;
+ await page.getByRole('button',{name:'Retry preview',exact:true}).click();
+ await expect(page.getByRole('status',{name:'Preview status'})).toContainText('up to date');expect(requests).toBeGreaterThan(before);
+});
 test('latest export saves first and downloads only that exact saved revision',async({page})=>{
  const calls=[];const revision='a'.repeat(40);
  await page.route('**/api/doc/**',async route=>{calls.push('save');await route.fulfill({json:{sha:'c'.repeat(40),revision,commit:{sha:revision}}});});

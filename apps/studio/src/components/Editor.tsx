@@ -232,6 +232,17 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const [mobilePane, setMobilePane] = useState<"editor" | "preview">("editor");
   const [exportState, setExportState] = useState("");
   const [exporting, setExporting] = useState(false);
+  const draftKey = `docgent.draft:${brand}/${slug}`;
+  const [recoveredDraft, setRecoveredDraft] = useState<{ content: string; baseSha: string | null } | null>(null);
+  const [draftStorageReady, setDraftStorageReady] = useState(false);
+  useEffect(() => {
+    if (!workspace?.canEdit) return;
+    try {
+      const draft = JSON.parse(sessionStorage.getItem(draftKey) || "null");
+      if (draft && typeof draft.content === "string" && draft.content !== initialContent) setRecoveredDraft(draft);
+    } catch { /* Native unload warning remains available if storage is blocked. */ }
+    setDraftStorageReady(true);
+  }, []);
   useEffect(() => {
     if (!workspace) return;
     try {
@@ -279,6 +290,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const posture: Posture = editorMode === "source" ? "edit" : "review";  // review/edit/pages all use review posture for preview
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [htmlRenderedSource, setHtmlRenderedSource] = useState<string | null>(null);
+  const previewRequest = useRef(0);
   const [pdfStale, setPdfStale] = useState(false);
   // Split-screen toggle (Phase 2c): show both panes side-by-side in Edit mode.
   const [splitView, setSplitView] = useState(false);
@@ -392,6 +405,13 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   // proposal advances the baseline immediately, preventing the 3-second
   // autosave from firing a stale PUT with the old baseSha and getting a 409.
   const dirty = content !== committedContentRef.current || save.kind === "error" || save.kind === "stale";
+  useEffect(() => {
+    if (!workspace?.canEdit || !draftStorageReady || recoveredDraft) return;
+    try {
+      if (dirty) sessionStorage.setItem(draftKey, JSON.stringify({ content, baseSha }));
+      else sessionStorage.removeItem(draftKey);
+    } catch { /* Do not turn optional recovery storage into a failed save. */ }
+  }, [content, baseSha, dirty, draftStorageReady, recoveredDraft]);
 
   const diagnostics = useMemo(
     () => validateMarkdown(content, vocabulary),
@@ -429,12 +449,12 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
     // The DOM already shows the correct text optimistically; a full re-render
     // would replace the iframe document and cause a scroll jump. We only do a
     // full re-render on the NEXT content change (e.g. source pane edit) or save.
-    if (pendingPreviewAfterEdit.current) {
+    if (pendingPreviewAfterEdit.current && !workspace) {
       pendingPreviewAfterEdit.current = false;
       lastPreviewed.current = src; // Mark as seen so we don’t re-render again.
       return;
     }
-    lastPreviewed.current = src;
+    const request = ++previewRequest.current;
     setPreviewing(true);
     setPreviewError(null);
     try {
@@ -443,22 +463,28 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: src }),
       });
+      if (request !== previewRequest.current) return;
       if (!res.ok) {
         setPreviewError((await res.text()).slice(0, 400));
         return;
       }
       const html = await res.text();
+      if (request !== previewRequest.current) return;
+      lastPreviewed.current = src;
+      setHtmlRenderedSource(src);
       setPreviewHtml(html);
     } catch (e) {
+      if (request !== previewRequest.current) return;
       setPreviewError(e instanceof Error ? e.message : String(e));
     } finally {
-      setPreviewing(false);
+      if (request === previewRequest.current) setPreviewing(false);
     }
   }, [brand, slug]);
 
   // PDF is an explicit action: it is the slow, faithful path, so it renders on
   // demand rather than on every keystroke.
   const runPdfPreview = useCallback(async (src: string) => {
+    const request = ++previewRequest.current;
     setPreviewing(true);
     setPreviewError(null);
     try {
@@ -467,20 +493,23 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: src }),
       });
+      if (request !== previewRequest.current) return;
       if (!res.ok) {
         setPreviewError((await res.text()).slice(0, 400));
         return;
       }
       const blob = await res.blob();
+      if (request !== previewRequest.current) return;
       if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
       objectUrl.current = URL.createObjectURL(blob);
       setPreviewUrl(objectUrl.current);
       lastPdfRendered.current = src;
       setPdfStale(false);
     } catch (e) {
+      if (request !== previewRequest.current) return;
       setPreviewError(e instanceof Error ? e.message : String(e));
     } finally {
-      setPreviewing(false);
+      if (request === previewRequest.current) setPreviewing(false);
     }
   }, [brand, slug]);
 
@@ -2684,6 +2713,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         <button disabled={exporting || save.kind === "saving"} onClick={() => exportRevision("pdf")}>Export {workspace.viewingSha ? "revision" : "latest"} PDF</button>
         <button disabled={exporting || save.kind === "saving"} onClick={() => exportRevision("docx")}>Export {workspace.viewingSha ? "revision" : "latest"} DOCX</button>
         <span role="status" aria-label="Export status">{exportState}</span>
+        <span role="status" aria-label="Preview status">{previewError ? "Preview failed — last good output retained" : previewing ? "Updating preview…" : (mode === "pdf" ? content === lastPdfRendered.current : content === htmlRenderedSource) ? "Preview up to date" : "Preview out of date"}</span>
+        <button onClick={() => { lastPreviewed.current = ""; pendingPreviewAfterEdit.current = false; mode === "pdf" ? runPdfPreview(content) : runHtmlPreview(content); }}>Retry preview</button>
         <div role="group" aria-label="Authoring mode">
           <button aria-pressed={authoring === "visual"} onClick={() => setAuthoring("visual")}>Visual</button>
           <button aria-pressed={authoring === "source"} onClick={() => setAuthoring("source")}>Source</button>
@@ -2696,6 +2727,15 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         <span>{layout === "preview" ? "Read-only preview" : "Editing"}</span>
         {layout === "split" && <button className="workspace-mobile-toggle" onClick={() => setMobilePane(mobilePane === "editor" ? "preview" : "editor")}>Show {mobilePane === "editor" ? "preview" : "editor"}</button>}
       </header>}
+      {workspace && recoveredDraft && <div className="banner" role="status">
+        An unsaved draft from this tab is available. It has not been saved to the server.
+        <button onClick={() => {
+          setContent(recoveredDraft.content);
+          if (recoveredDraft.baseSha !== initialSha) setSave({ kind: "stale", message: "The server changed since this draft. Compare before saving." });
+          setRecoveredDraft(null);
+        }}>Recover draft</button>
+        <button onClick={() => { sessionStorage.removeItem(draftKey); setRecoveredDraft(null); }}>Discard recovered draft</button>
+      </div>}
       <div className="editor-toolbar">
         <div className="editor-toolbar-left">
           <button
@@ -3314,12 +3354,13 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
               🔍 Review mode — agent suggestions and comments. Click any note to jump to source.
             </div>
           )}
-          {previewError ? (
+          {previewError && (
             <div className="banner" data-kind="error" style={{ margin: 12 }}>
               <strong>Preview failed.</strong>
               <div><code>{previewError}</code></div>
             </div>
-          ) : mode === "html" ? (
+          )}
+          {mode === "html" ? (
             previewHtml ? (
               <iframe
                 ref={frameRef}
