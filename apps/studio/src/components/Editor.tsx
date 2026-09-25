@@ -2725,8 +2725,10 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
       </div>
 
-      {/* ── Rich format toolbar: Row 1 (inline formatting) — always shown in edit/source/review ── */}
-      {editorMode !== "pages" && <>
+      {/* ── Rich format toolbar: both rows wrapped in a single flex-shrink:0 block so the
+           editor-panes below always starts below both bars. Without this the second row
+           either gets clipped by overflow:hidden or stacks on top of the editor area. ── */}
+      {editorMode !== "pages" && <div className="format-bars-wrap">
       <div
         className="format-bar format-bar-row1"
         role="toolbar"
@@ -2805,7 +2807,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           );
         })}
       </div>
-      </>}
+      </div>}
 
       {save.kind === "stale" && (
         <div className="banner" data-kind="stale">

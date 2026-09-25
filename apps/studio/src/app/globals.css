@@ -947,6 +947,13 @@ kbd {
    Row 2: Docgent vocabulary block buttons
    Separated by a thin rule between rows, thin vertical dividers within rows. */
 
+/* Both toolbar rows wrapped in a single flex-shrink:0 block */
+.format-bars-wrap {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+}
 .format-bar {
   display: flex;
   align-items: center;
@@ -955,8 +962,6 @@ kbd {
   padding: 5px 16px;
   background: var(--paper);
   border-bottom: 1px solid var(--rule);
-  flex-shrink: 0;
-  z-index: 10;
 }
 .format-bar-row2 {
   background: var(--paper-alt);
