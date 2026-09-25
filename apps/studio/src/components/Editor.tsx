@@ -228,6 +228,21 @@ function EditorExportDropdown({ brand, slug, previewUrl }: { brand: string; slug
 export function Editor({ brand, slug, initialContent, initialSha, vocabulary, workspace }: Props) {
   const [authoring, setAuthoring] = useState<"visual" | "source">("visual");
   const [layout, setLayout] = useState<"editor" | "split" | "preview">(workspace?.initialEditing ? "editor" : "preview");
+  const [preferencesReady, setPreferencesReady] = useState(false);
+  const [mobilePane, setMobilePane] = useState<"editor" | "preview">("editor");
+  useEffect(() => {
+    if (!workspace) return;
+    try {
+      const preference = JSON.parse(localStorage.getItem("docgent.workspace.preferences") || "{}");
+      if (preference.authoring === "source" || preference.authoring === "visual") setAuthoring(preference.authoring);
+      if (workspace.initialEditing && workspace.canEdit && ["editor", "split", "preview"].includes(preference.layout)) setLayout(preference.layout);
+    } catch { /* Storage unavailable: keep safe defaults. */ }
+    setPreferencesReady(true);
+  }, []);
+  useEffect(() => {
+    if (!workspace || !preferencesReady) return;
+    try { localStorage.setItem("docgent.workspace.preferences", JSON.stringify({ authoring, layout })); } catch { /* Optional preference. */ }
+  }, [authoring, layout, preferencesReady]);
   const [content, setContent] = useState(initialContent);
   const [baseSha, setBaseSha] = useState(initialSha);
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
@@ -2634,7 +2649,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
 
   return (
-    <div className="editor" data-unified={!!workspace} data-layout={layout} data-authoring={authoring}>
+    <div className="editor" data-unified={!!workspace} data-layout={layout} data-authoring={authoring} data-mobile-pane={mobilePane}>
       {workspace && <header className="workspace-header">
         <nav aria-label="Application navigation"><a href="/">Documents</a> · <a href="/primitives">Primitives</a></nav>
         <h1>{workspace.title}</h1>
@@ -2649,6 +2664,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
           <button aria-pressed={layout === "preview"} onClick={() => setLayout("preview")}>Preview only</button>
         </div>
         <span>{layout === "preview" ? "Read-only preview" : "Editing"}</span>
+        {layout === "split" && <button className="workspace-mobile-toggle" onClick={() => setMobilePane(mobilePane === "editor" ? "preview" : "editor")}>Show {mobilePane === "editor" ? "preview" : "editor"}</button>}
       </header>}
       <div className="editor-toolbar">
         <div className="editor-toolbar-left">
@@ -3313,6 +3329,10 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         </div>
         )}
 
+        {workspace && layout === "split" && <section className="pane workspace-output" aria-label="Read-only output">
+          <div className="source-mode-banner">Read-only output · draft HTML preview</div>
+          {previewHtml ? <iframe title="Read-only output preview" className="preview-frame" srcDoc={previewHtml} sandbox="" /> : <p>Waiting for preview…</p>}
+        </section>}
         {/* Comments rail — shown to the right of editor panes when toggled */}
         {showComments && (
           <div className="editor-comments-rail">

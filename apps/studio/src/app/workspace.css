@@ -1,0 +1,29 @@
+/* Extend Studio tokens; scope every override to the reversible workspace. */
+.editor[data-unified="true"] { min-width: 0; height: 100dvh; overflow: hidden; }
+.editor[data-unified="true"] .errors-panel { position:static; max-height:160px; overflow:auto; flex-shrink:0; width:auto; }
+.workspace-header { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:12px 20px; background:var(--paper,white); border-bottom:1px solid var(--line,#ddd); flex-shrink:0; }
+.workspace-header nav { width:100%; font-size:13px; }
+.workspace-header h1 { font-size:18px; margin:0; flex:1 1 240px; overflow-wrap:anywhere; }
+.workspace-header [role="group"] { display:flex; flex-wrap:wrap; gap:4px; }
+.workspace-header button { padding:8px 10px; min-height:36px; border:1px solid var(--line,#ccc); border-radius:6px; background:var(--paper,white); color:var(--ink,#172030); cursor:pointer; }
+.workspace-header button[aria-pressed="true"] { background:var(--accent-soft,#e4edff); border-color:var(--accent,#1263c9); }
+.workspace-header button:disabled { opacity:.5; cursor:not-allowed; }
+.editor[data-unified="true"] :focus-visible { outline:2px solid var(--accent,#1263c9); outline-offset:2px; }
+.editor[data-unified="true"] .editor-toolbar-left .mode-toggle,
+.editor[data-unified="true"] .editor-toolbar-left button[title="Toggle split source/preview view"] { display:none; }
+.editor[data-unified="true"] .editor-panes { display:flex!important; min-height:240px; flex:1; overflow:hidden; }
+.editor[data-unified="true"] .editor-panes > .pane { flex:1 1 0; width:auto; min-width:320px; min-height:0; }
+.editor[data-unified="true"][data-layout="split"] .workspace-output { display:flex; border-left:1px solid var(--line,#ddd); }
+.editor[data-unified="true"] .workspace-mobile-toggle { display:none; }
+@media(max-width:760px) {
+ .workspace-header { gap:8px; padding:10px; }
+ .workspace-header h1 { flex-basis:100%; }
+ .editor[data-unified="true"] .editor-toolbar { flex-wrap:wrap; }
+ .editor[data-unified="true"] .editor-toolbar-left, .editor[data-unified="true"] .editor-toolbar-right { flex-wrap:wrap; }
+ .editor[data-unified="true"] .editor-panes > .pane { min-width:0; width:100%; }
+ .editor[data-unified="true"] .workspace-mobile-toggle { display:block; }
+ .editor[data-unified="true"][data-layout="split"][data-mobile-pane="editor"] .workspace-output { display:none; }
+ .editor[data-unified="true"][data-layout="split"][data-mobile-pane="preview"] .pane-source,
+ .editor[data-unified="true"][data-layout="split"][data-mobile-pane="preview"] .pane-preview { display:none!important; }
+ .editor[data-unified="true"] .format-bars-wrap { overflow:auto; max-height:100px; }
+}
