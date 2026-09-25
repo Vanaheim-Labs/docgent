@@ -3024,10 +3024,17 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             </div>
           </nav>
         )}
-        {/* Source pane: shown in Source mode always, in Edit+split mode when split is on */}
-        {/* Source pane: shown in Source mode always, in Edit+split mode when split is on */}
-        {(editorMode === "source" || (editorMode === "edit" && splitView) || (editorMode === "review" && splitView)) && (
-        <div className="pane pane-source">
+        {/* Source pane: CM6 host is always in the DOM so the EditorView can mount on first render.
+             Visibility is controlled via CSS (display:none when not in source/split modes) so
+             the ref is never null when the mount effect runs. */}
+        <div
+          className="pane pane-source"
+          style={{
+            display: (editorMode === "source" || (editorMode === "edit" && splitView) || (editorMode === "review" && splitView))
+              ? undefined
+              : "none",
+          }}
+        >
           {editorMode === "source" && (
             <div className="source-mode-banner">
               ‹› You are editing the document source
@@ -3078,7 +3085,6 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             </div>
           )}
         </div>
-        )}
 
         {/* Preview/Pages pane: shown in Edit, Review, Pages modes */}
         {editorMode !== "source" && (
