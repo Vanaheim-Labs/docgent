@@ -38,6 +38,7 @@ import Link from "next/link";
 import { LibraryFilterPanel, type LibraryFilters } from "@/components/LibraryFilterPanel";
 import { QueueRow, queueBucket, BUCKET_LABEL, type QueueBucket } from "@/components/QueueRow";
 import { UserChip } from "@/components/UserChip";
+import { NewDocument } from "@/components/NewDocument";
 
 type TimeGroup = "Previous 7 days" | "Previous 30 days" | "Earlier";
 type SortMode = "last-modified" | "last-opened" | "title-az";
@@ -288,6 +289,7 @@ export function LibraryView({
       </div>
 
       <div className="content" ref={contentRef}>
+        {unified && <NewDocument brands={allowedBrands} />}
         {unified && <section className="library-filters" aria-label="Document filters">
           <input type="search" aria-label="Search documents" placeholder="Search documents…" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
           <select aria-label="Brand filter" value={[...filters.brands][0] || ""} onChange={(event) => setFilters({ ...filters, brands: new Set(event.target.value ? [event.target.value] : []) })}>

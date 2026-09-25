@@ -1,4 +1,8 @@
 /* Extend Studio tokens; scope every override to the reversible workspace. */
+.library-filters { display:flex; flex-wrap:wrap; gap:10px; margin:16px 0; }
+.library-filters input, .library-filters select, .workspace-new-document input, .workspace-new-document select { padding:8px; border:1px solid var(--line,#ccc); border-radius:6px; background:var(--paper,white); max-width:100%; }
+.workspace-new-document { display:flex; flex-wrap:wrap; gap:12px; border:1px solid var(--line,#ccc); padding:16px; margin:12px 0; }
+.workspace-new-document label { display:flex; flex-direction:column; gap:4px; }
 .editor[data-unified="true"] { min-width: 0; height: 100dvh; overflow: hidden; }
 .editor[data-unified="true"] .errors-panel { position:static; max-height:160px; overflow:auto; flex-shrink:0; width:auto; }
 .workspace-header { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:12px 20px; background:var(--paper,white); border-bottom:1px solid var(--line,#ddd); flex-shrink:0; }

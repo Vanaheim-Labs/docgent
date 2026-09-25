@@ -9,6 +9,14 @@ test.beforeEach(async({page})=>{
   return route.fulfill({status:502,body:'Fixture renderer unavailable'});
  });
 });
+test('new document uses the existing guarded save endpoint and opens the preserved edit route',async({page})=>{
+ let payload;
+ await page.route('**/api/doc/example/new-fixture',async route=>{payload=route.request().postDataJSON();await route.fulfill({json:{changed:true,sha:'a'.repeat(40)}});});
+ await page.goto(server.url+'/library');await page.getByRole('button',{name:'New document',exact:true}).click();
+ await page.getByLabel('Document title').fill('New fixture');await page.getByLabel('Document URL name').fill('new-fixture');
+ await page.getByRole('button',{name:'Create document',exact:true}).click();await expect(page).toHaveURL(/example\/new-fixture\/edit$/);
+ expect(payload.baseSha).toBeUndefined();expect(payload.content).toContain('title: "New fixture"');expect(payload.content).toContain('status: draft');
+});
 test('library filters use metadata and survive opening a document and returning',async({page})=>{
  await page.goto(server.url+'/library');
  await page.getByRole('searchbox',{name:'Search documents'}).fill('Useful description');
