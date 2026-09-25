@@ -9,7 +9,7 @@ test.beforeEach(async({page})=>{
 });
 test('context panels take focus, close with Escape and preserve usable panes',async({page})=>{
  await page.setViewportSize({width:900,height:900});await page.goto(server.url);
- await page.getByRole('button',{name:'Source',exact:true}).click();await page.getByRole('button',{name:'Side by side',exact:true}).click();
+ await page.getByRole('button',{name:'Markdown',exact:true}).click();
  for(const name of ['History','Details','Comments']){
   const trigger=page.getByRole('button',{name,exact:true});await trigger.click();
   const panel=page.locator('.workspace-context, .editor-comments-rail');
@@ -21,9 +21,9 @@ test('context panels take focus, close with Escape and preserve usable panes',as
 });
 test('initial HTML output paints the cover within the visible viewport',async({page})=>{
  await page.setViewportSize({width:390,height:844});await page.goto(server.url);
- await page.getByRole('button',{name:'Source',exact:true}).click();await page.getByRole('button',{name:'Side by side',exact:true}).click();await page.getByRole('button',{name:'Show preview',exact:true}).click();
+ await page.getByRole('button',{name:'Markdown',exact:true}).click();await page.getByRole('button',{name:'Preview',exact:true}).click();
  expect((await page.locator('.workspace-header').boundingBox()).height).toBeLessThan(250);
- await expect(page.locator('.workspace-format')).not.toBeVisible();
+ await expect(page.locator('.format-bars-wrap')).not.toBeVisible();
  const frame=page.frameLocator('iframe[title="Read-only output preview"]');
  await expect(frame.locator('.cover-title')).toBeInViewport();
  await page.screenshot({path:'.qa/workspace/screenshots/acceptance-mobile.png'});

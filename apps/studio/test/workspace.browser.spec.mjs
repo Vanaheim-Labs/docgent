@@ -11,7 +11,7 @@ test.beforeEach(async({page})=>{
 });
 test('header and details reflect the selected source rather than stale loaded metadata',async({page})=>{
  await page.route('**/api/doc/**',route=>route.fulfill({json:{content:'---\ntitle: Historical title\nstatus: review\n---\nOld body'}}));
- await page.goto(server.url);await page.getByRole('button',{name:'Source',exact:true}).click();await page.getByRole('button',{name:'Editor only',exact:true}).click();
+ await page.goto(server.url);await page.getByRole('button',{name:'Markdown',exact:true}).click();
  await page.locator('.cm-content').press('ControlOrMeta+a');await page.keyboard.insertText(complex.replace('Short fixture','Updated title'));
  await expect(page.getByRole('heading',{level:1,name:'Updated title'})).toBeVisible();
  await page.getByRole('button',{name:'History',exact:true}).click();await page.getByRole('link',{name:'View',exact:true}).last().click();
@@ -52,23 +52,22 @@ test('context controls expose details and comments without legacy export or a wa
  await expect(page.getByRole('button',{name:'Export ↓',exact:true})).not.toBeVisible();
  await page.getByRole('button',{name:'Details',exact:true}).click();await expect(page.getByRole('complementary',{name:'Details panel'})).toContainText('example');
  await page.getByRole('button',{name:'Comments',exact:true}).click();await expect(page.getByText('No open comments.',{exact:true})).toBeVisible();
- await expect(page.getByRole('button',{name:'+ Add',exact:true})).not.toBeVisible();
- await page.getByRole('button',{name:'Editor only',exact:true}).click();
- await page.getByRole('button',{name:'Insert',exact:true}).click();
+ await expect(page.getByRole('button',{name:'+ Add',exact:true})).toBeVisible();await page.getByRole('button',{name:'History',exact:true}).click();await page.getByRole('link',{name:'View',exact:true}).last().click();await page.getByRole('button',{name:'Comments',exact:true}).click();await expect(page.getByRole('button',{name:'+ Add',exact:true})).not.toBeVisible();await page.getByRole('button',{name:'Return to latest',exact:true}).click();
+
  await expect(page.getByRole('toolbar',{name:'Docgent vocabulary blocks'})).toBeVisible();
 });
 test('visual mode refuses lossy edits to formatted or complex blocks and leaves source byte-equivalent',async({page})=>{
  await page.route('**/api/preview/**/html',route=>route.fulfill({contentType:'text/html',body:'<p data-source-line="20">Keep <strong>formatting</strong> intact.</p>'}));
- await page.goto(server.url);await page.getByRole('button',{name:'Editor only',exact:true}).click();
+ await page.goto(server.url);
  const paragraph=page.frameLocator('iframe[title="Live preview"]').getByText('Keep formatting intact.');
  await paragraph.click();
- await expect(page.getByRole('status',{name:'Visual editing notice'})).toContainText('Source');
+ await expect(page.getByRole('status',{name:'Visual editing notice'})).toContainText('Markdown');
  await expect(paragraph).not.toHaveAttribute('contenteditable','true');
- await page.getByRole('button',{name:'Source',exact:true}).click();
+ await page.getByRole('button',{name:'Markdown',exact:true}).click();
  expect((await page.locator('.cm-line').allTextContents()).join('\n').trim()).toBe(complex.trim());
 });
 test('history preview is read-only and returning to latest preserves the current draft',async({page})=>{
- await page.goto(server.url);await page.getByRole('button',{name:'Source',exact:true}).click();await page.getByRole('button',{name:'Editor only',exact:true}).click();
+ await page.goto(server.url);await page.getByRole('button',{name:'Markdown',exact:true}).click();
  await page.locator('.cm-content').press('ControlOrMeta+End');await page.keyboard.type(' Keep while viewing history');
  await page.getByRole('button',{name:'History',exact:true}).click();
  await expect(page.getByText('Add initial table',{exact:true})).toBeVisible();
@@ -76,7 +75,7 @@ test('history preview is read-only and returning to latest preserves the current
  await expect(page.getByRole('status',{name:'Historical revision'})).toContainText('ddddddd');
  await expect(page.getByRole('button',{name:'Save',exact:true})).toBeDisabled();
  await page.getByRole('button',{name:'Return to latest',exact:true}).click();
- await page.getByRole('button',{name:'Editor only',exact:true}).click();
+
  await expect(page.locator('.cm-content')).toContainText('Keep while viewing history');
  await page.getByRole('button',{name:'Compare',exact:true}).click();
  await expect(page.getByText('Comparison failed',{exact:false})).toBeVisible();
@@ -85,7 +84,7 @@ test('overlapping save shortcuts serialize writes and retain edits typed during 
  const writes=[];let release;
  const gate=new Promise(resolve=>release=resolve);
  await page.route('**/api/doc/**',async route=>{writes.push(route.request().postDataJSON());if(writes.length===1)await gate;await route.fulfill({json:{sha:'c'.repeat(40),revision:'a'.repeat(40)}});});
- await page.goto(server.url);await page.getByRole('button',{name:'Source',exact:true}).click();await page.getByRole('button',{name:'Editor only',exact:true}).click();
+ await page.goto(server.url);await page.getByRole('button',{name:'Markdown',exact:true}).click();
  await page.locator('.cm-content').press('ControlOrMeta+End');await page.keyboard.type(' First edit');await page.keyboard.press('ControlOrMeta+s');
  await expect.poll(()=>writes.length).toBe(1);
  await page.keyboard.type(' During save');await page.keyboard.press('ControlOrMeta+s');
@@ -111,7 +110,7 @@ test('save failure retains a recoverable draft across reload and never exports s
  await page.route('**/api/doc/**',route=>route.fulfill({status:503,json:{error:'fixture offline'}}));
  await page.route('**/api/export/**',route=>{exported=true;return route.fulfill({body:'must not happen'});});
  await page.goto(server.url);
- await page.getByRole('button',{name:'Source',exact:true}).click();await page.getByRole('button',{name:'Editor only',exact:true}).click();
+ await page.getByRole('button',{name:'Markdown',exact:true}).click();
  await page.locator('.cm-content').press('ControlOrMeta+End');await page.keyboard.type(' Retain my draft');
  await page.getByRole('button',{name:'Save',exact:true}).click();
  await expect(page.getByRole('status',{name:'Save status'})).toContainText('failed');
@@ -119,18 +118,19 @@ test('save failure retains a recoverable draft across reload and never exports s
  await expect(page.getByRole('status',{name:'Export status'})).toContainText('failed');expect(exported).toBe(false);
  page.on('dialog',dialog=>dialog.accept());await page.reload();
  await page.getByRole('button',{name:'Recover draft',exact:true}).click();
- await page.getByRole('button',{name:'Editor only',exact:true}).click();
+
  await expect(page.locator('.cm-content')).toContainText('Retain my draft');
 });
 test('preview failures keep the last good output and retry the same draft',async({page})=>{
  let fail=false;let requests=0;
  await page.route('**/api/preview/**/html',async route=>{requests++;return route.fulfill(fail?{status:502,body:'fixture render failed'}:{contentType:'text/html',body:'<p data-source-line="12">Last good fixture</p>'});});
  await page.goto(server.url);
+
  await page.getByRole('button',{name:'Visual',exact:true}).click();
- await page.getByRole('button',{name:'Editor only',exact:true}).click();
+
  await expect(page.frameLocator('iframe[title="Live preview"]').getByText('Last good fixture')).toBeVisible();
  fail=true;
- await page.getByRole('button',{name:'Source',exact:true}).click();
+ await page.getByRole('button',{name:'Markdown',exact:true}).click();
  await page.locator('.cm-content').press('ControlOrMeta+End');await page.keyboard.type(' Extra');
  await expect(page.getByRole('status',{name:'Preview status'})).toContainText('failed');
  await page.getByRole('button',{name:'Visual',exact:true}).click();
@@ -151,32 +151,32 @@ test('latest export saves first and downloads only that exact saved revision',as
 test('desktop panes have usable minimum widths and mobile offers a single-pane toggle',async({page})=>{
  await page.setViewportSize({width:1440,height:900});
  await page.goto(server.url);
- await page.getByRole('button',{name:'Source',exact:true}).click();
- await page.getByRole('button',{name:'Side by side',exact:true}).click();
+ await page.getByRole('button',{name:'Markdown',exact:true}).click();
+
  const source=await page.locator('.pane-source').boundingBox();
  const preview=await page.getByRole('region',{name:'Read-only output'}).boundingBox();
  expect(source.width).toBeGreaterThanOrEqual(320);expect(preview.width).toBeGreaterThanOrEqual(320);
  expect(preview.x).toBeGreaterThanOrEqual(source.x+source.width);
  await page.setViewportSize({width:390,height:844});
- await expect(page.getByRole('button',{name:'Show preview',exact:true})).toBeVisible();
- await page.getByRole('button',{name:'Show preview',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Preview',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Preview',exact:true}).click();
  await expect(page.getByRole('region',{name:'Read-only output'})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
  await page.keyboard.press('Tab');expect(await page.evaluate(()=>document.activeElement.tagName)).not.toBe('BODY');
 });
 test('independent modes preserve source and offer a read-only output beside either editor',async({page})=>{
  await page.goto(server.url);
- await expect(page.getByRole('button',{name:'Preview only',exact:true})).toHaveAttribute('aria-pressed','true');
- await page.getByRole('button',{name:'Source',exact:true}).click();
- await page.getByRole('button',{name:'Side by side',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Visual',exact:true})).toHaveAttribute('aria-pressed','true');
+ await page.getByRole('button',{name:'Markdown',exact:true}).click();
+
  await expect(page.locator('.cm-content')).toBeVisible();
  await expect(page.getByRole('region',{name:'Read-only output'})).toBeVisible();
  const before=await page.locator('.cm-content').innerText();
  await page.getByRole('button',{name:'Visual',exact:true}).click();
- await expect(page.getByRole('button',{name:'Side by side',exact:true})).toHaveAttribute('aria-pressed','true');
- await page.getByRole('button',{name:'Source',exact:true}).click();
+ await expect(page.getByRole('region',{name:'Read-only output'})).toBeVisible();
+ await page.getByRole('button',{name:'Markdown',exact:true}).click();
  expect(await page.locator('.cm-content').innerText()).toBe(before);
  await page.reload();
- await page.getByRole('button',{name:'Editor only',exact:true}).click();
- await expect(page.getByRole('button',{name:'Source',exact:true})).toHaveAttribute('aria-pressed','true');
+
+ await expect(page.getByRole('button',{name:'Markdown',exact:true})).toHaveAttribute('aria-pressed','true');
 });

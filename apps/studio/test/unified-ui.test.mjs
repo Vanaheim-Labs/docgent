@@ -15,9 +15,9 @@ test('unified editor keeps navigation and independent authoring and layout contr
  assert.match(html,/aria-label="Application navigation"/);
  assert.match(html,/Short fixture/);
  assert.match(html,/aria-label="Authoring mode"/);
- assert.match(html,/aria-label="Workspace layout"/);
- assert.match(html,/Preview only/);
- assert.match(html,/Editor only/);
- assert.match(html,/Side by side/);
- assert.match(html,/Read-only preview/);
+ assert.match(html,/>Visual<\/button>/);
+ assert.match(html,/>Markdown<\/button>/);
+ assert.doesNotMatch(html,/aria-label="Document mode"|aria-label="Workspace layout"/);
+ assert.doesNotMatch(html.split("</header>")[0],/>Read<\/button>|>Edit<\/button>/);
+ assert.match(html,/aria-label="Read-only output"/);
 });
