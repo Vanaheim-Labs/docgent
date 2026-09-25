@@ -13,7 +13,7 @@
 // Untyped ESM package in the monorepo; allowJs resolves it without types.
 import { GitStore } from "../../../../packages/git-store/src/index.mjs";
 import { DocumentStore } from "../../../../packages/git-store/src/documents.mjs";
-import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { timingSafeEqual } from "node:crypto";
@@ -60,6 +60,12 @@ export type DocSummary = {
      *  clone and mirror the same way the rest of the history does. */
     isAgent: boolean;
   };
+  /**
+   * Stub for future render health surfacing. Populated by the render worker
+   * when it records a failed or degraded render; null when health is unknown
+   * or the field has not been set by the render pipeline yet.
+   */
+  renderError?: string;
 };
 
 /**
@@ -149,9 +155,13 @@ function resolveBrandsDir(): string {
     resolve(here, "..", "..", "..", "..", "brands"),
     resolve(here, "..", "..", "..", "..", "..", "brands"),
     resolve(here, "..", "..", "..", "..", "..", "..", "brands"),
-    // Vercel traces files under the task root preserving repo layout.
+    // Vercel serverless: cwd is /var/task/apps/studio; brands/ lands at /var/task/brands.
+    // Walk up from cwd until we find it.
     join(process.cwd(), "brands"),
+    join(process.cwd(), "..", "brands"),
     join(process.cwd(), "..", "..", "brands"),
+    // Absolute fallback for the known Vercel task-root layout.
+    "/var/task/brands",
   ];
 
   for (const dir of candidates) {
@@ -308,15 +318,68 @@ export function agentAuthorForBrand(brandId: string): { name: string; email: str
 // under another brand's route.
 const cached = new Map<string, { git: any; docs: any; brand: Brand }>();
 
+/**
+ * Loads brand config from the docgent-brands git repo via the GitHub API.
+ *
+ * This is the fallback path for when the brands/ directory is absent from
+ * the serverless bundle (e.g. when outputFileTracingIncludes doesn't capture
+ * the files, or when the clone-brands prebuild step didn't run). It reads
+ * brand.yaml directly from GitHub rather than the local filesystem, then
+ * synthesises a Brand record from the same scalar/accessBlock parsers the
+ * disk path uses, so the two paths stay in sync.
+ *
+ * Returns null when the brand doesn't exist or can't be fetched.
+ */
+async function loadBrandFromGit(brandId: string): Promise<Brand | null> {
+  const writeToken = process.env.DOCGENT_BRANDS_WRITE_TOKEN;
+  const readToken = process.env.DOCGENT_BRANDS_TOKEN || writeToken;
+  if (!readToken) return null;
+
+  const repoRef = process.env.DOCGENT_BRANDS_REPO ?? "Vanaheim-Labs/docgent-brands";
+  const [owner, repo] = repoRef.split("/");
+  const branch = process.env.DOCGENT_BRANCH ?? "main";
+
+  try {
+    // Use the GitHub contents API to fetch brand.yaml directly.
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${brandId}/brand.yaml?ref=${branch}`;
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `token ${readToken}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { content?: string };
+    if (!data.content) return null;
+    // GitHub returns content as base64 with embedded newlines.
+    const src = Buffer.from(data.content.replace(/\n/g, ""), "base64").toString("utf-8");
+    const repoField = scalar(src, "repo");
+    if (!repoField) return null;
+    return { id: brandId, name: scalar(src, "name") || brandId, repo: repoField, access: accessBlock(src) };
+  } catch {
+    return null;
+  }
+}
+
 /** Git and document stores for one brand. */
-export function storesFor(brandId: string) {
+export async function storesFor(brandId: string): Promise<{ git: any; docs: any; brand: Brand }> {
   const hit = cached.get(brandId);
   if (hit) return hit;
 
   const token = process.env.DOCGENT_GH_TOKEN;
   if (!token) throw new Error("DOCGENT_GH_TOKEN is not set");
 
-  const brand = findBrand(brandId);
+  // Try disk first (dev + correctly bundled Vercel deploys); fall back to the
+  // GitHub API for serverless environments where brands/ didn't make it into
+  // the bundle. The fallback costs one extra GitHub API call per cold start
+  // per brand, which is negligible compared to the document reads that follow.
+  let brand = findBrand(brandId);
+  if (!brand) {
+    brand = await loadBrandFromGit(brandId);
+    // Warm the in-memory cache so subsequent requests in the same function
+    // instance don't need another API call.
+    if (brand) brandCache = [...(brandCache ?? []), brand];
+  }
   if (!brand) throw new Error(`Unknown brand '${brandId}'`);
 
   const [owner, repo] = brand.repo.split("/");
@@ -347,7 +410,7 @@ export async function listAllDocuments(
   await Promise.all(
     brands().map(async (b) => {
       try {
-        const { docs } = storesFor(b.id);
+        const { docs } = await storesFor(b.id);
         // Frontmatter is what makes the index readable — titles, status and
         // dates instead of slugs and repo paths.
         const res = await docs.listDocuments({ brand: b.id, withFrontmatter: true });
@@ -393,7 +456,7 @@ export async function listAllDocuments(
     await Promise.all(
       documents.map(async (d) => {
         try {
-          const { docs } = storesFor(d.brand);
+          const { docs } = await storesFor(d.brand);
           const [entry] = await docs.timeline(d.brand, d.slug, { limit: 1 });
           if (!entry) return;
           const subject = String(entry.subject || entry.message || "").trim();
@@ -421,4 +484,222 @@ export async function listAllDocuments(
 export function repoSlug(brandId?: string) {
   if (!brandId) return "docgent";
   return findBrand(brandId)?.repo ?? "unknown";
+}
+
+/**
+ * Admin brand-config CRUD (Phase 2).
+ *
+ * Deliberately raw file reads/writes against brands/<id>/brand.yaml, same
+ * as the rest of this module — not a YAML parse/stringify round trip. A
+ * round trip through a YAML library would silently reformat comments,
+ * key order and quoting style on every save, turning every admin edit into
+ * a noisy diff unrelated to what the admin actually changed. Editing the
+ * raw text preserves everything the admin didn't touch.
+ *
+ * This is filesystem-only, same limitation resolveBrandsDir() already has:
+ * on Vercel's read-only deployment filesystem these writes fail. Brand
+ * config editing therefore only works where BRANDS_DIR is writable (local
+ * dev today; wherever Phase 3's split private-config store ends up living).
+ * That is a Phase 3 concern, not something Phase 2 needs to solve.
+ */
+
+/**
+ * Git-backed store pointing at the docgent-brands repo.
+ *
+ * Brand config (brand.yaml, assets) lives in Vanaheim-Labs/docgent-brands,
+ * not in a per-brand documents repo. This store is the single write path for
+ * agent-driven brand config updates so every change carries a signed commit
+ * with the agent's identity, and the brands repo history becomes a reliable
+ * audit trail of who changed what and why.
+ *
+ * Env vars:
+ *   DOCGENT_BRANDS_REPO  — "owner/repo" for the brands config store
+ *                          (default: "Vanaheim-Labs/docgent-brands")
+ *   DOCGENT_BRANDS_WRITE_TOKEN — dedicated PAT with repo write scope on docgent-brands
+ *                                 (separate from DOCGENT_BRANDS_TOKEN which is used by
+ *                                  the build-time brands clone and must not be replaced)
+ *   DOCGENT_BRANCH              — branch to write to (default: "main")
+ */
+function brandsGitStore(): InstanceType<typeof GitStore> {
+  const token = process.env.DOCGENT_BRANDS_WRITE_TOKEN;
+  if (!token) throw new Error("DOCGENT_BRANDS_WRITE_TOKEN is not set");
+  const repoRef = process.env.DOCGENT_BRANDS_REPO ?? "Vanaheim-Labs/docgent-brands";
+  const [owner, repo] = repoRef.split("/");
+  const branch = process.env.DOCGENT_BRANCH ?? "main";
+  return new GitStore({ owner, repo, token, branch });
+}
+
+/**
+ * Reads brand.yaml from the docgent-brands git repo.
+ * Returns { content, sha } so callers can use the SHA for safe writes later.
+ * Throws if the brand or file does not exist.
+ */
+export async function getBrandYamlFromGit(
+  brandId: string
+): Promise<{ content: string; sha: string }> {
+  const git = brandsGitStore();
+  const file = await (git as any).readFile(`${brandId}/brand.yaml`);
+  return { content: file.content as string, sha: file.sha as string };
+}
+
+/**
+ * Writes brand.yaml to the docgent-brands git repo as a signed commit.
+ *
+ * Uses the same optimistic-concurrency model as document writes: the caller
+ * must supply the blob sha they based their edit on. If HEAD has moved since
+ * that read, the write is rejected with StaleWriteError (→ 409) rather than
+ * silently clobbering.
+ *
+ * The commit is attributed to the brand's agent identity so the brands repo
+ * history clearly distinguishes agent-authored config changes.
+ */
+export async function writeBrandYamlToGit(
+  brandId: string,
+  yaml: string,
+  sha: string,
+  author: { name: string; email: string },
+  message?: string
+): Promise<{ sha: string; commit: { sha: string; url: string } | null; changed: boolean }> {
+  const git = brandsGitStore();
+  const commitMessage = message ?? `feat(${brandId}): update brand config via agent`;
+  return (git as any).writeFile(`${brandId}/brand.yaml`, yaml, {
+    message: commitMessage,
+    sha,
+    author: { name: author.name, email: author.email, date: new Date().toISOString() },
+  });
+}
+
+/**
+ * Uploads or replaces an asset file in the docgent-brands git repo.
+ *
+ * Accepted content: UTF-8 text (SVG, CSS) or base64-encoded binary (PNG, etc.).
+ * The encoding field tells GitStore which path to take — "base64" for images,
+ * "utf-8" (default) for text.
+ *
+ * No baseSha required: assets are always overwritten, not diff-merged.
+ * We don't use StaleWrite protection here because two agents uploading the
+ * same logo file is idempotent — the last writer wins, and that's correct for
+ * assets (unlike prose edits where the last writer might clobber content).
+ */
+export async function writeBrandAssetToGit(
+  brandId: string,
+  filename: string,
+  content: string,
+  encoding: "utf-8" | "base64",
+  author: { name: string; email: string },
+  message?: string
+): Promise<{ sha: string; commit: { sha: string; url: string } | null; changed: boolean }> {
+  const git = brandsGitStore();
+  // Read current sha if the file exists so we can supply it for a clean update.
+  let currentSha: string | undefined;
+  try {
+    const existing = await (git as any).readFile(`${brandId}/assets/${filename}`);
+    currentSha = existing.sha;
+  } catch {
+    // File doesn't exist yet — that's fine, create is sha-free.
+  }
+  const commitMessage = message ?? `feat(${brandId}): upload asset ${filename} via agent`;
+  return (git as any).writeFile(`${brandId}/assets/${filename}`, content, {
+    message: commitMessage,
+    ...(currentSha ? { sha: currentSha } : {}),
+    author: { name: author.name, email: author.email, date: new Date().toISOString() },
+  });
+}
+
+/** Raw brand.yaml text for the admin editor. Null if the brand or file
+ *  does not exist, so callers can 404 rather than show an empty editor. */
+export function getBrandYamlSource(brandId: string): string | null {
+  const path = join(BRANDS_DIR, brandId, "brand.yaml");
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+/** Every brand id that has a brand.yaml on disk, admin-only view — unlike
+ *  brands() this does not require a repo: field, so a pipeline-only or
+ *  half-configured brand still shows up for an admin to finish setting up. */
+export function allBrandIds(): string[] {
+  try {
+    return readdirSync(BRANDS_DIR, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && existsSync(join(BRANDS_DIR, e.name, "brand.yaml")))
+      .map((e) => e.name)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+/** Non-recursive listing of a brand's scaffold folders (assets/css/doctypes/
+ *  fonts), for the admin view to show what exists without needing to walk
+ *  the whole tree — brand scaffolds are one level deep by convention. */
+export function brandScaffold(brandId: string): Record<string, string[]> {
+  const dir = join(BRANDS_DIR, brandId);
+  const scaffoldDirs = ["assets", "css", "doctypes", "fonts"];
+  const out: Record<string, string[]> = {};
+  for (const name of scaffoldDirs) {
+    try {
+      out[name] = readdirSync(join(dir, name), { withFileTypes: true })
+        .filter((e) => e.isFile())
+        .map((e) => e.name)
+        .sort();
+    } catch {
+      out[name] = [];
+    }
+  }
+  return out;
+}
+
+/**
+ * Overwrites brand.yaml for an existing brand with admin-provided text.
+ *
+ * No validation beyond "is this a brand that exists" — the admin UI is
+ * trusted, single-operator (isAdmin gates the whole /admin tree already),
+ * and brand.yaml has no schema enforcement anywhere else in the pipeline
+ * either; a malformed save surfaces the same way a malformed hand-edit
+ * always has, at render time. Clears brandCache so the next brands() call
+ * (e.g. re-computing allowedBrands at next sign-in, or this same admin
+ * session re-reading the list) sees the change immediately rather than a
+ * stale in-memory copy.
+ */
+export function writeBrandYamlSource(brandId: string, yaml: string): void {
+  const dir = join(BRANDS_DIR, brandId);
+  if (!existsSync(dir)) throw new Error(`Unknown brand: ${brandId}`);
+  writeFileSync(join(dir, "brand.yaml"), yaml, "utf8");
+  brandCache = null;
+}
+
+/**
+ * Scaffolds a brand new to the pipeline: the folder, an empty brand.yaml
+ * seeded with just `id`/`name` (everything else an admin fills in via the
+ * editor afterwards), and the four convention scaffold folders so the new
+ * brand looks like every other brand immediately rather than only after
+ * its first asset upload.
+ *
+ * Rejects an id that already has a directory rather than overwriting it —
+ * creation and editing are separate actions in the UI on purpose, so a
+ * mistyped "create" can never clobber an existing brand's config.
+ */
+export function createBrand(brandId: string, name: string): void {
+  const id = brandId.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) {
+    throw new Error("Brand id must be lowercase letters, numbers and hyphens only");
+  }
+  const dir = join(BRANDS_DIR, id);
+  if (existsSync(dir)) throw new Error(`Brand already exists: ${id}`);
+
+  mkdirSync(dir, { recursive: true });
+  for (const sub of ["assets", "css", "doctypes", "fonts"]) {
+    mkdirSync(join(dir, sub), { recursive: true });
+  }
+  const seed = `id: ${id}
+name: ${name || id}
+
+access:
+  emails: []
+  domains: []
+`;
+  writeFileSync(join(dir, "brand.yaml"), seed, "utf8");
+  brandCache = null;
 }

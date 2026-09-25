@@ -23,7 +23,7 @@ export async function GET() {
   await Promise.all(
     brands().map(async (b) => {
       try {
-        const { git } = storesFor(b.id);
+        const { git } = await storesFor(b.id);
         await git.head();
         repos[b.repo] = true;
       } catch {

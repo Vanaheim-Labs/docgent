@@ -129,7 +129,7 @@ export function RewriteBar({
   const openaiModels = (models || []).filter((m) => m.provider === "openai");
 
   return (
-    <div className="rewrite-bar" style={{ top: anchorTop }} role="dialog" aria-label="Direct a rewrite">
+    <div className="rewrite-bar" role="dialog" aria-label="Direct a rewrite">
       <div className="rewrite-bar-row">
         <span className="rewrite-bar-scope" title={scopeLabel}>
           {scopeLabel}

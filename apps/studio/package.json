@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/clone-brands.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -18,9 +19,10 @@
     "@docgent/vocabulary": "*",
     "@lezer/common": "^1.5.3",
     "@lezer/highlight": "^1.2.4",
+    "@vercel/og": "^1.0.1",
     "lucide-react": "^1.48.0",
-    "next": "15.5.23",
-    "next-auth": "5.0.0-beta.25",
+    "next": "15.5.25",
+    "next-auth": "5.0.0-beta.32",
     "react": "19.0.0",
     "react-dom": "19.0.0"
   },

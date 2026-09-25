@@ -1,0 +1,3 @@
+[submodule "brands"]
+	path = brands
+	url = https://github.com/Vanaheim-Labs/docgent-brands.git

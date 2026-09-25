@@ -32,12 +32,17 @@ Git-native version control, built for agent-speed editing:
   recommendation is recognised as moved, not deleted-and-recreated.
 - **Content-addressed, immutable rendering** — every PDF is keyed to the exact
   commit that produced it.
-- **Approval gates as ordinary git commits** — draft → review → approved →
-  released → superseded, with sign-off captured as commit trailers
-  (`Approved-By`, `Approved-At`).
-- AI rewrites are proposals, never direct commits — a rewrite request returns
-  text held in memory; a human sees a diff, and only an accepted proposal
-  commits.
+- **Nonblocking lifecycle labels** — draft, review, approved, released and
+  superseded remain valid statuses, not edit locks. Authorized humans and agents
+  can change status directly; changes are ordinary Git commits.
+- AI rewrite requests return proposals held in memory. Authorized humans or
+  brand-scoped bearer agents can accept them, or edit directly via PUT. Human
+  review is optional, not an API requirement. Every write is versioned.
+- Status labels persist across edits; they do not prove the current source was
+  reviewed. Earlier sign-offs refer to their recorded versions in Git history.
+
+See [free-flowing editing](docs/free-flowing-editing.md) for the API contract,
+remaining limits and companion skill updates.
 
 ## Layout
 
@@ -47,10 +52,7 @@ packages/
   git-store/    git-backed read/write layer (blob-SHA concurrency, GitHub API)
   vocabulary/   semantic block registry + validator
   cli/          docgent new|validate|render|brands|docs
-brands/
-  vanaheim/     Vanaheim Partners — brand.yaml tokens + overlay CSS
-  inkl/         Inkl — brand.yaml tokens + overlay CSS
-  northface/    North Face Investments — brand.yaml tokens + overlay CSS
+brands/       git submodule — see "Brand configuration" below
 apps/
   studio/       web UI (Next.js on Vercel) — editor, diff review, auth, per-brand access
   render-worker/ WeasyPrint rendering service (Fly.io container)
@@ -88,7 +90,7 @@ Key API surface (`apps/studio/src/app/api/`):
 
 - `docs/[brand]`, `doc/[brand]/[slug]` — document discovery + read
 - `diff/[brand]/[slug]`, `status/[brand]/[slug]` — semantic diff, lifecycle status
-- `rewrite/[brand]/[slug]` (+ `/accept`) — AI rewrite proposal → human-reviewed accept
+- `rewrite/[brand]/[slug]` (+ `/accept`) — AI rewrite proposal → human or agent accept
 - `render/[brand]/[slug]`, `preview/[brand]/[slug]` — PDF render, live HTML preview
 - `restore/[brand]/[slug]` — one-click version restore
 - `auth/check/[brand]` — per-brand access check
@@ -124,3 +126,40 @@ endpoints for agent-driven access, ahead of the full agent-dispatch loop
 See `HANDOVER.md` for detailed operational notes, known traps, and outstanding
 debts (machine-user GitHub identity for agent commits, Vercel deployment
 protection).
+
+## Brand configuration
+
+Brand data (`brand.yaml` tokens, overlay CSS, doctype templates, fonts, logos)
+is not part of this repo — `brands/` is a git submodule, and the default
+remote is private. This keeps Docgent installable as a clean open-source
+product: clone it, and there's no other org's brand assets, access lists, or
+document-repo pointers bundled in.
+
+**Running your own instance:**
+
+1. Create your own brands store (a plain directory, or your own git repo if
+   you want brand config version-controlled the same way this repo is).
+2. Either:
+   - Point `DOCGENT_BRANDS_DIR` at that directory (any absolute path;
+     no submodule required), or
+   - Wire it as a git submodule at `brands/` (`git submodule add <your-repo>
+     brands`), which is what `DOCGENT_BRANDS_DIR` defaults to when unset.
+3. Each brand needs a `brands/<id>/brand.yaml` (see any brand.yaml in an
+   existing store for the shape: `id`, `name`, `repo`, `access`,
+   `typography`, `palette`, `page`, etc.) plus `assets/`, `css/`,
+   `doctypes/`, `fonts/` subfolders as needed.
+
+`DOCGENT_BRANDS_DIR` is read consistently by the CLI/renderer
+(`packages/core/src/render.mjs`), the render-worker deploy staging script
+(`apps/render-worker/stage.mjs`), and Studio (`apps/studio/src/lib/store.ts`)
+— set it once per environment and everything resolves brand data from the
+same place.
+
+Studio's `/admin` area (locked to a single hardcoded admin email in
+`apps/studio/src/auth.ts` — change `ADMIN_EMAIL` for your own deployment)
+can view/create/edit brand.yaml once you're signed in as that admin, but
+brand.yaml writes are filesystem writes: they need `DOCGENT_BRANDS_DIR` to
+point somewhere writable at runtime, which a read-only serverless deployment
+filesystem (e.g. Vercel) is not. Editing brand config today means either
+running Studio somewhere with a writable filesystem, or editing the files
+directly in your brands store and redeploying.

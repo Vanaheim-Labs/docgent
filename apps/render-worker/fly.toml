@@ -34,5 +34,5 @@ primary_region = 'syd'
     path = '/health'
 
 [[vm]]
-  size = 'shared-cpu-1x'
-  memory = '1gb'
+  size = 'performance-2x'
+  memory = '4gb'

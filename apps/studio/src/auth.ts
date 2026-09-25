@@ -3,6 +3,16 @@ import Google from "next-auth/providers/google";
 import { brandsForEmail } from "@/lib/store";
 
 /**
+ * The single admin account for the /admin area (brand config management,
+ * not brand *content* — that stays gated by the per-brand access lists
+ * above). Hardcoded rather than read from brand.yaml: admin access is a
+ * property of the Studio deployment itself, not of any one brand, so it
+ * does not belong in per-brand config. Revisit if/when multi-admin support
+ * is needed.
+ */
+const ADMIN_EMAIL = "andrew@dcr.vc";
+
+/**
  * Studio auth.
  *
  * Docgent is served from a single domain with the brand in the URL path
@@ -54,21 +64,39 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async jwt({ token, account, profile }) {
       if (account?.provider) token.provider = account.provider;
-      // Computed once at sign-in (and whenever the token is otherwise
-      // refreshed with a profile present), not on every request: brand
-      // access rarely changes, and middleware needs this list on the Edge
-      // runtime where re-reading brand.yaml off disk is not available.
       const p = profile as { email?: string } | undefined;
-      if (p?.email) {
-        token.allowedBrands = brandsForEmail(p.email).map((b) => b.id);
+      // Only recompute allowedBrands when we have a fresh OAuth profile (i.e.
+      // at sign-in time). On subsequent requests the JWT is already stamped
+      // with the correct list — recomputing it on every request calls
+      // brandsForEmail() which reads brands/ from disk. If that disk read
+      // fails on a cold middleware instance it silently stamps allowedBrands: []
+      // into the token, which causes guardBrandPath to 404 every doc page
+      // before the serverless handler even runs.
+      //
+      // To pick up brand access changes, users sign out and back in.
+      // Admins can force a refresh by clearing the session cookie.
+      const email = p?.email ?? (typeof token.email === "string" ? token.email : undefined);
+      if (email) {
+        token.isAdmin = email === ADMIN_EMAIL;
+        // Only stamp allowedBrands when we have a fresh profile (OAuth sign-in).
+        // On token refresh (no profile), keep whatever is already in the token.
+        if (p?.email) {
+          const computed = brandsForEmail(email).map((b) => b.id);
+          // If disk read returned nothing but token already has brands, keep them.
+          // This guards against a cold-start disk miss overwriting a valid token.
+          if (computed.length > 0 || !Array.isArray(token.allowedBrands)) {
+            token.allowedBrands = computed;
+          }
+        }
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        const u = session.user as { provider?: string; allowedBrands?: string[] };
+        const u = session.user as { provider?: string; allowedBrands?: string[]; isAdmin?: boolean };
         if (token.provider) u.provider = token.provider as string;
         u.allowedBrands = (token.allowedBrands as string[] | undefined) ?? [];
+        u.isAdmin = (token.isAdmin as boolean | undefined) ?? false;
       }
       return session;
     },

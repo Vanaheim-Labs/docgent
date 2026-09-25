@@ -32,10 +32,15 @@ from flask import Flask, g, jsonify, request
 # Configuration
 # --------------------------------------------------------------------------- #
 
-PIPELINE_DIR = Path(os.environ.get("DOCFORGE_PIPELINE_DIR", "/app/pipeline"))
-API_KEY = os.environ.get("DOCFORGE_API_KEY", "")
-MAX_BODY_BYTES = int(os.environ.get("DOCFORGE_MAX_BODY", 20 * 1024 * 1024))
-RENDER_TIMEOUT = int(os.environ.get("DOCFORGE_RENDER_TIMEOUT", 90))
+# DOCGENT_* is current; DOCFORGE_* is accepted as a fallback so a partial
+# rollout of fly.toml/secrets doesn't lock the service into an empty
+# API_KEY (this exact gap is what caused render/thumbnail 401s despite a
+# correctly-set DOCGENT_API_KEY secret -- the old names were the only ones
+# actually read here).
+PIPELINE_DIR = Path(os.environ.get("DOCGENT_PIPELINE_DIR") or os.environ.get("DOCFORGE_PIPELINE_DIR", "/app/pipeline"))
+API_KEY = os.environ.get("DOCGENT_API_KEY") or os.environ.get("DOCFORGE_API_KEY", "")
+MAX_BODY_BYTES = int(os.environ.get("DOCGENT_MAX_BODY") or os.environ.get("DOCFORGE_MAX_BODY", 20 * 1024 * 1024))
+RENDER_TIMEOUT = int(os.environ.get("DOCGENT_RENDER_TIMEOUT") or os.environ.get("DOCFORGE_RENDER_TIMEOUT", 90))
 
 TEMPLATE = PIPELINE_DIR / "core" / "templates" / "document.html"
 FILTER = PIPELINE_DIR / "core" / "filters" / "vocabulary.lua"
@@ -43,9 +48,15 @@ FILTER = PIPELINE_DIR / "core" / "filters" / "vocabulary.lua"
 # vocabulary filter may itself have emitted. Order matters, so this is a
 # separate constant applied second rather than a glob over the filters dir.
 MICROTYPE_FILTER = PIPELINE_DIR / "core" / "filters" / "microtype.lua"
+# DOCX output filter: converts vocabulary.lua's RawBlock('html',...) elements
+# to native pandoc AST so they survive the DOCX writer. DOCX-only; not used
+# in the PDF path (which reads HTML via WeasyPrint, not pandoc's DOCX writer).
+DOCX_FILTER = PIPELINE_DIR / "core" / "filters" / "docx-output.lua"
 BASE_CSS = PIPELINE_DIR / "core" / "css" / "base.css"
 BRANDS_DIR = PIPELINE_DIR / "brands"
 
+# Disable tex_math_dollars so $ currency signs in table cells aren't parsed as LaTeX math
+# (the default markdown reader includes tex_math_dollars which causes garbled table output)
 PANDOC_EXTENSIONS = (
     "markdown"
     "+yaml_metadata_block"
@@ -58,6 +69,8 @@ PANDOC_EXTENSIONS = (
     "+table_attributes"
     "+link_attributes"
     "+smart"
+    "+raw_html"           # needed to pass <span data-comment-id> anchors through to HTML preview
+    "-tex_math_dollars"
 )
 
 logging.basicConfig(
@@ -214,25 +227,230 @@ def load_brand(brand_id: str) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Markdown pre-processor
+# --------------------------------------------------------------------------- #
+
+# Docgent shorthand uses double-colon delimiters: ::primitive{attrs} / ::
+# Pandoc's fenced_divs extension requires triple colons: ::: {.class attr=val} / :::
+# This pre-processor rewrites Docgent shorthand into pandoc-compatible fenced divs
+# BEFORE the markdown reaches pandoc, so the Lua vocabulary filter fires correctly.
+#
+# Supported forms:
+#   ::name                     -> ::: {.name}
+#   ::name{key="val" key2=x}  -> ::: {.name key="val" key2=x}
+#   ::                         -> :::
+#
+# The attrs string is kept verbatim — pandoc parses it as a key-value list.
+
+import re as _re
+
+_OPEN_RE  = _re.compile(r'^::([a-zA-Z][a-zA-Z0-9_-]*)(.*)$')
+_CLOSE_RE = _re.compile(r'^::$')
+
+
+def _process_comments(md: str, mode: str = 'strip') -> str:
+    """Handle %%[...] ... %% block comments.
+
+    mode='strip'  — remove entirely (PDF path, no trace in output).
+    mode='anchor' — replace with an invisible <span data-comment-id="..."> so
+                    the HTML preview can highlight and navigate to comments.
+    """
+    lines = md.split('\n')
+    out = []
+    in_comment = False
+    comment_id = None
+    for line in lines:
+        stripped = line.strip()
+        if not in_comment and stripped.startswith('%%['):
+            in_comment = True
+            if mode == 'anchor':
+                # Extract id attr for the anchor element.
+                import re as _re
+                m = _re.search(r'id="([^"]+)"', stripped)
+                comment_id = m.group(1) if m else f'comment-{len(out)}'
+                # Emit a raw HTML span as an anchor; pandoc passes raw html blocks through.
+                out.append(f'<span data-comment-id="{comment_id}" class="comment-anchor"></span>')
+            continue
+        if in_comment:
+            if stripped == '%%':
+                in_comment = False
+                comment_id = None
+            continue
+        out.append(line)
+    return '\n'.join(out)
+
+
+# Regex to match a self-closing ::figure or ::chart shorthand primitive that
+# references an external SVG file via src=.  These are single-line blocks with
+# no body — the SVG content needs to be fetched from disk and inlined as the
+# block body before _preprocess_markdown converts the shorthand to pandoc divs.
+#
+# Examples matched:
+#   ::figure{src="figures/chart.svg" caption="Revenue" width="90%"}
+#   ::chart{src="figures/pipeline.svg"}
+_SVG_SRC_RE = _re.compile(
+    r'^::(figure|chart)\{([^}]*)\}\s*$',
+    _re.MULTILINE,
+)
+
+# Extracts a src="..." attribute from an attr string.
+_SRC_ATTR_RE = _re.compile(r'\bsrc="([^"]+\.svg)"', _re.IGNORECASE)
+
+# Strips src="..." (with optional surrounding whitespace) from an attr string.
+_STRIP_SRC_RE = _re.compile(r'\s*\bsrc="[^"]*"', _re.IGNORECASE)
+
+
+# Maximum SVG file size (in bytes) to inline for PDF/HTML output.
+# SVGs larger than this are replaced with a placeholder in DOCX output
+# to prevent rsvg-convert from hanging on large SVGs on aarch64 Linux.
+_SVG_INLINE_MAX_BYTES = 200 * 1024  # 200 KB
+
+
+def _inline_svg_figures(markdown: str, work: Path, docx_safe: bool = False) -> str:
+    """Replace ::figure/::chart{src="...svg"} shorthand with pandoc fenced divs.
+
+    Blocks that reference an SVG file (src="figures/foo.svg") are rewritten
+    into a pandoc fenced-div that contains the SVG inline:
+
+        :::{.figure caption="..." width="..."}
+        <svg ...>...</svg>
+        :::
+
+    This output is then handed directly to pandoc (bypassing the ::
+    shorthand normalisation in _preprocess_markdown, which only handles
+    blocks without body content).  Blocks whose src file cannot be resolved
+    are left unchanged so the existing error-surface behaviour is preserved.
+
+    When docx_safe=True, SVG files larger than _SVG_INLINE_MAX_BYTES are
+    replaced with a text placeholder instead of inlined SVG content.  This
+    prevents rsvg-convert from hanging on large SVGs in pandoc's DOCX writer
+    on aarch64 Linux (Fly.io render worker).
+    """
+    def _replace(m: _re.Match) -> str:
+        name = m.group(1)          # 'figure' or 'chart'
+        attrs = m.group(2).strip() # everything inside {...}
+
+        src_m = _SRC_ATTR_RE.search(attrs)
+        if not src_m:
+            return m.group(0)  # no svg src — leave as-is
+
+        src_val = src_m.group(1)
+        svg_path = (work / src_val).resolve()
+
+        # Safety: must stay inside the working directory.
+        if not str(svg_path).startswith(str(work.resolve())):
+            return m.group(0)
+
+        if not svg_path.is_file():
+            return m.group(0)  # file absent — leave unchanged, not a hard error
+
+        # Build the remaining attrs without src=.
+        remaining_attrs = _STRIP_SRC_RE.sub('', attrs).strip()
+
+        if remaining_attrs:
+            div_open = f':::{{.{name} {remaining_attrs}}}'
+        else:
+            div_open = f':::{{.{name}}}'
+
+        # For DOCX output, replace oversized SVGs with a plain placeholder paragraph.
+        # rsvg-convert on aarch64 Linux (Fly.io) hangs when processing SVGs larger
+        # than ~200KB inside pandoc's DOCX writer, causing export_docx.timeout.
+        svg_size = svg_path.stat().st_size
+        if docx_safe and svg_size > _SVG_INLINE_MAX_BYTES:
+            # Extract caption/label attrs for a useful placeholder.
+            caption_m = _re.search(r'\bcaption="([^"]*)"', attrs)
+            label_m = _re.search(r'\blabel="([^"]*)"', attrs)
+            title_m = _re.search(r'\btitle="([^"]*)"', attrs)
+            desc = (caption_m or label_m or title_m)
+            desc_text = desc.group(1) if desc else src_val
+            # Emit a plain paragraph placeholder — no SVG, no rsvg-convert.
+            return f'{div_open}\n\n[Figure: {desc_text}]\n\n:::'
+
+        svg_content = svg_path.read_text(encoding="utf-8").strip()
+        return f'{div_open}\n{svg_content}\n:::'
+
+    return _SVG_SRC_RE.sub(_replace, markdown)
+
+
+def _preprocess_markdown(md: str, comment_mode: str = 'strip') -> str:
+    """Rewrite ::primitive / :: shorthand into pandoc fenced-div syntax."""
+    md = _process_comments(md, mode=comment_mode)
+    lines = md.split('\n')
+    out = []
+    in_frontmatter = False
+    fm_done = False
+    for i, line in enumerate(lines):
+        # Skip frontmatter block (between --- delimiters at top of file)
+        stripped = line.strip()
+        if i == 0 and stripped == '---':
+            in_frontmatter = True
+            out.append(line)
+            continue
+        if in_frontmatter:
+            out.append(line)
+            if stripped == '---':
+                in_frontmatter = False
+                fm_done = True
+            continue
+
+        # Rewrite ::primitive{attrs} -> ::: {.primitive attrs}
+        m = _OPEN_RE.match(stripped)
+        if m and line.startswith('::'):
+            name  = m.group(1)
+            attrs = m.group(2).strip()
+            # Strip surrounding braces if present: {key=val} -> key=val
+            if attrs.startswith('{') and attrs.endswith('}'):
+                attrs = attrs[1:-1].strip()
+            if attrs:
+                out.append(f'::: {{.{name} {attrs}}}')
+            else:
+                out.append(f'::: {{.{name}}}')
+            continue
+
+        # Rewrite bare :: close delimiter -> :::
+        if _CLOSE_RE.match(stripped) and line.strip() == '::':
+            out.append(':::')
+            continue
+
+        out.append(line)
+    return '\n'.join(out)
+
+
+# --------------------------------------------------------------------------- #
 # Render pipeline
 # --------------------------------------------------------------------------- #
 
 def _stage(work: Path, markdown: str, brand: dict, fm: dict,
-           assets: dict[str, str] | None):
+           assets: dict[str, str] | None, comment_mode: str = 'strip',
+           docx_safe: bool = False):
     """Writes markdown, assets and CSS into a working directory.
 
     Shared by the PDF and HTML paths so both render from identical inputs;
     if these diverged the preview would stop predicting the PDF.
+
+    comment_mode='strip'  — comments removed entirely (PDF path).
+    comment_mode='anchor' — comments replaced with <span data-comment-id> anchors (HTML preview).
+    docx_safe=True        — SVGs larger than _SVG_INLINE_MAX_BYTES are replaced with a text
+                            placeholder instead of inlined SVG content, preventing rsvg-convert
+                            from hanging on large SVGs in pandoc's DOCX writer (aarch64 Linux).
     """
     md_path = work / "doc.md"
-    md_path.write_text(markdown, encoding="utf-8")
 
+    # Write all assets to disk first so _inline_svg_figures can read SVG files
+    # from figures/ before the markdown is pre-processed.
     for rel, b64 in (assets or {}).items():
         target = (work / rel).resolve()
         if not str(target).startswith(str(work.resolve())):
             raise ValueError(f"asset path escapes working directory: {rel}")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(base64.b64decode(b64))
+
+    # SVG inlining: replace ::figure/::chart{src="...svg"} with pandoc fenced
+    # divs containing the SVG body, now that figures/ files are on disk.
+    # In DOCX mode, oversized SVGs are replaced with text placeholders to avoid
+    # rsvg-convert hanging on large files in pandoc's DOCX writer on aarch64.
+    processed = _inline_svg_figures(markdown, work, docx_safe=docx_safe)
+    md_path.write_text(_preprocess_markdown(processed, comment_mode=comment_mode), encoding="utf-8")
 
     tokens_css = work / "_tokens.css"
     tokens_css.write_text(
@@ -248,13 +466,19 @@ def _stage(work: Path, markdown: str, brand: dict, fm: dict,
 
 
 def _run_pandoc(md_path, html_path, brand, brand_id, fm, sheets, source_lines):
+    # Brand-specific template override: if laurion/templates/document.html exists,
+    # use it instead of the core template. This lets brands define a custom cover
+    # without touching the shared core template.
+    brand_template = Path(brand["_dir"]) / "templates" / "document.html"
+    active_template = brand_template if brand_template.exists() else TEMPLATE
+
     cmd = [
         "pandoc",
         str(md_path),
         "--from", PANDOC_EXTENSIONS,
         "--to", "html5",
         "--standalone",
-        "--template", str(TEMPLATE),
+        "--template", str(active_template),
         "--lua-filter", str(FILTER),
         "--lua-filter", str(MICROTYPE_FILTER),
         "--section-divs",
@@ -285,13 +509,19 @@ def _run_pandoc(md_path, html_path, brand, brand_id, fm, sheets, source_lines):
         cmd += ["--metadata", "docforge_no_autonumber=1"]
 
     if fm.get("toc"):
-        cmd += ["--toc", "--toc-depth=2"]
+        toc_depth = (brand.get("toc") or {}).get("depth", 2)
+        cmd += ["--toc", f"--toc-depth={toc_depth}"]
     # Only the preview needs source positions. The PDF path leaves them off so
     # its output stays byte-identical to what it produced before this existed.
     if source_lines:
         cmd += ["--metadata", "docforge_source_lines=1"]
     for sheet in sheets:
         cmd += ["--css", str(sheet)]
+
+    # Pandoc resolves relative image src paths against --resource-path so
+    # WeasyPrint receives absolute file:// URLs rather than relative paths
+    # that it cannot resolve from its working directory.
+    cmd += ["--resource-path", str(md_path.parent)]
 
     t0 = time.time()
     proc = subprocess.run(cmd, capture_output=True, timeout=RENDER_TIMEOUT)
@@ -337,7 +567,6 @@ PREVIEW_CSS = """
 /* injected by Docgent for the HTML preview pane only */
 html { background: #edeef1; }
 body { background: #edeef1; margin: 0; padding: 24px 0; }
-body > section.cover,
 body > nav.toc,
 body > main {
   background: var(--paper, #fff);
@@ -349,7 +578,16 @@ body > main {
            var(--margin-bottom, 20mm) var(--margin-inner, 24mm);
   box-shadow: 0 1px 3px rgba(16, 22, 32, .14);
 }
-body > section.cover { min-height: 0; }
+/* Cover: sizing/shadow only — do NOT set background.
+ * Each brand defines its own cover background (dark, light, image-based).
+ * Forcing var(--paper) here overrides the brand CSS and washes it white. */
+body > section.cover {
+  box-sizing: border-box;
+  width: 210mm;
+  max-width: 100%;
+  margin: 0 auto 18px;
+  box-shadow: 0 1px 3px rgba(16, 22, 32, .14);
+}
 [data-source-line] { scroll-margin-top: 8px; }
 .src-anchor { display: contents; }
 """
@@ -388,7 +626,7 @@ def render_html(markdown: str, brand_id: str, assets: dict[str, str] | None) -> 
 
     with tempfile.TemporaryDirectory(prefix="docforge-") as tmp:
         work = Path(tmp)
-        md_path, sheets = _stage(work, markdown, brand, fm, assets)
+        md_path, sheets = _stage(work, markdown, brand, fm, assets, comment_mode='anchor')
 
         html_path = work / "doc.html"
         g.pandoc_ms = _run_pandoc(
@@ -426,7 +664,11 @@ def _before():
 
 
 def authorised() -> bool:
-    supplied = request.headers.get("X-DocForge-Key", "")
+    # Studio and the CLI both send X-Docgent-Key (packages/core/src/client.mjs,
+    # apps/studio/src/lib/render.ts). The old X-DocForge-Key name is accepted
+    # too, so a client on the previous header during a rolling deploy doesn't
+    # get locked out mid-rollout.
+    supplied = request.headers.get("X-Docgent-Key") or request.headers.get("X-DocForge-Key", "")
     return bool(API_KEY) and hmac.compare_digest(supplied, API_KEY)
 
 
@@ -446,9 +688,14 @@ def pandoc_supports_extensions() -> bool:
     except Exception:
         return False
     available = {line[1:] for line in out.splitlines() if line[:1] in "+-"}
-    required = {
-        e for e in PANDOC_EXTENSIONS.split("+")[1:]
-    }
+    # Parse extension tokens: split by '+', each token may itself contain '-' for
+    # disabling sub-extensions (e.g. 'smart-tex_math_dollars' = +smart -tex_math_dollars).
+    # Expand these into individual extension names for the availability check.
+    required = set()
+    for token in PANDOC_EXTENSIONS.split("+")[1:]:
+        for part in token.split("-"):
+            if part:
+                required.add(part)
     missing = required - available
     if missing:
         jlog("pandoc.missing_extensions", missing=sorted(missing))
@@ -464,6 +711,7 @@ def health():
         "template": TEMPLATE.exists(),
         "filter": FILTER.exists(),
         "microtype_filter": MICROTYPE_FILTER.exists(),
+        "docx_filter": DOCX_FILTER.exists(),
         "base_css": BASE_CSS.exists(),
         "brands_dir": BRANDS_DIR.exists(),
     }
@@ -616,6 +864,266 @@ def render_html_route():
             "X-DocForge-Render-Ms": str(total_ms),
         },
     )
+
+def render_thumbnail(markdown: str, brand_id: str, assets: dict[str, str] | None) -> bytes:
+    """Renders page 1 of the PDF to a PNG, for the version filmstrip.
+
+    Reuses render_pdf's output rather than a separate render path: the
+    thumbnail must be pixel-true to the artefact it represents, not a
+    lighter approximation that could drift from what actually prints.
+    pdftoppm (poppler-utils) rasterises the existing PDF; no second
+    HTML/CSS pass.
+    """
+    pdf_bytes = render_pdf(markdown, brand_id, assets)
+
+    with tempfile.TemporaryDirectory(prefix="docforge-thumb-") as tmp:
+        work = Path(tmp)
+        pdf_path = work / "doc.pdf"
+        pdf_path.write_bytes(pdf_bytes)
+
+        out_prefix = work / "thumb"
+        proc = subprocess.run(
+            ["pdftoppm", "-png", "-f", "1", "-l", "1", "-scale-to-x", "480",
+             "-scale-to-y", "-1", str(pdf_path), str(out_prefix)],
+            capture_output=True,
+            timeout=30,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                "pdftoppm failed: " + proc.stderr.decode("utf-8", "replace")[:1000]
+            )
+
+        # pdftoppm names single-page output "<prefix>-1.png" or "<prefix>.png"
+        # depending on version; check both rather than assuming.
+        for candidate in (work / "thumb-1.png", work / "thumb.png", work / "thumb-01.png"):
+            if candidate.exists():
+                return candidate.read_bytes()
+        raise RuntimeError("pdftoppm produced no output file")
+
+
+@app.post("/thumbnail")
+def thumbnail_route():
+    """Renders page 1 as a PNG thumbnail, for the studio version filmstrip.
+
+    Same request contract as /render (markdown + brand + assets) so callers
+    that already have a render payload can request a thumbnail with no
+    reshaping. Content-addressing and caching are the studio's concern; this
+    endpoint is stateless like /render.
+    """
+    if not authorised():
+        jlog("thumbnail.unauthorised", ip=request.remote_addr)
+        return jsonify(error="unauthorised"), 401
+
+    if request.content_length and request.content_length > MAX_BODY_BYTES:
+        return jsonify(error="payload too large"), 413
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify(error="expected a JSON object"), 400
+
+    markdown = body.get("markdown")
+    if not isinstance(markdown, str) or not markdown.strip():
+        return jsonify(error="'markdown' is required"), 400
+
+    fm = read_frontmatter(markdown)
+    brand_id = body.get("brand") or fm.get("brand")
+    if not brand_id:
+        return jsonify(error="no brand given (body 'brand' or frontmatter)"), 400
+
+    assets = body.get("assets") or {}
+    if not isinstance(assets, dict):
+        return jsonify(error="'assets' must be an object of path -> base64"), 400
+
+    try:
+        png = render_thumbnail(markdown, str(brand_id), assets)
+    except FileNotFoundError as e:
+        jlog("thumbnail.unknown_brand", brand=brand_id, error=str(e))
+        return jsonify(error=str(e)), 404
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    except subprocess.TimeoutExpired:
+        jlog("thumbnail.timeout", brand=brand_id)
+        return jsonify(error="render timed out"), 504
+    except RuntimeError as e:
+        jlog("thumbnail.failed", brand=brand_id, error=str(e)[:500])
+        return jsonify(error=str(e)), 422
+
+    total_ms = int((time.time() - g.t_start) * 1000)
+    jlog("thumbnail.ok", brand=brand_id, bytes=len(png), total_ms=total_ms)
+
+    return (
+        png,
+        200,
+        {
+            "Content-Type": "image/png",
+            "Cache-Control": "private, max-age=31536000, immutable",
+            "X-DocForge-Request-Id": g.request_id,
+            "X-DocForge-Render-Ms": str(total_ms),
+        },
+    )
+
+
+# --------------------------------------------------------------------------- #
+# DOCX export
+# --------------------------------------------------------------------------- #
+
+def render_docx(markdown: str, brand_id: str, assets: dict[str, str] | None) -> bytes:
+    """Markdown → pandoc → DOCX (skips WeasyPrint entirely)."""
+    brand = load_brand(brand_id)
+    fm = read_frontmatter(markdown)
+
+    with tempfile.TemporaryDirectory(prefix="docforge-docx-") as tmp:
+        work = Path(tmp)
+        md_path, _sheets = _stage(work, markdown, brand, fm, assets, docx_safe=True)
+
+        docx_path = work / "doc.docx"
+
+        cmd = [
+            "pandoc",
+            str(md_path),
+            "--from", PANDOC_EXTENSIONS,
+            "--to", "docx",
+            "--lua-filter", str(FILTER),
+            "--lua-filter", str(MICROTYPE_FILTER),
+            "--lua-filter", str(DOCX_FILTER),
+            "--resource-path", str(md_path.parent),
+            "--metadata", f"brandname={brand.get('name', brand_id)}",
+        ]
+
+        # Brand cover logo — inline as base64 data URI (same as PDF path).
+        cover_logo_rel = (brand.get("cover") or {}).get("logo")
+        if cover_logo_rel:
+            logo_path = Path(brand["_dir"]) / cover_logo_rel
+            if logo_path.exists():
+                mime = "image/svg+xml" if logo_path.suffix == ".svg" else "image/png"
+                b64 = base64.b64encode(logo_path.read_bytes()).decode("ascii")
+                data_uri = f"data:{mime};base64,{b64}"
+                cmd += ["--metadata", f"brandlogo={data_uri}"]
+
+        # Disable section autonumbering if brand opts out.
+        no_autonumber = not (
+            (brand.get("numbering") or {}).get("sections", True)
+        )
+        if no_autonumber:
+            cmd += ["--metadata", "docforge_no_autonumber=1"]
+
+        # TOC support (pandoc handles TOC natively in DOCX).
+        if fm.get("toc"):
+            toc_depth = (brand.get("toc") or {}).get("depth", 2)
+            cmd += ["--toc", f"--toc-depth={toc_depth}"]
+
+        # Pass brand palette and typography as pandoc metadata so the
+        # docx-output.lua filter can apply brand colours to primitives
+        # (KPI labels, callout borders, horizontal rules, cover page).
+        _pal = brand.get('palette', {}) or {}
+        _typ = brand.get('typography', {}) or {}
+        _accent = (_pal.get('accent') or '#333333').strip().strip('"').strip("'")
+        _ink    = (_pal.get('ink')    or '#111111').strip().strip('"').strip("'")
+        _rule   = (_pal.get('rule')   or '#cccccc').strip().strip('"').strip("'")
+        _band   = (_pal.get('band')   or _accent  ).strip().strip('"').strip("'")
+        # First family from CSS font stack (e.g. 'Crimson Pro, Georgia, serif' -> 'Crimson Pro')
+        import re as _re
+        def _first_family(stack: str) -> str:
+            stack = _re.sub(r',?\s*(serif|sans-serif|monospace|cursive|fantasy|system-ui)\s*$', '', stack.strip(), flags=_re.IGNORECASE)
+            first = stack.split(',')[0].strip().strip('"').strip("'")
+            return first or 'Calibri'
+        _sans   = _first_family(_typ.get('sans')  or 'Arial')
+        _serif  = _first_family(_typ.get('serif') or 'Georgia')
+        cmd += ['--metadata', f'brand_accent={_accent}']
+        cmd += ['--metadata', f'brand_ink={_ink}']
+        cmd += ['--metadata', f'brand_rule={_rule}']
+        cmd += ['--metadata', f'brand_band={_band}']
+        cmd += ['--metadata', f'brand_sans={_sans}']
+        cmd += ['--metadata', f'brand_serif={_serif}']
+
+        # Brand-supplied reference doc for styles/formatting.
+        ref_doc = BRANDS_DIR / brand_id / "docx-reference.docx"
+        if ref_doc.exists():
+            cmd += ["--reference-doc", str(ref_doc)]
+
+        cmd += ["-o", str(docx_path)]
+
+        t0 = time.time()
+        proc = subprocess.run(cmd, capture_output=True, timeout=RENDER_TIMEOUT)
+        g.docx_ms = int((time.time() - t0) * 1000)
+
+        if proc.returncode != 0:
+            raise RuntimeError(
+                "pandoc (docx) failed: " + proc.stderr.decode("utf-8", "replace")[:2000]
+            )
+        return docx_path.read_bytes()
+
+
+@app.post("/export/docx")
+def export_docx():
+    """Exports a document to DOCX via pandoc's native docx writer.
+
+    Same request contract as /render: {markdown, brand, assets?}.
+    Returns the .docx bytes directly — no WeasyPrint involved.
+    """
+    if not authorised():
+        jlog("export_docx.unauthorised", ip=request.remote_addr)
+        return jsonify(error="unauthorised"), 401
+
+    if request.content_length and request.content_length > MAX_BODY_BYTES:
+        return jsonify(error="payload too large"), 413
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify(error="expected a JSON object"), 400
+
+    markdown = body.get("markdown")
+    if not isinstance(markdown, str) or not markdown.strip():
+        return jsonify(error="'markdown' is required"), 400
+
+    fm = read_frontmatter(markdown)
+    brand_id = body.get("brand") or fm.get("brand")
+    if not brand_id:
+        return jsonify(error="no brand given (body 'brand' or frontmatter)"), 400
+
+    assets = body.get("assets") or {}
+    if not isinstance(assets, dict):
+        return jsonify(error="'assets' must be an object of path -> base64"), 400
+
+    # Derive a clean filename from the frontmatter `reference` field or title.
+    slug_raw = fm.get("reference") or fm.get("title") or "document"
+    slug = re.sub(r"[^\w\-]+", "-", str(slug_raw).lower()).strip("-") or "document"
+
+    try:
+        docx = render_docx(markdown, str(brand_id), assets)
+    except FileNotFoundError as e:
+        jlog("export_docx.unknown_brand", brand=brand_id, error=str(e))
+        return jsonify(error=str(e)), 404
+    except ValueError as e:
+        jlog("export_docx.bad_request", error=str(e))
+        return jsonify(error=str(e)), 400
+    except subprocess.TimeoutExpired:
+        jlog("export_docx.timeout", brand=brand_id)
+        return jsonify(error="render timed out"), 504
+    except RuntimeError as e:
+        jlog("export_docx.failed", brand=brand_id, error=str(e)[:500])
+        return jsonify(error=str(e)), 422
+
+    total_ms = int((time.time() - g.t_start) * 1000)
+    jlog(
+        "export_docx.ok",
+        brand=brand_id,
+        bytes=len(docx),
+        docx_ms=getattr(g, "docx_ms", None),
+        total_ms=total_ms,
+    )
+
+    return (
+        docx,
+        200,
+        {
+            "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "Content-Disposition": f'attachment; filename="{slug}.docx"',
+            "X-Docgent-Render-Ms": str(total_ms),
+            "X-DocForge-Request-Id": g.request_id,
+        },
+    )
+
 
 if not API_KEY:
     # Fail closed. An unauthenticated render endpoint is a free PDF farm.

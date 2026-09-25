@@ -4,6 +4,24 @@
 version: 1
 
 blocks:
+  - id: native-cover
+    syntax: '::: {.native-cover subtitle="An introduction"}'
+    description: 'Opt-in A4 editorial cover. Place first with nocover: true. Content is exact legal paragraphs; attributes are plain text except logo. Review pagination for each cover.'
+    attrs:
+      logo: { type: string, required: false }
+      logo-alt: { type: string, required: false }
+      eyebrow: { type: string, required: false }
+      subtitle: { type: string, required: true }
+      insight-label: { type: string, required: false }
+      metric: { type: string, required: false }
+      statement: { type: string, required: false }
+      demand: { type: string, required: false }
+      source: { type: string, required: false }
+      partner: { type: string, required: false }
+      licence: { type: string, required: false }
+      version: { type: string, required: false }
+    breakInside: page
+
   - id: callout
     syntax: "::: callout {kind=note|info|warning|risk|success}"
     description: Boxed aside for emphasis, warnings, or notes.
@@ -160,6 +178,13 @@ blocks:
       state: { type: enum, values: [highlight, anomaly, positive, partial, zero], required: false }
     breakInside: avoid
 
+  - id: timeline
+    syntax: "::: timeline"
+    description: Vertical chronological timeline. Each H3 heading is one event in the format
+      "DD Mon YYYY — Event Title"; the date is extracted and rendered in orange, the title
+      in bold. Body paragraphs and lists after the H3 become the event description.
+    breakInside: auto
+
   - id: tensionbox
     syntax: "::: {.tensionbox title=...}"
     description: Inverted dark callout carrying the single most important
@@ -167,6 +192,49 @@ blocks:
       one halves the weight of the first. Bold text renders in the accent.
     attrs:
       title: { type: string, required: true }
+    breakInside: avoid
+
+  - id: spec
+    syntax: "::: spec {title=... subtitle=...}"
+    description: Screenshot spec block with optional title and subtitle. Images
+      inside flow in a 3-column grid.
+    attrs:
+      title: { type: string, required: false }
+      subtitle: { type: string, required: false }
+    breakInside: avoid
+
+  - id: comparison-grid
+    syntax: "::: comparison-grid"
+    description: Side-by-side product/plan comparison. Each H3 starts a column;
+      use class .highlight on the H3 to mark the recommended option.
+      Use label= and price= attributes on the H3.
+    breakInside: avoid
+
+  - id: product-cards
+    syntax: "::: product-cards"
+    description: 2-column float grid of product cards. Each H3 starts a card;
+      use tag= for the category pill, subtitle= for the sub-heading.
+      Bullet list items under each H3 become em-dash rows.
+    breakInside: avoid
+
+  - id: financialtable
+    syntax: "::: financialtable {caption=...}"
+    description: >-
+      Financial statement table with semantic row types. Wrap a pipe
+      table in this block. Prefix the first cell of each row with section:,
+      sub:, or tot: to get section-header, subtotal, or grand-total treatment.
+      Unprefixed rows render as plain data rows. All columns from col 2 onward
+      are right-aligned with tabular numerals.
+    attrs:
+      caption: { type: string, required: false }
+    breakInside: avoid
+
+  - id: roadmap
+    syntax: "::: roadmap"
+    description: 4-column roadmap table. Use H3 elements with class .head
+      (column headers), .period (italic time period row), .tranche (teal
+      accent header row), or plain H3 (treated as tranche). Bullet list items
+      under a tranche row become item rows; cells separated by " | ".
     breakInside: avoid
 
   - id: toc
@@ -181,6 +249,49 @@ blocks:
     attrs:
       author: { type: string, required: false }
       resolved: { type: boolean, default: false }
+    breakInside: avoid
+
+  - id: chart
+    syntax: "::chart{label=... title=... caption=...}"
+    description: Inline SVG chart with label, title, and caption. Body is raw SVG markup.
+    attrs:
+      label: { type: string, required: false }
+      title: { type: string, required: false }
+      caption: { type: string, required: false }
+    breakInside: avoid
+
+  - id: icon-grid
+    syntax: "::icon-grid{cols=4 label=...}"
+    description: Tiled grid of small SVG icons. Each H3 heading names an icon tile; its body is raw SVG markup. Use for compact multi-platform or integration grids. cols controls tiles per row (2–6, default 4).
+    attrs:
+      cols: { type: integer, default: 4 }
+      label: { type: string, required: false }
+      caption: { type: string, required: false }
+    breakInside: avoid
+
+  - id: key-figure
+    syntax: "::key-figure"
+    description: Single prominent metric with value, label, and optional source. Use for
+      one standout statistic per section. Pairs well with surrounding body copy.
+    attrs:
+      value: { type: string, required: true }
+      label: { type: string, required: true }
+      source: { type: string, required: false }
+    breakInside: avoid
+
+  - id: kpi-row
+    syntax: "::kpi-row"
+    description: Horizontal strip of 3–6 KPI metrics. Each list item is a metric with
+      value and label keys. Renders as evenly-spaced cards in a single row.
+    breakInside: avoid
+
+  - id: risk
+    syntax: "::risk{severity=low|medium|high|critical}"
+    description: Risk callout block with severity badge. Body describes the risk and
+      any mitigations. Rendered with colour-coded severity indicator.
+    attrs:
+      severity: { type: enum, values: [low, medium, high, critical], default: medium }
+      title: { type: string, required: false }
     breakInside: avoid
 
 inlines:
@@ -203,6 +314,35 @@ inlines:
     description: Inline chip classifying a claim's evidential status.
     attrs:
       kind: { type: enum, values: [fact, drafting, gated], default: gated }
+  - id: br
+    syntax: "[]{.br}"
+    description: Hard line break within a paragraph. Equivalent to a `<br>` — use sparingly.
+
+# Heading attributes
+# These attrs can be applied to any H1 heading: # Heading text {attr="value"}
+# They are processed by the vocabulary Lua filter and are NOT block primitives.
+heading_attrs:
+  - name: eyebrow
+    description: >-
+      Override the section eyebrow label independently of the H1 text. The
+      eyebrow appears as '01 · LABEL' above the heading. When omitted the
+      eyebrow echoes the H1 text. Use this to set a short functional category
+      label (e.g. "Introduction", "Product") while keeping a punchy H1.
+    type: string
+    example: '# A new law. A hard deadline. {eyebrow="Introduction"}'
+  - name: nav-title
+    description: >-
+      Override the label used in the table of contents and running headers
+      without affecting the visible H1 text. When eyebrow is also absent,
+      nav-title is used for the eyebrow too. Useful for long headings that
+      need a shorter navigational form.
+    type: string
+    example: '# A very long section heading {nav-title="Short TOC Label"}'
+  - name: no-eyebrow
+    description: >-
+      Suppress the eyebrow entirely on this H1. Applied as a CSS class.
+    type: class
+    example: '# Heading with no eyebrow {.no-eyebrow}'
 
 frontmatter:
   required: [title, brand, doctype, version, date]
@@ -217,6 +357,7 @@ frontmatter:
     - confidentiality
     - abstract
     - cover_image
+    - nocover
     - toc
     - footer_note
     # Deal/offer documents (investment memoranda, term sheets). Kept in the

@@ -1,68 +1,221 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TimelineEntry } from "@/lib/store";
 import { VersionPanel } from "@/components/VersionPanel";
+import { ReviewControls } from "@/components/ReviewControls";
 import { DiffView, type DiffResult } from "@/components/DiffView";
+import { CommentsPanel } from "@/components/CommentsPanel";
+import { parseComments, setCommentResolved } from "@/lib/comments";
+
+type DrawerTab = "activity" | "details" | "comments";
+
+type DocMeta = {
+  type?: string;
+  version?: string;
+  date?: string;
+  client?: string;
+  author?: string;
+  reference?: string;
+  status?: string;
+  classification?: string;
+};
+
+function MetaRow({ label, value }: { label: string; value?: string }) {
+  if (!value) return null;
+  return (
+    <div className="meta-row">
+      <span className="meta-key">{label}</span>
+      <span className="meta-val">{value}</span>
+    </div>
+  );
+}
+
+function displaySubject(subject: string): string {
+  const m = subject.match(/^[a-z]+(?:\([^)]*\))?!?:\s*(.+)$/);
+  return (m ? m[1] : subject).trim() || subject;
+}
+
+function timeAgo(dateStr: string | undefined): string {
+  if (!dateStr) return "";
+  const diff = Date.now() - new Date(dateStr).getTime();
+  if (diff < 0) return "just now";
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}d ago`;
+  return `${Math.floor(day / 30)}mo ago`;
+}
+
+function ExportDropdown({ brand, slug, pdfUrl }: { brand: string; slug: string; pdfUrl: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    // Use click not mousedown — mousedown fires before <a> href/download
+    // activates, swallowing the navigation before the browser can trigger it.
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, []);
+
+  return (
+    <div className="export-dropdown" ref={ref}>
+      <button className="btn btn-secondary export-dropdown-trigger" onClick={() => setOpen(o => !o)}>
+        Export ↓
+      </button>
+      {open && (
+        <div className="export-dropdown-menu">
+          <a className="export-dropdown-item" href={pdfUrl} target="_blank" rel="noreferrer" onClick={() => setOpen(false)}>
+            PDF ↗
+          </a>
+          <a className="export-dropdown-item" href={`/api/export/${brand}/${slug}?format=docx`} download={`${slug}.docx`} onClick={() => setOpen(false)}>
+            DOCX ↓
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
- * Owns the compare state for a document.
- *
- * The diff lives here rather than inside VersionPanel because it needs the
- * wide column: rendered into the 340px rail alongside the revision list, a
- * paragraph of prose became a ribbon a few words wide. Hoisting the state
- * lets the sidebar trigger a comparison that renders in the main pane.
+ * Slim bar above the PDF: document title, primary CTA, drawer toggle.
+ * Replaces the old right rail as the primary action surface.
  */
+function DocActionBar({
+  brand,
+  slug,
+  title,
+  canEdit,
+  pdfUrl,
+  timeline,
+  onCompare,
+  drawerOpen,
+  onToggleDrawer,
+  openCommentCount,
+}: {
+  brand: string;
+  slug: string;
+  title: string;
+  canEdit: boolean;
+  pdfUrl: string;
+  timeline: TimelineEntry[];
+  onCompare: (baseSha: string, revision?: number) => void;
+  drawerOpen: boolean;
+  onToggleDrawer: () => void;
+  openCommentCount: number;
+}) {
+  const hasPreviousRevision = timeline.length >= 2;
+
+  return (
+    <div className="doc-action-bar">
+      {/* Title */}
+      <div className="doc-action-bar-title">{title}</div>
+
+      {/* Actions */}
+      <div className="doc-action-bar-actions">
+        {hasPreviousRevision && (
+          <button
+            className="btn btn-secondary"
+            onClick={() => onCompare(timeline[1].sha, timeline[1].version)}
+          >
+            Compare
+          </button>
+        )}
+        {canEdit && (
+          <a className="btn btn-secondary" href={`/${brand}/${slug}/edit`}>Edit</a>
+        )}
+        <ExportDropdown brand={brand} slug={slug} pdfUrl={pdfUrl} />
+        <button
+          className={`btn btn-secondary doc-drawer-toggle${drawerOpen ? " doc-drawer-toggle--open" : ""}`}
+          onClick={onToggleDrawer}
+          title={drawerOpen ? "Close panel" : "Open panel"}
+          aria-expanded={drawerOpen}
+        >
+          {openCommentCount > 0 && !drawerOpen && (
+            <span className="doc-drawer-badge">{openCommentCount}</span>
+          )}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <line x1="15" y1="3" x2="15" y2="21"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function DocumentWorkspace({
   brand,
   slug,
   timeline,
-  currentStatus,
   viewingSha,
   docVersion,
   pdfUrl,
   canEdit,
+  docMeta,
+  docSource,
+  docTitle,
+  baseSha,
 }: {
   brand: string;
   slug: string;
   timeline: TimelineEntry[];
-  currentStatus: string;
   viewingSha?: string;
   docVersion?: string;
   pdfUrl: string;
   canEdit: boolean;
+  docMeta?: DocMeta;
+  docSource?: string;
+  docTitle?: string;
+  baseSha?: string;
 }) {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>("activity");
+
+  const [docSourceState, setDocSourceState] = useState(docSource ?? "");
+  const parsedComments = useMemo(() => parseComments(docSourceState), [docSourceState]);
+  const openCommentCount = parsedComments.filter((c) => !c.resolved).length;
+  const handleResolveComment = useCallback((id: string, resolved: boolean) => {
+    setDocSourceState((prev) => setCommentResolved(prev, id, resolved));
+  }, []);
+
   const [compareBase, setCompareBase] = useState<string | null>(null);
   const [compareLabel, setCompareLabel] = useState<string>("");
   const [diff, setDiff] = useState<DiffResult | null>(null);
   const [diffing, setDiffing] = useState(false);
   const [diffError, setDiffError] = useState<string | null>(null);
 
-  const runDiff = useCallback(
-    async (baseSha: string, revision?: number) => {
-      setCompareBase(baseSha);
-      setCompareLabel(revision ? `r${revision}` : baseSha.slice(0, 7));
-      setDiffing(true);
-      setDiff(null);
-      setDiffError(null);
-      try {
-        const qs = new URLSearchParams({ base: baseSha });
-        if (viewingSha) qs.set("head", viewingSha);
-        const res = await fetch(`/api/diff/${brand}/${slug}?${qs}`);
-        const data = await res.json();
-        if (!res.ok) {
-          setDiffError(data.error || `Diff failed (${res.status})`);
-          return;
-        }
-        setDiff(data);
-      } catch (e) {
-        setDiffError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setDiffing(false);
-      }
-    },
-    [brand, slug, viewingSha]
-  );
+  const [pdfLoaded, setPdfLoaded] = useState(false);
+  const [pdfError, setPdfError] = useState(false);
+  const [pdfLoadedAt, setPdfLoadedAt] = useState<number | null>(null);
+  const [pdfSrc, setPdfSrc] = useState(pdfUrl);
+  const pdfReloadRef = useRef(0);
+
+  const runDiff = useCallback(async (baseSha: string, revision?: number) => {
+    setCompareBase(baseSha);
+    setCompareLabel(revision ? `r${revision}` : baseSha.slice(0, 7));
+    setDiffing(true);
+    setDiff(null);
+    setDiffError(null);
+    try {
+      const qs = new URLSearchParams({ base: baseSha });
+      if (viewingSha) qs.set("head", viewingSha);
+      const res = await fetch(`/api/diff/${brand}/${slug}?${qs}`);
+      const data = await res.json();
+      if (!res.ok) { setDiffError(data.error || `Diff failed (${res.status})`); return; }
+      setDiff(data);
+    } catch (e) {
+      setDiffError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDiffing(false);
+    }
+  }, [brand, slug, viewingSha]);
 
   const closeDiff = useCallback(() => {
     setCompareBase(null);
@@ -74,48 +227,147 @@ export function DocumentWorkspace({
     ? `r${timeline.find((t) => t.sha === viewingSha)?.version ?? "?"}`
     : "current";
 
-  return (
-    <div className="grid">
-      {compareBase ? (
-        <DiffView
-          baseLabel={compareLabel}
-          headLabel={headLabel}
-          fileLabel={`documents/${slug}/doc.md`}
-          diff={diff}
-          diffing={diffing}
-          error={diffError}
-          onClose={closeDiff}
-        />
-      ) : (
-        <div className="panel">
-          <div className="panel-head">
-            <span>Rendered PDF</span>
-            <span style={{ display: "flex", gap: 8 }}>
-              {canEdit && (
-                <a className="btn btn-secondary" href={`/${brand}/${slug}/edit`}>
-                  Edit
-                </a>
-              )}
-              <a className="btn btn-secondary" href={pdfUrl} target="_blank" rel="noreferrer">
-                Open
-              </a>
-            </span>
-          </div>
-          <iframe className="pdf-frame" src={pdfUrl} title="Document preview" />
-        </div>
-      )}
+  const title = docTitle || docMeta?.type || slug;
 
-      <div style={{ display: "grid", gap: 16 }}>
-        <VersionPanel
-          brand={brand}
-          slug={slug}
-          timeline={timeline}
-          currentStatus={currentStatus}
-          viewingSha={viewingSha}
-          docVersion={docVersion}
-          onCompare={runDiff}
-          comparingSha={compareBase}
-        />
+  return (
+    <div className="doc-workspace">
+      {/* Full-width action bar above the document */}
+      <DocActionBar
+        brand={brand}
+        slug={slug}
+        title={title}
+        canEdit={canEdit}
+        pdfUrl={pdfUrl}
+        timeline={timeline}
+        onCompare={runDiff}
+        drawerOpen={drawerOpen}
+        onToggleDrawer={() => setDrawerOpen((v) => !v)}
+        openCommentCount={openCommentCount}
+      />
+
+      {/* Main content area: PDF (or diff) + optional drawer */}
+      <div className="doc-workspace-body" data-drawer-open={drawerOpen}>
+        {/* PDF / Diff pane — fills the space */}
+        <div className="doc-pdf-pane">
+          {compareBase ? (
+            <DiffView
+              baseLabel={compareLabel}
+              headLabel={headLabel}
+              fileLabel={`documents/${slug}/doc.md`}
+              diff={diff}
+              diffing={diffing}
+              error={diffError}
+              onClose={closeDiff}
+            />
+          ) : (
+            <>
+              {!pdfLoaded && !pdfError && (
+                <div className="pdf-skeleton-wrap" aria-label="Loading PDF">
+                  {(docMeta?.type || docMeta?.status) && (
+                    <div className="pdf-skeleton-meta">
+                      {[docMeta?.type, docMeta?.status].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                  <span className="pdf-skeleton" aria-hidden="true" />
+                  <div className="pdf-loading-spinner" style={{ marginTop: 8 }} />
+                  <span style={{ fontSize: 12, color: "var(--ink-faint)" }}>Rendering PDF…</span>
+                </div>
+              )}
+              {pdfError && (
+                <div className="pdf-error" role="alert">
+                  <span>PDF failed to render.</span>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      pdfReloadRef.current += 1;
+                      setPdfError(false);
+                      setPdfLoaded(false);
+                      setPdfSrc(`${pdfUrl}${pdfUrl.includes("?") ? "&" : "?"}_r=${pdfReloadRef.current}`);
+                    }}
+                  >
+                    Try again
+                  </button>
+                </div>
+              )}
+              <iframe
+                className="pdf-frame"
+                src={pdfSrc}
+                title="Document preview"
+                onLoad={() => { setPdfLoaded(true); setPdfError(false); setPdfLoadedAt(Date.now()); }}
+                onError={() => { setPdfError(true); setPdfLoaded(false); }}
+                style={pdfLoaded ? { width: "100%", height: "100%", border: "none", display: "block" } : { opacity: 0, pointerEvents: "none", position: "absolute" }}
+              />
+              {pdfLoaded && pdfLoadedAt !== null && (
+                <div className="pdf-rendered-at">
+                  Rendered {new Date(pdfLoadedAt).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* On-demand drawer: slides in from the right */}
+        {drawerOpen && (
+          <div className="doc-drawer">
+            <div className="doc-drawer-tabs">
+              {(["activity", "details", "comments"] as DrawerTab[]).map((t) => (
+                <button
+                  key={t}
+                  className="doc-drawer-tab"
+                  data-active={drawerTab === t}
+                  onClick={() => setDrawerTab(t)}
+                >
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                  {t === "comments" && openCommentCount > 0 && (
+                    <span className="rail-tab-badge">{openCommentCount}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className="doc-drawer-body">
+              {drawerTab === "activity" && (
+                <VersionPanel
+                  brand={brand} slug={slug} timeline={timeline}
+                  viewingSha={viewingSha}
+                  baseSha={baseSha}
+                  docVersion={docVersion} onCompare={runDiff}
+                  comparingSha={compareBase}
+                />
+              )}
+              {drawerTab === "details" && (
+                <div className="panel">
+                  <ReviewControls brand={brand} slug={slug} baseSha={baseSha} status={docMeta?.status} source={docSource ?? ""} />
+                  <div className="panel-head">Details</div>
+                  <div className="panel-body">
+                    {docMeta ? (
+                      <>
+                        <MetaRow label="Type" value={docMeta.type} />
+                        <MetaRow label="Version" value={docMeta.version} />
+                        <MetaRow label="Date" value={docMeta.date} />
+                        <MetaRow label="Client" value={docMeta.client} />
+                        <MetaRow label="Author" value={docMeta.author} />
+                        <MetaRow label="Reference" value={docMeta.reference} />
+                        <MetaRow label="Status" value={docMeta.status} />
+                        <MetaRow label="Classification" value={docMeta.classification} />
+                      </>
+                    ) : (
+                      <div style={{ color: "var(--ink-faint)", fontSize: 13 }}>No metadata available.</div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {drawerTab === "comments" && (
+                <CommentsPanel
+                  comments={parsedComments}
+                  onResolve={canEdit ? handleResolveComment : undefined}
+                  canEdit={canEdit}
+                  editHref={canEdit ? `/${brand}/${slug}/edit` : undefined}
+                />
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

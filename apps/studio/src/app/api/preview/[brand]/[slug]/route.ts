@@ -34,7 +34,7 @@ export async function POST(
   }
 
   try {
-    const { git } = storesFor(brand);
+    const { git } = await storesFor(brand);
     const dir = `documents/${slug}`;
 
     let assetPaths: string[] = [];

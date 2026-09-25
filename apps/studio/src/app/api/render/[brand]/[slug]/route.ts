@@ -12,11 +12,9 @@ export const maxDuration = 120;
  * ?ref=<commitSha> renders a historical version, which is what makes the
  * version timeline clickable. Without a ref we render current HEAD.
  *
- * Historical renders are content-addressed and cached by commit SHA. That is
- * not merely an optimisation: a rendered version must be *retrievable*, not
- * *regenerable*. If the design system changes, re-rendering an old commit
- * produces a different artefact - which is the wrong answer to "what exactly
- * did we send the client in March?".
+ * All statuses use the legacy preview cache. Cache misses regenerate using
+ * pinned source/assets and the current renderer/templates. These PDFs are
+ * previews, not archived originals or evidence of what was previously issued.
  */
 export async function GET(
   req: Request,
@@ -28,24 +26,18 @@ export async function GET(
   if (!authz.ok) return new Response("unauthorised", { status: 401 });
 
   const ref = new URL(req.url).searchParams.get("ref") || undefined;
+  if (ref && !/^[a-f0-9]{40}$/.test(ref)) return Response.json({ error: "Use a full immutable commit SHA for ref." }, { status: 400 });
 
   try {
-    const { git, docs } = storesFor(brand);
+    const { git, docs } = await storesFor(brand);
 
     // Resolve HEAD to a concrete commit so the current version is cacheable
     // too - it stops being "current" the moment someone commits.
-    let commitSha = ref;
-    if (!commitSha) {
-      try {
-        const tl = await docs.timeline(brand, slug, { limit: 1 });
-        commitSha = tl[0]?.sha;
-      } catch {
-        // history unavailable; fall through to an uncached render
-      }
-    }
+    const commitSha = ref || await git.head();
 
     const store = pdfStore();
     const key = commitSha ? cacheKey({ brand, slug, commitSha }) : null;
+    const doc = await docs.readAt(brand, slug, commitSha);
 
     if (key) {
       const cached = await store.get(key);
@@ -54,23 +46,24 @@ export async function GET(
       }
     }
 
-    const doc = ref
-      ? await docs.readAt(brand, slug, ref)
-      : await docs.readDocument(brand, slug);
 
-    // Assets live beside the document; the renderer needs them inlined.
+    // Assets (assets/ and figures/) live beside the document; the renderer
+    // needs them inlined.  figures/ holds external SVG files referenced by
+    // ::figure{src="figures/chart.svg"} primitives.
     const dir = `documents/${slug}`;
-    let assetPaths: string[] = [];
-    try {
-      const tree = await git.tree({ ref, prefix: `${dir}/assets/` });
-      assetPaths = tree.entries
-        .filter((e: { type: string; path: string }) => e.type === "file")
-        .map((e: { path: string }) => e.path.slice(dir.length + 1));
-    } catch {
-      // no assets directory is fine
+    const assetPaths: string[] = [];
+    for (const prefix of [`${dir}/assets/`, `${dir}/figures/`]) {
+      try {
+        const tree = await git.tree({ ref: commitSha, prefix });
+        for (const e of tree.entries as { type: string; path: string }[]) {
+          if (e.type === "file") assetPaths.push(e.path.slice(dir.length + 1));
+        }
+      } catch {
+        // missing directory is fine
+      }
     }
 
-    const assets = await collectAssetsFromGit(git, dir, assetPaths, ref);
+    const assets = await collectAssetsFromGit(git, dir, assetPaths, commitSha);
     const brandId = doc.frontmatter?.brand || brand;
     const { pdf, renderMs } = await renderMarkdown(doc.content, brandId, assets);
 
@@ -98,10 +91,8 @@ function pdfResponse(
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `inline; filename="${opts.slug}${opts.ref ? `-${opts.ref.slice(0, 7)}` : ""}.pdf"`,
-      // Historical versions are immutable, so cache them hard.
-      "Cache-Control": opts.ref
-        ? "private, max-age=31536000, immutable"
-        : "private, max-age=0, must-revalidate",
+      // Preview bytes can drift after cache eviction; do not promise browser immutability.
+      "Cache-Control": "private, max-age=0, must-revalidate",
       "X-Docgent-Render-Ms": String(opts.renderMs ?? ""),
       "X-Docgent-Cache": opts.cached ? "hit" : "miss",
       "X-Docgent-Cache-Driver": cacheDriver(),

@@ -5,6 +5,8 @@ import type { Vocabulary } from "@/lib/vocabulary";
 import { validateMarkdown, type Diagnostic } from "@/lib/validate-client";
 import { RewriteBar, type RewriteProposal } from "@/components/RewriteBar";
 import { ProposalReview } from "@/components/ProposalReview";
+import { CommentsPanel } from "@/components/CommentsPanel";
+import { parseComments, setCommentResolved, insertComment } from "@/lib/comments";
 
 // CodeMirror 6
 import { EditorState } from "@codemirror/state";
@@ -14,31 +16,58 @@ import { docgentLanguage } from "@/lib/docgent-lang";
 
 // Lucide icons
 import {
-  Bold,
-  Italic,
-  Underline,
-  Strikethrough,
-  Highlighter,
-  Link2,
-  List,
-  ListOrdered,
-  Table,
-  Image,
-  Code2,
-  Minus,
-  Undo2,
-  Redo2,
-  // Primitive block icons
-  Columns,
-  MessageSquare,
-  Quote,
-  BarChart2,
-  SplitSquareVertical,
-  FileText,
-  Calendar,
-  PenLine,
-  Hash,
+  Bold, Italic, Underline, Strikethrough, Highlighter, Link2,
+  List, ListOrdered, Table, Image, Code2, Minus, Undo2, Redo2,
+  Columns, MessageSquare, Quote, BarChart2, SplitSquareVertical,
+  Calendar, PenLine,
 } from "lucide-react";
+
+const BLOCK_ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: number }>> = {
+  pagebreak:     SplitSquareVertical,
+  toc:           List,
+  columnsLayout: Columns,
+  callout:       MessageSquare,
+  pullquote:     Quote,
+  keyfigure:     BarChart2,
+  chart:         BarChart2,
+  date:          Calendar,
+  signature:     PenLine,
+  image:         Image,
+};
+
+/**
+ * Auto-generate a meaningful commit message by diffing two Markdown buffers.
+ * Finds which heading sections were touched and describes the change concisely.
+ */
+function generateCommitMessage(before: string, after: string, brand: string, slug: string): string {
+  const bLines = before.split("\n");
+  const aLines = after.split("\n");
+  const touched = new Set<string>();
+  let currentHeading = "";
+  const maxLen = Math.max(bLines.length, aLines.length);
+  // Walk through all lines; track headings and collect those whose content changed.
+  let i = 0;
+  while (i < maxLen) {
+    const aLine = aLines[i] ?? "";
+    const bLine = bLines[i] ?? "";
+    const hm = aLine.match(/^(#{1,3})\s+(.+)/);
+    if (hm) currentHeading = hm[2].replace(/\{[^}]*\}/g, "").trim();
+    if (aLine !== bLine && currentHeading) touched.add(currentHeading);
+    i++;
+  }
+  const added = aLines.length - bLines.length;
+  const changed = [...touched].slice(0, 3);
+  let desc: string;
+  if (changed.length > 0) {
+    desc = `edited ${changed.map((h) => `"${h}"`).join(", ")}`;
+    if (touched.size > 3) desc += ` +${touched.size - 3} more`;
+  } else {
+    desc = added > 0 ? `added ${added} line${added !== 1 ? "s" : ""}` :
+           added < 0 ? `removed ${-added} line${-added !== 1 ? "s" : ""}` :
+           "minor edit";
+  }
+  return `docs(${brand}/${slug}): ${desc}`;
+}
 
 type SaveState =
   | { kind: "idle" }
@@ -57,43 +86,116 @@ type Props = {
 
 const PREVIEW_DEBOUNCE_MS = 1200;
 
-type PreviewMode = "html" | "pdf";
+// Unified editor mode:
+//   edit   = inline editing surface (preview as primary, both panes)
+//   pages  = PDF paginated view (full width)
+//   source = raw Markdown editor, source pane full width (power mode)
+//   review = like edit but shows ProposalReview + comments prominently
+type EditorMode = "edit" | "pages" | "source" | "review";
 
+// Keep internal types for legacy compatibility in scroll sync logic
+type PreviewMode = "html" | "pdf";
 type Posture = "edit" | "review";
 
 type Heading = { line: number; level: number; text: string };
 
+// A folded section hides its body lines in the source while keeping the
+// heading visible. Folding is a view state over the buffer: the underlying
+// content is never modified, so a fold can never corrupt a document.
 type Fold = { startLine: number; endLine: number };
 
-// Mapping from block id → lucide icon component
-const BLOCK_ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: number }>> = {
-  pagebreak:     SplitSquareVertical,
-  toc:           List,
-  columnsLayout: Columns,
-  callout:       MessageSquare,
-  pullquote:     Quote,
-  keyfigure:     BarChart2,
-  chart:         BarChart2,
-  date:          Calendar,
-  signature:     PenLine,
-  image:         Image,
-};
+function EditorExportDropdown({ brand, slug, previewUrl }: { brand: string; slug: string; previewUrl: string | null }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      // Only close when clicking *outside* the dropdown. Using pointerdown on
+      // the document would fire before the <a> click event on a menu item,
+      // which cancels the navigation and swallows the download. Check that the
+      // target is outside the entire dropdown container before closing.
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    // Use click, not mousedown — mousedown fires before the <a> href navigation
+    // and would close the menu before the download link activates.
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, []);
+
+  return (
+    <div className="export-dropdown" ref={ref}>
+      <button className="btn btn-secondary export-dropdown-trigger" onClick={() => setOpen(o => !o)}>
+        Export ↓
+      </button>
+      {open && (
+        <div className="export-dropdown-menu">
+          {previewUrl ? (
+            <a className="export-dropdown-item" href={previewUrl} download={`${slug}.pdf`} onClick={() => setOpen(false)}>
+              PDF ↓
+            </a>
+          ) : (
+            <span className="export-dropdown-item" style={{ opacity: 0.4, cursor: "default" }} title="Switch to Pages mode to generate a PDF first">
+              PDF (generate in Pages mode first)
+            </span>
+          )}
+          <a className="export-dropdown-item" href={`/api/export/${brand}/${slug}?format=docx`} download={`${slug}.docx`} onClick={() => setOpen(false)}>
+            DOCX ↓
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: Props) {
   const [content, setContent] = useState(initialContent);
   const [baseSha, setBaseSha] = useState(initialSha);
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
-  const [summary, setSummary] = useState("");
+  // Brief informational banner shown after a successful soft reconcile.
+  const [reconcileNote, setReconcileNote] = useState<string | null>(null);
+  // Mutable baseline: starts at initialContent but advances each time we
+  // successfully commit (manual save OR accept-proposal). Used in the dirty
+  // check so a freshly-accepted rewrite doesn't trigger a spurious autosave
+  // with the old baseSha (which would get a 409 stale conflict back).
+  const committedContentRef = useRef(initialContent);
+
+  /**
+   * What changed, in the author's words.
+   *
+   * Left empty the store falls back to `docs(brand/slug): <title>`, which
+   * stamps the document's name onto every revision — so a history of ten
+   * edits reads as the same sentence ten times and Compare is the only way
+   * to learn anything. Agents committing through the CLI already pass a real
+   * message; this is the human path catching up.
+   *
+   * Not mandatory. A blocked save is worse than a vague one, and an author
+   * fixing a typo should not owe anyone a sentence.
+   */
+  // summary removed — commit messages are auto-generated from the diff
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
-  const [mode, setMode] = useState<PreviewMode>("html");
+  // Unified editor mode. Replaces separate posture + previewMode.
+  const [editorMode, setEditorMode] = useState<EditorMode>("edit");
+  // Derived internal state for existing scroll sync / preview logic.
+  const mode: PreviewMode = editorMode === "pages" ? "pdf" : "html";
+  const posture: Posture = editorMode === "source" ? "edit" : "review";  // review/edit/pages all use review posture for preview
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [pdfStale, setPdfStale] = useState(false);
-  const [showPalette, setShowPalette] = useState(false);
-  const [posture, setPosture] = useState<Posture>("edit");
-  const [showOutline, setShowOutline] = useState(true);
+  // Split-screen toggle (Phase 2c): show both panes side-by-side in Edit mode.
+  const [splitView, setSplitView] = useState(false);
+  const [showOutline, setShowOutline] = useState(false);
+  const [showComments, setShowComments] = useState(false);
   const [folded, setFolded] = useState<number[]>([]);
+  const [showErrors, setShowErrors] = useState(false);
+
+  /**
+   * Directed rewrite: bar open state plus the scope it was opened against.
+   * "scope" here is the UI's own record, not the API's Scope type — a
+   * heading name for a section trigger, or a selection range for a
+   * selection trigger — kept separate so getScope() below can compute the
+   * API payload lazily, at request time rather than at open time.
+   */
   const [rewriteTarget, setRewriteTarget] = useState<
     | { kind: "section"; heading: string; label: string; top: number }
     | { kind: "range"; start: number; end: number; label: string; top: number }
@@ -102,21 +204,95 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const [proposal, setProposal] = useState<RewriteProposal | null>(null);
   const [acceptedNote, setAcceptedNote] = useState<string | null>(null);
 
-  // ── Refs ──────────────────────────────────────────────────────────────────
-  // CM6 editor lives here instead of the old textarea
+  /**
+   * Annotation-in-progress: which source line a Review-mode click landed on,
+   * plus the draft text before it commits to the buffer. A `note` vocabulary
+   * block (packages/vocabulary/vocabulary.yaml), never an HTML comment --
+   * HANDOVER.md section 7b, decision 1.
+   */
+  const [noteTarget, setNoteTarget] = useState<{ line: number; top: number } | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // CodeMirror 6: container div + EditorView ref
   const cmContainerRef = useRef<HTMLDivElement>(null);
   const cmViewRef = useRef<EditorView | null>(null);
+  // Mutable refs so CM6 keymap closures always call the current version
+  // (doSaveRef is also declared later by upstream — these are used for CM6 keymap)
+  const cmDoSaveRef = useRef<() => void>(() => {});
+  const toggleInlineRef = useRef<(mark: string, placeholder: string) => void>(() => {});
+  const insertLinkRef = useRef<() => void>(() => {});
+  const isFoldedRef = useRef(false);
 
   const frameRef = useRef<HTMLIFrameElement>(null);
+  // Tracks the last source line clicked in the preview — used to anchor
+  // new comments to the paragraph the user clicked, not the scroll position.
+  const lastClickedLineRef = useRef<number | null>(null);
+  // Tracks the contenteditable element currently being edited in the iframe.
+  // Set by makeEditable, cleared on blur. Lets format bar buttons operate on
+  // the inline edit surface instead of the hidden textarea.
+  const activeEditEl = useRef<HTMLElement | null>(null);
+  // Snapshot of the iframe selection captured at mousedown on a format bar
+  // button. Clicking outside the iframe (even with e.preventDefault()) can
+  // clear the iframe's Selection object before the button handler reads it,
+  // so we save start/end offsets at mousedown and use them in toggleInline.
+  const savedIframeSelection = useRef<{ start: number; end: number } | null>(null);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPreviewed = useRef<string>("");
   const lastPdfRendered = useRef<string>("");
   const objectUrl = useRef<string | null>(null);
+  // Guards the two-way scroll sync: whichever pane the user drives sets this,
+  // so the programmatic scroll it causes on the other pane does not echo back.
   const syncLock = useRef<0 | 1 | 2>(0);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // True while a preview element is contenteditable — suppresses the debounced
+  // re-render so the iframe doesn't replace itself while the user is typing.
+  const isEditingPreview = useRef(false);
+  // Scroll position to restore after a preview re-render.
+  const savedPreviewScroll = useRef<number>(0);
+  // Autosave: fires 3 seconds after last content change, only when dirty and no errors.
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Controls whether the "Saved ✓" indicator is visible (fades after 3s).
+  const [savedVisible, setSavedVisible] = useState(false);
+  const savedFadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Derived state ─────────────────────────────────────────────────────────
-  const dirty = content !== initialContent || save.kind === "error" || save.kind === "stale";
+  // Phase 3a: slash command palette state
+  type SlashCmd = {
+    open: boolean;
+    query: string;
+    top: number;
+    left: number;
+    selectedIdx: number;
+  };
+  const [slashCmd, setSlashCmd] = useState<SlashCmd>({
+    open: false, query: "", top: 0, left: 0, selectedIdx: 0,
+  });
+  const slashCmdRef = useRef(slashCmd);
+
+  // Phase 4a: floating agent toolbar on selection
+  const [selectionToolbar, setSelectionToolbar] = useState<{
+    visible: boolean; top: number; left: number;
+    selectedText: string;
+    selStart: number; selEnd: number;
+  }>({ visible: false, top: 0, left: 0, selectedText: "", selStart: 0, selEnd: 0 });
+
+  // Phase 4b: command palette state
+  const [cmdPalette, setCmdPalette] = useState(false);
+  const [cmdQuery, setCmdQuery] = useState("");
+  const [cmdSelectedIdx, setCmdSelectedIdx] = useState(0);
+
+  // Preview zoom: percentage applied to the HTML preview body via CSS zoom.
+  // Clamped to 50–200%. Driven by ⌘+scroll and pinch gestures inside the
+  // iframe; stored as React state so the toolbar can display and reset it.
+  const [previewZoom, setPreviewZoom] = useState(100);
+  const previewZoomRef = useRef(100);
+
+  // dirty = content differs from the last *committed* baseline (initialContent
+  // at page-load, advanced by every successful save or accepted rewrite).
+  // Using committedContentRef rather than initialContent means accepting a
+  // proposal advances the baseline immediately, preventing the 3-second
+  // autosave from firing a stale PUT with the old baseSha and getting a 409.
+  const dirty = content !== committedContentRef.current || save.kind === "error" || save.kind === "stale";
 
   const diagnostics = useMemo(
     () => validateMarkdown(content, vocabulary),
@@ -125,178 +301,40 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const errors = diagnostics.filter((d) => d.severity === "error");
   const warnings = diagnostics.filter((d) => d.severity === "warning");
 
-  // ── Fold / display content ────────────────────────────────────────────────
-
-  const headings = useMemo<Heading[]>(() => {
-    const lines = content.split("\n");
-    const out: Heading[] = [];
-    let inFence = false;
-    let inFrontmatter = false;
-    for (let i = 0; i < lines.length; i++) {
-      const raw = lines[i];
-      if (i === 0 && raw.trim() === "---") { inFrontmatter = true; continue; }
-      if (inFrontmatter) {
-        if (raw.trim() === "---") inFrontmatter = false;
-        continue;
-      }
-      if (/^\s*(```|~~~)/.test(raw)) { inFence = !inFence; continue; }
-      if (inFence) continue;
-      const m = raw.match(/^(#{1,6})\s+(.*\S)\s*$/);
-      if (m) out.push({ line: i + 1, level: m[1].length, text: m[2] });
-    }
-    return out;
-  }, [content]);
-
-  const sectionEnd = useCallback((h: Heading): number => {
-    const lines = content.split("\n").length;
-    const idx = headings.findIndex((x) => x.line === h.line);
-    for (let i = idx + 1; i < headings.length; i++) {
-      if (headings[i].level <= h.level) return headings[i].line - 1;
-    }
-    return lines;
-  }, [content, headings]);
-
-  const folds = useMemo<Fold[]>(() => {
-    return folded
-      .map((line) => {
-        const h = headings.find((x) => x.line === line);
-        if (!h) return null;
-        const end = sectionEnd(h);
-        return end > h.line ? { startLine: h.line, endLine: end } : null;
-      })
-      .filter((f): f is Fold => f !== null)
-      .sort((a, b) => a.startLine - b.startLine);
-  }, [folded, headings, sectionEnd]);
-
-  const displayContent = useMemo(() => {
-    if (folds.length === 0) return content;
-    const lines = content.split("\n");
-    const out: string[] = [];
-    let i = 0;
-    while (i < lines.length) {
-      const ln = i + 1;
-      const fold = folds.find((f) => f.startLine === ln);
-      if (fold) {
-        out.push(lines[i]);
-        const hidden = fold.endLine - fold.startLine;
-        out.push(`⋯ ${hidden} line${hidden === 1 ? "" : "s"} folded`);
-        i = fold.endLine;
-        continue;
-      }
-      out.push(lines[i]);
-      i++;
-    }
-    return out.join("\n");
-  }, [content, folds]);
-
-  const isFolded = folds.length > 0;
-
-  const toggleFold = useCallback((line: number) => {
-    setFolded((prev) =>
-      prev.includes(line) ? prev.filter((l) => l !== line) : [...prev, line]
-    );
-  }, []);
-
-  // ── CodeMirror mount / sync ───────────────────────────────────────────────
-
-  // Mount once
+  // Auto-close the errors panel once all diagnostics are resolved.
   useEffect(() => {
-    if (!cmContainerRef.current) return;
+    if (diagnostics.length === 0) setShowErrors(false);
+  }, [diagnostics.length]);
 
-    const view = new EditorView({
-      state: EditorState.create({
-        doc: displayContent,
-        extensions: [
-          history(),
-          lineNumbers(),
-          keymap.of([
-            ...defaultKeymap,
-            {
-              key: "Mod-s",
-              run: () => {
-                // Trigger save — we reach into the state via closure below
-                doSaveRef.current();
-                return true;
-              },
-            },
-            {
-              key: "Mod-b",
-              run: (v) => { toggleInlineRef.current("**", "bold text"); return true; },
-            },
-            {
-              key: "Mod-i",
-              run: (v) => { toggleInlineRef.current("*", "italic text"); return true; },
-            },
-            {
-              key: "Mod-e",
-              run: (v) => { toggleInlineRef.current("`", "code"); return true; },
-            },
-            {
-              key: "Mod-k",
-              run: (v) => { insertLinkRef.current(); return true; },
-            },
-          ]),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) {
-              const newText = update.state.doc.toString();
-              if (!isFoldedRef.current) {
-                setContent(newText);
-                setSave((s) => (s.kind === "saved" ? { kind: "idle" } : s));
-              }
-            }
-          }),
-          EditorState.readOnly.of(false),
-          ...docgentLanguage(),
-        ],
-      }),
-      parent: cmContainerRef.current,
-    });
-
-    cmViewRef.current = view;
-    return () => {
-      view.destroy();
-      cmViewRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Sync displayContent → CM6 when it changes externally (fold/unfold, accept proposal)
-  const lastSyncedContent = useRef<string>(displayContent);
+  // Auto-open on mount if there are diagnostics — surfaces them immediately
+  // so authors don't have to hunt for the pill after loading a document.
   useEffect(() => {
-    const view = cmViewRef.current;
-    if (!view) return;
-    const current = view.state.doc.toString();
-    if (current === displayContent) return;
-    lastSyncedContent.current = displayContent;
-    view.dispatch({
-      changes: { from: 0, to: current.length, insert: displayContent },
-    });
-  }, [displayContent]);
+    const timer = setTimeout(() => {
+      if (diagnostics.length > 0) setShowErrors(true);
+    }, 500);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty — runs once on mount
 
-  // Sync readOnly when fold state changes
-  useEffect(() => {
-    const view = cmViewRef.current;
-    if (!view) return;
-    // Reconfigure readOnly by updating the extension
-    view.dispatch({
-      effects: view.state.facet(EditorState.readOnly) === isFolded
-        ? []
-        : [],
-    });
-    // Add/remove a CSS class on the container for cursor styling
-    if (cmContainerRef.current) {
-      cmContainerRef.current.classList.toggle("cm-folded", isFolded);
-    }
-  }, [isFolded]);
+  /* ---------------- preview ---------------- */
 
-  // Mutable refs to avoid stale closures in keymap
-  const isFoldedRef = useRef(isFolded);
-  isFoldedRef.current = isFolded;
-
-  // ── Preview ───────────────────────────────────────────────────────────────
+  // Tracks whether a preview re-render was triggered by an inline edit blur.
+  // Used to skip the re-render entirely and just leave the DOM as-is.
+  const pendingPreviewAfterEdit = useRef(false);
 
   const runHtmlPreview = useCallback(async (src: string) => {
     if (src === lastPreviewed.current) return;
+    // While the user is actively typing in the preview, suppress all re-renders.
+    if (isEditingPreview.current) return;
+    // If this re-render was triggered by an inline edit blur, skip it entirely.
+    // The DOM already shows the correct text optimistically; a full re-render
+    // would replace the iframe document and cause a scroll jump. We only do a
+    // full re-render on the NEXT content change (e.g. source pane edit) or save.
+    if (pendingPreviewAfterEdit.current) {
+      pendingPreviewAfterEdit.current = false;
+      lastPreviewed.current = src; // Mark as seen so we don’t re-render again.
+      return;
+    }
     lastPreviewed.current = src;
     setPreviewing(true);
     setPreviewError(null);
@@ -310,7 +348,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         setPreviewError((await res.text()).slice(0, 400));
         return;
       }
-      setPreviewHtml(await res.text());
+      const html = await res.text();
+      setPreviewHtml(html);
     } catch (e) {
       setPreviewError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -318,6 +357,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     }
   }, [brand, slug]);
 
+  // PDF is an explicit action: it is the slow, faithful path, so it renders on
+  // demand rather than on every keystroke.
   const runPdfPreview = useCallback(async (src: string) => {
     setPreviewing(true);
     setPreviewError(null);
@@ -344,6 +385,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     }
   }, [brand, slug]);
 
+  // Debounced preview. Skipped while the document has errors — rendering
+  // invalid markdown wastes a worker call and shows the author nothing useful.
   useEffect(() => {
     if (previewTimer.current) clearTimeout(previewTimer.current);
     if (errors.length > 0) return;
@@ -355,6 +398,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     };
   }, [content, errors.length, runHtmlPreview, mode]);
 
+  // First render on mount.
   useEffect(() => {
     runHtmlPreview(initialContent);
     return () => {
@@ -364,15 +408,53 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── CodeMirror 6 mount ─────────────────────────────────────────────────────
   useEffect(() => {
-    if (mode !== "pdf") return;
+    if (!cmContainerRef.current) return;
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: displayContent,
+        extensions: [
+          history(),
+          lineNumbers(),
+          keymap.of([
+            ...defaultKeymap,
+            { key: "Mod-s", run: () => { cmDoSaveRef.current(); return true; } },
+            { key: "Mod-b", run: () => { toggleInlineRef.current("**", "bold text"); return true; } },
+            { key: "Mod-i", run: () => { toggleInlineRef.current("*", "italic text"); return true; } },
+            { key: "Mod-e", run: () => { toggleInlineRef.current("`", "code"); return true; } },
+            { key: "Mod-k", run: () => { insertLinkRef.current(); return true; } },
+          ]),
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged && !isFoldedRef.current) {
+              const newText = update.state.doc.toString();
+              setContent(newText);
+              setSave((s) => (s.kind === "saved" ? { kind: "idle" } : s));
+            }
+          }),
+          ...docgentLanguage(),
+        ],
+      }),
+      parent: cmContainerRef.current,
+    });
+    cmViewRef.current = view;
+    return () => { view.destroy(); cmViewRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Update isFoldedRef
+  // (placed here so it runs before effects that need it)
+
+  // ── Switching to Pages mode renders PDF on demand if the buffer moved since the last one.
+  useEffect(() => {
+    if (editorMode !== "pages") return;
     if (errors.length > 0) return;
     if (content === lastPdfRendered.current && previewUrl) return;
     runPdfPreview(content);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, [editorMode]);
 
-  // ── Save ──────────────────────────────────────────────────────────────────
+  /* ---------------- save ---------------- */
 
   const doSave = useCallback(async () => {
     if (errors.length > 0) {
@@ -387,59 +469,250 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         body: JSON.stringify({
           content,
           baseSha,
-          message: summary.trim()
-            ? `docs(${brand}/${slug}): ${summary.trim()}`
-            : undefined,
+          // Prefixed here rather than in the field so the author writes prose,
+          // not conventional-commit syntax. VersionPanel strips this same
+          // prefix back off for display.
+          message: generateCommitMessage(initialContent, content, brand, slug),
         }),
       });
       const data = await res.json();
-      if (res.status === 409) { setSave({ kind: "stale", message: data.message || "This document changed since you opened it." }); return; }
-      if (res.status === 422) {
-        const first = (data.diagnostics || [])[0];
-        setSave({ kind: "error", message: first ? `Line ${first.line}: ${first.message}` : "Validation failed." });
+
+      if (res.status === 409) {
+        setSave({
+          kind: "stale",
+          message: data.message || "This document changed since you opened it.",
+        });
         return;
       }
-      if (!res.ok) { setSave({ kind: "error", message: data.error || `Save failed (${res.status})` }); return; }
+      if (res.status === 422) {
+        const first = (data.diagnostics || [])[0];
+        setSave({
+          kind: "error",
+          message: first ? `Line ${first.line}: ${first.message}` : "Validation failed.",
+        });
+        return;
+      }
+      if (!res.ok) {
+        setSave({ kind: "error", message: data.error || `Save failed (${res.status})` });
+        return;
+      }
+
       setBaseSha(data.sha);
-      setSummary("");
+      committedContentRef.current = content; // advance baseline so dirty=false
       setSave({ kind: "saved", sha: data.sha, commit: data.commit });
     } catch (e) {
       setSave({ kind: "error", message: e instanceof Error ? e.message : String(e) });
     }
-  }, [brand, slug, content, baseSha, errors.length, summary]);
+  }, [brand, slug, content, baseSha, errors.length, initialContent]);
 
-  // Stable ref for keymap closure
-  const doSaveRef = useRef(doSave);
-  doSaveRef.current = doSave;
+  // Update mutable refs for CM6 keymap closures
+  cmDoSaveRef.current = doSave;
 
+  /**
+   * Soft reconcile: fetch the latest doc SHA, update baseSha so the next
+   * save attempt uses the correct SHA, keep content untouched, and re-arm
+   * autosave by returning to idle. A brief banner confirms the resolution.
+   */
+  const handleReconcile = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/doc/${brand}/${slug}`);
+      if (!res.ok) {
+        setSave({ kind: "error", message: `Failed to fetch latest SHA (${res.status}).` });
+        return;
+      }
+      const data = await res.json();
+      if (data.sha) setBaseSha(data.sha);
+      setSave({ kind: "idle" });
+      setReconcileNote(
+        "Conflict resolved — your edits are intact and will be saved automatically."
+      );
+      setTimeout(() => setReconcileNote(null), 5000);
+    } catch (e) {
+      setSave({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+    }
+  }, [brand, slug]);
+
+  // Autosave: 3 seconds after last content change, when dirty and no errors.
+  useEffect(() => {
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    if (!dirty || errors.length > 0 || save.kind === "saving" || save.kind === "stale") return;
+    autoSaveTimer.current = setTimeout(() => {
+      doSave();
+    }, 3000);
+    return () => {
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content, dirty, errors.length]);
+
+  // Show "Saved ✓" indicator for 3 seconds after a successful save.
+  useEffect(() => {
+    if (save.kind === "saved") {
+      setSavedVisible(true);
+      if (savedFadeTimer.current) clearTimeout(savedFadeTimer.current);
+      savedFadeTimer.current = setTimeout(() => setSavedVisible(false), 3000);
+    } else {
+      setSavedVisible(false);
+    }
+  }, [save.kind]);
+
+  // Cmd/Ctrl+S saves. Authors expect it; without it they will use the browser
+  // save dialog and lose work.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); doSave(); }
-      if ((e.metaKey || e.ctrlKey) && e.key === "/") { e.preventDefault(); setShowPalette((v) => !v); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        doSave();
+      }
+      // Phase 4b: ⌘K opens command palette.
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setCmdPalette((v) => !v);
+        setCmdQuery("");
+        setCmdSelectedIdx(0);
+      }
+      // Escape closes command palette.
+      if (e.key === "Escape") {
+        setCmdPalette(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [doSave]);
 
+  // Warn on navigation with unsaved changes.
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (dirty) { e.preventDefault(); e.returnValue = ""; }
+      if (dirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
 
-  // ── Scroll sync ───────────────────────────────────────────────────────────
+  /* ---------------- scroll sync ---------------- */
 
-  const releaseSync = useCallback(() => {
-    if (syncTimer.current) clearTimeout(syncTimer.current);
-    syncTimer.current = setTimeout(() => { syncLock.current = 0; syncTimer.current = null; }, 80);
+  // Maps logical source lines to pixel offsets inside the textarea.
+  //
+  // scrollTop / lineHeight is wrong here: the textarea soft-wraps, so one
+  // logical line can occupy many visual rows. On a real document that error
+  // compounds badly (a 674-line memo measured ~1272 visual rows, putting the
+  // naive estimate 288 lines out by the midpoint). Instead the wrapped height
+  // of each line is measured once with a mirror element that copies the
+  // textarea metrics, giving exact offsets.
+  const offsets = useRef<number[] | null>(null);
+
+  const measureOffsets = useCallback((): number[] => {
+    const el = textareaRef.current;
+    if (!el) return [0];
+    const cs = getComputedStyle(el);
+    const mirror = document.createElement("div");
+    // Match every property that affects wrapping, then take it out of flow.
+    mirror.style.position = "absolute";
+    mirror.style.visibility = "hidden";
+    mirror.style.pointerEvents = "none";
+    mirror.style.top = "0";
+    mirror.style.left = "-9999px";
+    mirror.style.whiteSpace = "pre-wrap";
+    mirror.style.wordBreak = cs.wordBreak;
+    mirror.style.overflowWrap = cs.overflowWrap;
+    mirror.style.font = cs.font;
+    mirror.style.fontFamily = cs.fontFamily;
+    mirror.style.fontSize = cs.fontSize;
+    mirror.style.lineHeight = cs.lineHeight;
+    mirror.style.letterSpacing = cs.letterSpacing;
+    mirror.style.tabSize = cs.tabSize;
+    mirror.style.paddingLeft = cs.paddingLeft;
+    mirror.style.paddingRight = cs.paddingRight;
+    mirror.style.boxSizing = cs.boxSizing;
+    mirror.style.width = `${el.clientWidth}px`;
+    document.body.appendChild(mirror);
+
+    const lines = content.split("\n");
+    const out: number[] = new Array(lines.length + 1);
+    // One span per line, measured in a single layout pass.
+    const spans: HTMLElement[] = lines.map((ln) => {
+      const d = document.createElement("div");
+      d.textContent = ln.length ? ln : "\u200b";
+      mirror.appendChild(d);
+      return d;
+    });
+    for (let i = 0; i < spans.length; i++) out[i] = spans[i].offsetTop;
+    out[lines.length] = mirror.scrollHeight;
+    document.body.removeChild(mirror);
+    return out;
+  }, [content]);
+
+  // Re-measure when the text or the pane width changes; both alter wrapping.
+  useEffect(() => {
+    offsets.current = null;
+  }, [content]);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      offsets.current = null;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
-  const lockSync = useCallback((who: 1 | 2) => {
-    syncLock.current = who;
-    if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
-  }, []);
+  const lineOffsets = useCallback((): number[] => {
+    if (!offsets.current) offsets.current = measureOffsets();
+    return offsets.current;
+  }, [measureOffsets]);
+
+  // Fractional source line at the top of the viewport. Fractional so the
+  // preview glides through long wrapped paragraphs instead of stepping.
+  // Pixel offset for a (possibly fractional) source line.
+  // Prefers CM6 block positions when a view is mounted.
+  const offsetForLine = useCallback((line: number): number => {
+    const view = cmViewRef.current;
+    if (view) {
+      try {
+        const doc = view.state.doc;
+        const clampedLine = Math.max(1, Math.min(Math.round(line), doc.lines));
+        const lineObj = doc.line(clampedLine);
+        const block = view.lineBlockAt(lineObj.from);
+        return block?.top ?? 0;
+      } catch { return 0; }
+    }
+    const offs = lineOffsets();
+    const idx = Math.min(offs.length - 2, Math.max(0, Math.floor(line) - 1));
+    const frac = line - Math.floor(line);
+    return offs[idx] + (offs[idx + 1] - offs[idx]) * frac;
+  }, [lineOffsets]);
+
+  // CM6 topSourceLine: read scrollTop from CM6's scrollDOM.
+  const topSourceLine = useCallback((): number => {
+    const view = cmViewRef.current;
+    if (view) {
+      try {
+        const scrollTop = view.scrollDOM.scrollTop;
+        const block = view.lineBlockAtHeight(scrollTop);
+        if (!block) return 1;
+        const lineObj = view.state.doc.lineAt(block.from);
+        return lineObj.number;
+      } catch { return 1; }
+    }
+    // Fallback to textarea-based measure
+    const el = textareaRef.current;
+    if (!el) return 1;
+    const offs = lineOffsets();
+    const y = el.scrollTop;
+    let lo = 0; let hi = offs.length - 1;
+    while (lo < hi - 1) {
+      const mid = (lo + hi) >> 1;
+      if (offs[mid] <= y) lo = mid; else hi = mid;
+    }
+    const span = offs[lo + 1] - offs[lo];
+    const frac = span > 0 ? (y - offs[lo]) / span : 0;
+    return lo + 1 + Math.min(1, Math.max(0, frac));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineOffsets]);
 
   const anchors = useCallback((): { line: number; el: HTMLElement }[] => {
     const doc = frameRef.current?.contentDocument;
@@ -450,107 +723,115 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       .sort((a, b) => a.line - b.line);
   }, []);
 
+  // Absolute document offset of an element inside the iframe. offsetTop is
+  // relative to the offsetParent, which is not the document once blocks sit
+  // inside positioned sections.
   const docTop = useCallback((el: HTMLElement, win: Window): number => {
     const r = el.getBoundingClientRect();
     return r.top + win.scrollY;
   }, []);
 
-  // Get the CM6 scroll DOM element
-  const getScrollEl = useCallback((): HTMLElement | null => {
-    return cmViewRef.current?.scrollDOM ?? null;
+  // Suppresses the echo a programmatic scroll causes on the other pane.
+  //
+  // Two things make a naive flag insufficient. The lock has to be taken
+  // before any layout is read, because forcing layout gives the other pane's
+  // handler a chance to run inside the gap. And scrollTo dispatches its event
+  // asynchronously, so the lock must outlive the call itself; it is released
+  // one frame after the last echoed event rather than on a fixed timer, which
+  // would expire mid-gesture during continuous scrolling.
+  const releaseSync = useCallback(() => {
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(() => {
+      syncLock.current = 0;
+      syncTimer.current = null;
+    }, 80);
   }, []);
 
-  // Line → pixel offset inside CM6 editor
-  const offsetForCmLine = useCallback((lineNum: number): number => {
-    const view = cmViewRef.current;
-    if (!view) return 0;
-    try {
-      const doc = view.state.doc;
-      const clampedLine = Math.max(1, Math.min(lineNum, doc.lines));
-      const lineObj = doc.line(clampedLine);
-      const coords = view.lineBlockAt(lineObj.from);
-      return coords?.top ?? 0;
-    } catch {
-      return 0;
+  const lockSync = useCallback((who: 1 | 2) => {
+    syncLock.current = who;
+    if (syncTimer.current) {
+      clearTimeout(syncTimer.current);
+      syncTimer.current = null;
     }
   }, []);
 
-  // Pixel offset → fractional line number in CM6
-  const cmTopSourceLine = useCallback((): number => {
-    const view = cmViewRef.current;
-    if (!view) return 1;
-    const scrollTop = view.scrollDOM.scrollTop;
-    const block = view.lineBlockAtHeight(scrollTop);
-    if (!block) return 1;
-    try {
-      const line = view.state.doc.lineAt(block.from);
-      return line.number;
-    } catch {
-      return 1;
-    }
-  }, []);
-
+  // Editor -> preview. Interpolates between the two nearest anchors so the
+  // preview tracks continuously rather than jumping block to block.
   const syncEditorToPreview = useCallback(() => {
     if (mode !== "html") return;
+    // In review posture the preview is the primary surface; the source pane
+    // scroll should never drive the preview position.
+    if (posture === "review") return;
+    if (isEditingPreview.current) return;
+    // An echo from a preview-driven scroll: swallow it and re-arm.
     if (syncLock.current === 2) { releaseSync(); return; }
     const win = frameRef.current?.contentWindow;
     if (!win) return;
+
+    // Claim the lock before reading layout below.
     lockSync(1);
+
     const list = anchors();
     if (list.length === 0) { releaseSync(); return; }
-    const line = cmTopSourceLine();
-    let lo = list[0]; let hi = list[list.length - 1];
+
+    const line = topSourceLine();
+    let lo = list[0];
+    let hi = list[list.length - 1];
     for (let i = 0; i < list.length; i++) {
       if (list[i].line <= line) lo = list[i];
       if (list[i].line >= line) { hi = list[i]; break; }
     }
+
     const loTop = docTop(lo.el, win);
     const hiTop = docTop(hi.el, win);
     const span = hi.line - lo.line;
     const frac = span > 0 ? (line - lo.line) / span : 0;
     const target = loTop + (hiTop - loTop) * Math.min(1, Math.max(0, frac));
     const next = Math.max(0, target - 8);
+
+    // Skip sub-pixel corrections; they generate echoes with no visible gain.
     if (Math.abs(win.scrollY - next) < 2) { releaseSync(); return; }
+
     win.scrollTo({ top: next, behavior: "auto" });
     releaseSync();
-  }, [mode, anchors, cmTopSourceLine, docTop, lockSync, releaseSync]);
+  }, [mode, anchors, topSourceLine, docTop, lockSync, releaseSync]);
 
+  // Preview -> editor. Interpolates between the anchors bracketing the
+  // viewport top, then converts that line back to a measured pixel offset.
   const syncPreviewToEditor = useCallback(() => {
     if (mode !== "html") return;
+    if (posture === "review") return;
     if (syncLock.current === 1) { releaseSync(); return; }
-    const scrollEl = getScrollEl();
+    // Use CM6 scrollDOM if available, else fall back to textarea.
+    const scrollEl = cmViewRef.current?.scrollDOM ?? textareaRef.current;
     const win = frameRef.current?.contentWindow;
     if (!scrollEl || !win) return;
+
     lockSync(2);
+
     const list = anchors();
     if (list.length === 0) { releaseSync(); return; }
+
     const y = win.scrollY + 8;
     let lo = list[0]; let hi = list[list.length - 1];
     for (let i = 0; i < list.length; i++) {
-      const top = docTop(list[i].el, win);
-      if (top <= y) lo = list[i];
-      if (top >= y) { hi = list[i]; break; }
+      const t = docTop(list[i].el, win);
+      if (t <= y) lo = list[i];
+      if (t >= y) { hi = list[i]; break; }
     }
+
     const loTop = docTop(lo.el, win);
     const hiTop = docTop(hi.el, win);
     const pxSpan = hiTop - loTop;
     const frac = pxSpan > 0 ? (y - loTop) / pxSpan : 0;
     const line = lo.line + (hi.line - lo.line) * Math.min(1, Math.max(0, frac));
-    const next = Math.max(0, offsetForCmLine(Math.round(line)));
+    const next = Math.max(0, offsetForLine(line));
+
     if (Math.abs(scrollEl.scrollTop - next) < 2) { releaseSync(); return; }
     scrollEl.scrollTop = next;
     releaseSync();
-  }, [mode, anchors, docTop, offsetForCmLine, getScrollEl, lockSync, releaseSync]);
-
-  // Attach CM6 scroll listener
-  useEffect(() => {
-    const view = cmViewRef.current;
-    if (!view) return;
-    const handler = () => syncEditorToPreview();
-    view.scrollDOM.addEventListener("scroll", handler, { passive: true });
-    return () => view.scrollDOM.removeEventListener("scroll", handler);
-  }, [syncEditorToPreview]);
-
+  }, [mode, anchors, docTop, offsetForLine, lockSync, releaseSync]);
+  // Attach the preview-side listener whenever the iframe document changes.
   useEffect(() => {
     if (mode !== "html") return;
     const frame = frameRef.current;
@@ -568,8 +849,171 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     };
   }, [mode, previewHtml, syncPreviewToEditor]);
 
-  // ── Outline / jump ────────────────────────────────────────────────────────
+  // Attach CM6 scroll listener to sync editor → preview
+  useEffect(() => {
+    const view = cmViewRef.current;
+    if (!view) return;
+    const handler = () => syncEditorToPreview();
+    view.scrollDOM.addEventListener("scroll", handler, { passive: true });
+    return () => view.scrollDOM.removeEventListener("scroll", handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncEditorToPreview]);
 
+  /* ---------------- outline ---------------- */
+
+  // Headings are derived from the buffer on every change rather than cached.
+  // A stale outline that points at the wrong line is worse than no outline:
+  // the human loses trust in navigation the first time it lands them badly.
+  // Fenced code blocks are skipped so a '#' comment inside one is not
+  // mistaken for a section.
+  const parsedComments = useMemo(() => parseComments(content), [content]);
+  const openCommentCount = parsedComments.filter((c) => !c.resolved).length;
+
+  const handleResolveComment = useCallback((id: string, resolved: boolean) => {
+    setContent((prev) => setCommentResolved(prev, id, resolved));
+  }, []);
+
+  /**
+   * Returns the source line the user is currently focused on:
+   * 1. The paragraph they last clicked in the preview (most precise)
+   * 2. The scroll-position interpolated from preview anchors (Edit mode)
+   * 3. The textarea cursor line (Source mode)
+   * 4. End of document (fallback)
+   */
+  const currentViewLine = useCallback((): number => {
+    if (editorMode === "source") {
+      const ta = textareaRef.current;
+      if (ta) return ta.value.slice(0, ta.selectionStart).split("\n").length;
+    }
+    const win = frameRef.current?.contentWindow;
+    if (win) {
+      const list = anchors();
+      if (list.length > 0) {
+        const y = win.scrollY + 8;
+        let lo = list[0], hi = list[list.length - 1];
+        for (let i = 0; i < list.length; i++) {
+          const t = docTop(list[i].el, win);
+          if (t <= y) lo = list[i];
+          if (t >= y) { hi = list[i]; break; }
+        }
+        const loTop = docTop(lo.el, win);
+        const hiTop = docTop(hi.el, win);
+        const frac = hiTop > loTop ? (y - loTop) / (hiTop - loTop) : 0;
+        return Math.round(lo.line + (hi.line - lo.line) * Math.min(1, Math.max(0, frac)));
+      }
+    }
+    return content.split("\n").length;
+  }, [editorMode, anchors, docTop, content]);
+
+  const handleAddComment = useCallback((body: string) => {
+    // Use the last-clicked paragraph if available (most accurate), else scroll position.
+    const insertLine = lastClickedLineRef.current ?? currentViewLine();
+    lastClickedLineRef.current = null;
+    const id = `c${Date.now()}`;
+    setContent((prev) => insertComment(prev, insertLine, { id, author: "Andrew", resolved: false, body }));
+    setShowComments(true);
+  }, [currentViewLine]);
+
+  const headings = useMemo<Heading[]>(() => {
+    const lines = content.split("\n");
+    const out: Heading[] = [];
+    let inFence = false;
+    let inFrontmatter = false;
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i];
+      if (i === 0 && raw.trim() === "---") { inFrontmatter = true; continue; }
+      if (inFrontmatter) {
+        if (raw.trim() === "---") inFrontmatter = false;
+        continue;
+      }
+      if (/^\s*(```|~~~)/.test(raw)) { inFence = !inFence; continue; }
+      if (inFence) continue;
+      const m = raw.match(/^(#{1,6})\s+(.*\S)\s*$/);
+      if (m) {
+        // Strip pandoc attribute blocks {.class #id key=val} and .struck etc.
+        // These appear at the end of heading lines and must not be sent to the
+        // rewrite API as part of the heading text — the API looks up the section
+        // by heading text verbatim and will fail to find it if the attribute
+        // block is included ("That scope is empty").
+        const text = m[2].replace(/\s*\{[^}]*\}\s*$/, "").trim();
+        out.push({ line: i + 1, level: m[1].length, text });
+      }
+    }
+    return out;
+  }, [content]);
+
+  // A section runs to the next heading of the same or shallower level.
+  // Folding a level-1 heading therefore folds its subsections too, which is
+  // what "collapse this section" means to a reader.
+  const sectionEnd = useCallback((h: Heading): number => {
+    const lines = content.split("\n").length;
+    const idx = headings.findIndex((x) => x.line === h.line);
+    for (let i = idx + 1; i < headings.length; i++) {
+      if (headings[i].level <= h.level) return headings[i].line - 1;
+    }
+    return lines;
+  }, [content, headings]);
+
+  const folds = useMemo<Fold[]>(() => {
+    return folded
+      .map((line) => {
+        const h = headings.find((x) => x.line === line);
+        if (!h) return null;
+        const end = sectionEnd(h);
+        return end > h.line ? { startLine: h.line, endLine: end } : null;
+      })
+      .filter((f): f is Fold => f !== null)
+      .sort((a, b) => a.startLine - b.startLine);
+  }, [folded, headings, sectionEnd]);
+
+  // Folds are a view over the buffer, so the textarea must show a reduced
+  // string. Editing while folded is disabled rather than remapped: mapping
+  // cursor offsets back through hidden ranges is a well-known source of
+  // silent corruption, and this document is the source of truth for a client
+  // deliverable. Fold to navigate, unfold to edit.
+  const displayContent = useMemo(() => {
+    if (folds.length === 0) return content;
+    const lines = content.split("\n");
+    const out: string[] = [];
+    let i = 0;
+    while (i < lines.length) {
+      const ln = i + 1;
+      const fold = folds.find((f) => f.startLine === ln);
+      if (fold) {
+        out.push(lines[i]);
+        const hidden = fold.endLine - fold.startLine;
+        out.push(`⋯ ${hidden} line${hidden === 1 ? "" : "s"} folded`);
+        i = fold.endLine;
+        continue;
+      }
+      out.push(lines[i]);
+      i++;
+    }
+    return out.join("\n");
+  }, [content, folds]);
+
+  const isFolded = folds.length > 0;
+  isFoldedRef.current = isFolded;
+
+  // Sync displayContent → CM6 when it changes externally (fold/unfold, accept proposal)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const view = cmViewRef.current;
+    if (!view) return;
+    const current = view.state.doc.toString();
+    if (current === displayContent) return;
+    view.dispatch({ changes: { from: 0, to: current.length, insert: displayContent } });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayContent]);
+
+  const toggleFold = useCallback((line: number) => {
+    setFolded((prev) =>
+      prev.includes(line) ? prev.filter((l) => l !== line) : [...prev, line]
+    );
+  }, []);
+
+  // Jumping unfolds anything covering the target, otherwise the scroll lands
+  // on a collapsed placeholder and the human sees nothing.
   const jumpToLine = useCallback((line: number) => {
     setFolded((prev) =>
       prev.filter((f) => {
@@ -580,30 +1024,91 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       })
     );
     requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) {
+        // Edit/Review mode: scroll the iframe preview to the nearest heading
+        // anchor that matches this source line.
+        const win = frameRef.current?.contentWindow;
+        const doc = frameRef.current?.contentDocument;
+        if (!win || !doc) return;
+        const allAnchors = Array.from(doc.querySelectorAll<HTMLElement>("[data-source-line]"))
+          .map((node) => ({ line: Number(node.dataset.sourceLine), node }))
+          .filter((a) => Number.isFinite(a.line))
+          .sort((a, b) => a.line - b.line);
+        if (allAnchors.length === 0) return;
+        // Find closest anchor at or before the requested line.
+        let best = allAnchors[0];
+        for (const a of allAnchors) {
+          if (a.line <= line) best = a;
+          else break;
+        }
+        // scrollIntoView({ block: "start" }) puts the heading flush at the viewport top.
+        // Scroll manually to leave ~80px of breathing room above — matches Word/Docs feel.
+        const nodeRect = best.node.getBoundingClientRect();
+        const bodyRect = doc.documentElement.getBoundingClientRect();
+        const absoluteTop = nodeRect.top - bodyRect.top;
+        win.scrollTo({ top: Math.max(0, absoluteTop - 80), behavior: "smooth" });
+        return;
+      }
+      // Use CM6 if available, else fall back to textarea.
       const view = cmViewRef.current;
-      if (!view) return;
-      try {
-        const doc = view.state.doc;
-        const lineObj = doc.line(Math.max(1, Math.min(line, doc.lines)));
-        view.dispatch({
-          selection: { anchor: lineObj.from },
-          scrollIntoView: true,
-        });
-        view.focus();
-        syncEditorToPreview();
-      } catch { /* ignore */ }
+      if (view) {
+        try {
+          const doc = view.state.doc;
+          const lineObj = doc.line(Math.max(1, Math.min(line, doc.lines)));
+          view.dispatch({ selection: { anchor: lineObj.from }, scrollIntoView: true });
+          view.focus();
+        } catch { /* ignore */ }
+      } else {
+        offsets.current = null;
+        const offs = lineOffsets();
+        const idx = Math.min(offs.length - 2, Math.max(0, line - 1));
+        el.scrollTop = Math.max(0, offs[idx] - 8);
+        el.focus();
+        const pos = content.split("\n").slice(0, line - 1).join("\n").length + (line > 1 ? 1 : 0);
+        el.setSelectionRange(pos, pos);
+      }
+      syncEditorToPreview();
     });
-  }, [headings, sectionEnd, syncEditorToPreview]);
+  }, [headings, sectionEnd, lineOffsets, content, syncEditorToPreview]);
 
-  // ── Text editing helpers ──────────────────────────────────────────────────
+  // Unfold only — same fold-removal logic as jumpToLine but without stealing
+  // focus or scrolling the source textarea. Used by the preview click handler
+  // so clicking a contenteditable element in a folded section doesn't hand
+  // focus back to the textarea the moment the author starts typing.
+  const unfoldLine = useCallback((line: number) => {
+    setFolded((prev) =>
+      prev.filter((f) => {
+        const h = headings.find((x) => x.line === f);
+        if (!h) return false;
+        if (h.line === line) return false;
+        return !(line > h.line && line <= sectionEnd(h));
+      })
+    );
+  }, [headings, sectionEnd]);
 
-  // Core edit primitive: replaces a range in the buffer and sets the CM6
-  // selection. All formatting flows through here.
+  /* ---------------- markdown formatting ---------------- */
+
+  // ── CM6 helpers ───────────────────────────────────────────────────────────
+  const getDoc = useCallback((): string => {
+    return cmViewRef.current ? cmViewRef.current.state.doc.toString() : content;
+  }, [content]);
+
+  const getSelection = useCallback((): { start: number; end: number } => {
+    if (!cmViewRef.current) return { start: 0, end: 0 };
+    const sel = cmViewRef.current.state.selection.main;
+    return { start: sel.from, end: sel.to };
+  }, []);
+
+  // All formatting rewrites the buffer through a single primitive: replace a
+  // range and restore a selection. Going through one path means undo history,
+  // fold-guarding and preview invalidation behave identically for every
+  // button, rather than each action inventing its own edge cases.
   const applyEdit = useCallback(
     (next: string, selStart: number, selEnd: number) => {
       setContent(next);
       setSave((s) => (s.kind === "saved" ? { kind: "idle" } : s));
-      // Push the change to CM6 and restore selection
+      // Push to CM6
       const view = cmViewRef.current;
       if (view) {
         const current = view.state.doc.toString();
@@ -612,27 +1117,1092 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           selection: { anchor: selStart, head: selEnd },
         });
         view.focus();
+      } else {
+        // Fallback to textarea for code paths that still use it
+        requestAnimationFrame(() => {
+          const el = textareaRef.current;
+          if (!el) return;
+          el.focus();
+          el.setSelectionRange(selStart, selEnd);
+        });
       }
     },
     []
   );
 
-  // Helper: get the current selection from CM6 (or fallback 0,0)
-  const getSelection = useCallback((): { start: number; end: number } => {
-    const view = cmViewRef.current;
-    if (!view) return { start: 0, end: 0 };
-    const sel = view.state.selection.main;
-    return { start: sel.from, end: sel.to };
+  /* ---------------- annotation (Phase 10) ----------------
+   * Review-mode click-to-annotate. Reuses the same [data-source-line]
+   * anchors the scroll sync already walks, so "which line did this click
+   * land on" is one function, not two competing implementations of nearest-
+   * anchor lookup. Opens a one-line composer; committing writes a note
+   * vocabulary block (never an HTML comment -- HANDOVER.md section 7b,
+   * decision 1) on the line right after the clicked paragraph. */
+  const openNoteAt = useCallback(
+    (clientY: number) => {
+      const win = frameRef.current?.contentWindow;
+      if (!win) return;
+      const all = anchors();
+      if (all.length === 0) return;
+      const y = clientY + win.scrollY;
+      let nearest = all[0];
+      let best = Infinity;
+      for (const a of all) {
+        const d = Math.abs(docTop(a.el, win) - y);
+        if (d < best) { best = d; nearest = a; }
+      }
+      const top = Math.max(0, offsetForLine(nearest.line) - (textareaRef.current?.scrollTop ?? 0));
+      setNoteDraft("");
+      setNoteTarget({ line: nearest.line, top });
+    },
+    [anchors, docTop, offsetForLine]
+  );
+
+  const closeNote = useCallback(() => {
+    setNoteTarget(null);
+    setNoteDraft("");
   }, []);
 
-  const getDoc = useCallback((): string => {
-    const view = cmViewRef.current;
-    return view ? view.state.doc.toString() : content;
-  }, [content]);
+  // Inserts the note block as its own paragraph directly after the target
+  // line. A trailing blank line guarantees pandoc parses it as a new fenced
+  // div rather than folding it into the preceding paragraph.
+  const commitNote = useCallback(() => {
+    if (!noteTarget || !noteDraft.trim()) { closeNote(); return; }
+    const lines = content.split("\n");
+    const insertAt = Math.min(lines.length, noteTarget.line);
+    const block = ["", '::: note {author="reviewer"}', noteDraft.trim(), ":::", ""];
+    lines.splice(insertAt, 0, ...block);
+    const joined = lines.join("\n");
+    applyEdit(joined, offsetForLine(insertAt + 1), offsetForLine(insertAt + 1));
+    closeNote();
+  }, [noteTarget, noteDraft, content, applyEdit, offsetForLine, closeNote]);
 
+  /* ---------------- inline preview editing --------------------------------
+   * The preview pane is the primary editing surface. Clicking any rendered
+   * paragraph, heading or list item makes it contenteditable in place.
+   *
+   * On blur:
+   *   1. The DOM element text is updated immediately (optimistic — already
+   *      visible since the user just typed it).
+   *   2. patchMarkdownBlock writes the new text back to the Markdown buffer,
+   *      which triggers the debounced re-render and the dirty/save flow.
+   *   3. The full re-render from the worker arrives ~1.2 s later and replaces
+   *      the iframe content, catching any Markdown formatting side-effects.
+   *
+   * Code blocks are not directly editable — clicking them jumps the source
+   * textarea to that line instead. Tables, callout boxes, and list items are
+   * all editable in place via makeEditable. */
+  const INLINE_EDITABLE_TAGS = new Set(["P", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "TD", "TH"]);
+
+  // Patch a single rendered element's text back into the Markdown buffer.
+  // Handles headings (preserves hashes), bullets, numbered lists, and plain
+  // paragraphs. For multi-line Markdown paragraphs the rendered element maps
+  // to the first source line — the full paragraph text replaces that one line.
+  const patchMarkdownBlock = useCallback((sourceLine: number, newText: string) => {
+    const lines = content.split("\n");
+    const idx = sourceLine - 1;
+    if (idx < 0 || idx >= lines.length) return;
+    const original = lines[idx];
+    const headingMatch  = original.match(/^(#{1,6}\s+)/);
+    const bulletMatch   = original.match(/^(\s*[-*+]\s+)/);
+    const numberedMatch = original.match(/^(\s*\d+\.\s+)/);
+    let prefix = "";
+    if (headingMatch)       prefix = headingMatch[1];
+    else if (bulletMatch)   prefix = bulletMatch[1];
+    else if (numberedMatch) prefix = numberedMatch[1];
+    lines[idx] = prefix + newText.trim();
+    applyEdit(lines.join("\n"), 0, 0);
+  }, [content, applyEdit]);
+
+  // Get the character offset of a DOM node+offset within a contenteditable
+  // element, using a Range to measure the text length before the point.
+  // Works in same-origin iframes by accepting the iframe window's document.
+  const getTextOffset = useCallback((doc: Document, el: HTMLElement, node: Node, offset: number): number => {
+    const range = doc.createRange();
+    range.setStart(el, 0);
+    range.setEnd(node, offset);
+    return range.toString().length;
+  }, []);
+
+  // Returns { start, end } character offsets of the current selection inside
+  // activeEditEl. Prefers a live iframe Selection; falls back to the snapshot
+  // saved at the last format-bar mousedown (the host-frame click can clear the
+  // iframe selection before the handler runs).
+  const getIframeSelection = useCallback((): { start: number; end: number } | null => {
+    const el = activeEditEl.current;
+    if (!el) return null;
+    const win = frameRef.current?.contentWindow;
+    const doc = frameRef.current?.contentDocument;
+    if (!win || !doc) return null;
+    const sel = win.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      const start = getTextOffset(doc, el, range.startContainer, range.startOffset);
+      const end   = getTextOffset(doc, el, range.endContainer,   range.endOffset);
+      return { start, end };
+    }
+    // Fallback: saved snapshot from the most recent format-bar mousedown.
+    return savedIframeSelection.current;
+  }, [getTextOffset]);
+
+  // Restore the selection inside a contenteditable element after its innerText
+  // has been replaced. innerText sets a single text node as the only child,
+  // so we can directly address it.
+  const restoreIframeSelection = useCallback((el: HTMLElement, start: number, end: number) => {
+    const win = frameRef.current?.contentWindow;
+    const doc = frameRef.current?.contentDocument;
+    if (!win || !doc) return;
+    const textNode = el.firstChild;
+    if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return;
+    const len = (textNode as Text).length;
+    const sel = win.getSelection();
+    if (!sel) return;
+    const range = doc.createRange();
+    range.setStart(textNode, Math.min(start, len));
+    range.setEnd(textNode, Math.min(end, len));
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }, []);
+
+  // Make a rendered preview element editable. Called on click.
+  const makeEditable = useCallback((el: HTMLElement) => {
+    const sourceLine   = Number(el.dataset.sourceLine);
+    const originalText = el.innerText;
+
+    // Mark editing active BEFORE focus so the debounced re-render is
+    // suppressed immediately — not after the first timer fires.
+    isEditingPreview.current = true;
+    // Track this element so format bar buttons can operate on it.
+    activeEditEl.current = el;
+
+    // Prevent focus() from scrolling the element into view, which causes
+    // the page-jump. Save the iframe scroll position, focus, then restore.
+    const win = frameRef.current?.contentWindow;
+    const ifrDoc = frameRef.current?.contentDocument;
+    const scrollBefore = win?.scrollY ?? 0;
+    // Use setAttribute for Safari compatibility: in some WebKit versions the
+    // contentEditable property assignment is not enough to enable editing in a
+    // sandboxed iframe — setAttribute fires the attribute mutation that WebKit
+    // needs to wire up its text input handling.
+    el.setAttribute("contenteditable", "true");
+    el.focus({ preventScroll: true });
+    // preventScroll is not supported in all browsers; belt-and-suspenders.
+    if (win && win.scrollY !== scrollBefore) {
+      win.scrollTo({ top: scrollBefore, behavior: "instant" as ScrollBehavior });
+    }
+    // Safari does not reliably place the cursor after focus() on a
+    // contenteditable element. After one animation frame, check whether the
+    // selection is empty and, if so, explicitly collapse it to the end of
+    // the element so the user can start typing immediately.
+    if (win && ifrDoc) {
+      requestAnimationFrame(() => {
+        const sel = win.getSelection();
+        if (sel && sel.rangeCount === 0) {
+          const range = ifrDoc.createRange();
+          range.selectNodeContents(el);
+          range.collapse(false); // collapse to end
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      });
+    }
+
+    const handleKeydown = (ke: KeyboardEvent) => {
+      if (ke.key === "Escape") {
+        el.innerText = originalText;
+        el.removeEventListener("keydown", handleKeydown);
+        el.blur();
+      } else if (
+        ke.key === "Enter" && !ke.shiftKey &&
+        el.tagName !== "P" && el.tagName !== "LI"
+      ) {
+        ke.preventDefault();
+        el.removeEventListener("keydown", handleKeydown);
+        el.blur();
+      }
+    };
+
+    const handleBlur = () => {
+      el.removeEventListener("keydown", handleKeydown);
+      el.setAttribute("contenteditable", "false");
+      // Clear the active edit element reference on blur.
+      activeEditEl.current = null;
+      const edited = el.innerText;
+      if (edited.trim() !== originalText.trim()) {
+        // Set the flag BEFORE clearing isEditingPreview so that
+        // syncEditorToPreview stays suppressed through the entire
+        // applyEdit -> textarea scroll -> sync cycle.
+        pendingPreviewAfterEdit.current = true;
+        patchMarkdownBlock(sourceLine, edited);
+      }
+      // Clear AFTER patchMarkdownBlock so syncEditorToPreview is still
+      // blocked when applyEdit triggers the textarea scroll event.
+      // Use rAF to let the scroll event fire and be swallowed first.
+      requestAnimationFrame(() => {
+        isEditingPreview.current = false;
+      });
+    };
+
+    el.addEventListener("blur",    handleBlur,    { once: true });
+    el.addEventListener("keydown", handleKeydown);
+  }, [patchMarkdownBlock]);
+
+  // Inject zoom gesture handlers into the iframe document.
+  //
+  // Intercepts ⌘+scroll (wheel with metaKey) and the non-standard GestureEvent
+  // (Safari pinch) on the iframe's own document, prevents the browser from
+  // treating them as a viewport zoom, and instead applies CSS zoom to
+  // document.body directly. Same-origin iframes let us do this without any
+  // postMessage indirection.
+  //
+  // Why body.style.zoom and not transform: scale()?
+  // CSS zoom reflows the document at the new logical width, so text wraps
+  // and columns resize exactly like Word / Google Docs. transform: scale()
+  // just scales pixels — layout stays fixed and the pane gets scroll bars.
+  //
+  // Re-injected on every iframe load (previewHtml change) because srcDoc
+  // replaces the entire document and the listeners are lost.
+  const injectZoomHandlers = useCallback(() => {
+    const doc = frameRef.current?.contentDocument;
+    if (!doc || doc.getElementById("__docgent_zoom")) return;
+
+    // Marker so we don't double-inject.
+    const marker = doc.createElement("meta");
+    marker.id = "__docgent_zoom";
+    doc.head.appendChild(marker);
+
+    // Pure CSS zoom, with React state updates throttled via rAF.
+    //
+    // Previous two-phase approach (transform during pinch, CSS zoom on settle)
+    // caused two bugs:
+    //   1. transform-origin:top-left right-aligns centered content during pinch
+    //   2. Switching between transform and CSS zoom mid-gesture causes a
+    //      visible jump as layout snaps between the two models
+    //
+    // The actual source of Safari jank was not CSS zoom itself — it's
+    // setPreviewZoom() triggering a full React re-render of the entire editor
+    // component on every pinch frame (~60/s). CSS zoom on the iframe body is
+    // fast; React rendering the whole editor is not.
+    //
+    // Fix: apply CSS zoom directly on every wheel event (no React), then
+    // batch the React state update via requestAnimationFrame so the toolbar
+    // number updates at most once per animation frame rather than 60 times.
+    //
+    // CSS zoom is correct here: it reflows the document at the new logical
+    // width so text wraps and columns resize, exactly like Word/Google Docs.
+    // transform: scale() keeps the old layout width and just scales pixels.
+
+    let rafPending = false;
+
+    const applyZoom = (zoom: number) => {
+      doc.body.style.zoom = String(zoom / 100);
+      // Batch React state update to once per frame — keeps toolbar in sync
+      // without triggering per-event re-renders.
+      if (!rafPending) {
+        rafPending = true;
+        (doc.defaultView ?? window).requestAnimationFrame(() => {
+          setPreviewZoom(Math.round(previewZoomRef.current));
+          rafPending = false;
+        });
+      }
+    };
+
+    doc.addEventListener("wheel", (e: WheelEvent) => {
+      if (!e.metaKey && !e.ctrlKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const pixelDelta = e.deltaMode === 0 ? e.deltaY :
+                         e.deltaMode === 1 ? e.deltaY * 16 :
+                         e.deltaY * 100;
+      const sensitivity = (e.ctrlKey && !e.metaKey) ? 0.5 : 0.15;
+      const next = Math.min(200, Math.max(50, previewZoomRef.current + (-pixelDelta * sensitivity)));
+      previewZoomRef.current = next;
+      applyZoom(next);
+    }, { passive: false });
+
+    // Apply the current zoom immediately in case we're re-injecting after
+    // a preview reload that reset the body style.
+    if (previewZoomRef.current !== 100) {
+      doc.body.style.zoom = String(previewZoomRef.current / 100);
+    }
+  }, []);
+
+  // Inject a hover cursor into the iframe document so editable elements show
+  // a text cursor on mouseover, making the surface discoverable.
+  const injectEditCursor = useCallback(() => {
+    const doc = frameRef.current?.contentDocument;
+    if (!doc || doc.getElementById("__docgent_edit_cursor")) return;
+    const style = doc.createElement("style");
+    style.id = "__docgent_edit_cursor";
+    style.textContent = [
+      "p[data-source-line], h1[data-source-line], h2[data-source-line],",
+      "h3[data-source-line], h4[data-source-line], h5[data-source-line],",
+      "h6[data-source-line], li[data-source-line], td, th { cursor: text; }",
+      "p[data-source-line]:hover, h1[data-source-line]:hover, h2[data-source-line]:hover,",
+      "h3[data-source-line]:hover, h4[data-source-line]:hover, h5[data-source-line]:hover,",
+      "h6[data-source-line]:hover, li[data-source-line]:hover, td:hover, th:hover {",
+      "  background: rgba(99,102,241,0.06); border-radius: 3px; outline: 1px solid rgba(99,102,241,0.2);",
+      "}",
+      ".src-anchor:hover > p, .src-anchor:hover > li { background: rgba(99,102,241,0.06); border-radius: 3px; outline: 1px solid rgba(99,102,241,0.2); }",
+      /* Comment anchor styles — injected once, updated via injectCommentHighlights */
+      ".comment-anchor { display: block; height: 0; overflow: visible; }",
+      ".comment-highlighted { background: rgba(253,224,71,0.35) !important; border-radius: 3px; outline: 2px solid rgba(202,138,4,0.4); }",
+      ".comment-highlighted-active { background: rgba(253,224,71,0.6) !important; outline: 2px solid rgba(202,138,4,0.8); }",
+    ].join(" ");
+    doc.head.appendChild(style);
+  }, []);
+
+  /**
+   * Inject/refresh yellow highlights into the preview iframe for each comment.
+   * Finds the <span data-comment-id> anchor the render worker emitted, then
+   * highlights the next sibling block element (the paragraph the comment sits above).
+   */
+  const injectCommentHighlights = useCallback((activeId?: string | null) => {
+    const doc = frameRef.current?.contentDocument;
+    if (!doc) return;
+    // Clear previous highlights.
+    doc.querySelectorAll(".comment-highlighted, .comment-highlighted-active").forEach((el) => {
+      el.classList.remove("comment-highlighted", "comment-highlighted-active");
+    });
+    doc.querySelectorAll<HTMLElement>("[data-comment-id]").forEach((anchor) => {
+      // Find the next meaningful sibling — skip empty text nodes.
+      let target: Element | null = anchor.nextElementSibling;
+      // If the anchor is inside a wrapper (e.g. a div), go up and find the next block.
+      if (!target) {
+        let p: Element | null = anchor;
+        while (p && !target) {
+          target = p.nextElementSibling;
+          p = p.parentElement;
+        }
+      }
+      if (!target) return;
+      const id = anchor.dataset.commentId;
+      target.classList.add(id === activeId ? "comment-highlighted-active" : "comment-highlighted");
+    });
+  }, []);
+
+  /**
+   * Scroll the preview iframe to a comment anchor by id.
+   */
+  const jumpToComment = useCallback((id: string) => {
+    const doc = frameRef.current?.contentDocument;
+    const win = frameRef.current?.contentWindow;
+    if (!doc || !win) return;
+    const anchor = doc.querySelector<HTMLElement>(`[data-comment-id="${id}"]`);
+    if (!anchor) return;
+    // Walk offsetParent chain from the <p> parent (pandoc wraps the span in a <p>)
+    // for absolute document position.
+    const target = anchor.parentElement ?? anchor;
+    let absTop = 0;
+    let el: HTMLElement | null = target;
+    while (el) {
+      absTop += el.offsetTop;
+      el = el.offsetParent as HTMLElement | null;
+    }
+    win.scrollTo({ top: Math.max(0, absTop - 100), behavior: "smooth" });
+    // Re-highlight with this one as active.
+    injectCommentHighlights(id);
+    // Clear active state after 2s.
+    setTimeout(() => injectCommentHighlights(null), 2000);
+  }, [injectCommentHighlights]);
+
+  // Stable refs so the iframe click handler never goes stale when React
+  // state changes. Updated synchronously on every render.
+  const postureRef    = useRef<Posture>(posture);
+  const makeEditableRef = useRef(makeEditable);
+  const openNoteAtRef   = useRef(openNoteAt);
+  const anchorsRef      = useRef(anchors);
+  const docTopRef       = useRef(docTop);
+  const jumpToLineRef   = useRef(jumpToLine);
+  const unfoldLineRef   = useRef(unfoldLine);
+  const doSaveRef       = useRef(doSave);
+  postureRef.current    = posture;
+  makeEditableRef.current = makeEditable;
+  openNoteAtRef.current   = openNoteAt;
+  anchorsRef.current      = anchors;
+  docTopRef.current       = docTop;
+  jumpToLineRef.current   = jumpToLine;
+  unfoldLineRef.current   = unfoldLine;
+  doSaveRef.current       = doSave;
+
+  // Stable keydown handler for the iframe document — intercepts ⌘S/Ctrl+S so
+  // the browser's native Save dialog never appears when focus is in the preview.
+  const iframeSaveHandler = useRef<((e: KeyboardEvent) => void) | null>(null);
+  if (!iframeSaveHandler.current) {
+    iframeSaveHandler.current = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        doSaveRef.current();
+      }
+    };
+  }
+
+  // Stable click handler — created once, reads current values via refs.
+  const iframeClickHandler = useRef<((e: MouseEvent) => void) | null>(null);
+  if (!iframeClickHandler.current) {
+    iframeClickHandler.current = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      const frame  = frameRef.current;
+      if (!target || !frame) return;
+      const doc = frame.contentDocument;
+      const win = frame.contentWindow;
+      if (!doc || !win) return;
+
+      // Fix: intercept <a href="…"> clicks inside the preview so TOC links
+      // scroll within the document rather than navigating the iframe to the
+      // Studio edit URL (which loads the full app inside the preview frame).
+      {
+        let t: HTMLElement | null = target;
+        while (t && t !== doc.body) {
+          if (t.tagName === "A") {
+            const href = (t as HTMLAnchorElement).getAttribute("href") ?? "";
+            if (href.startsWith("#")) {
+              e.preventDefault();
+              const id = href.slice(1);
+              const dest = doc.getElementById(id) ||
+                (doc.querySelector(`[name="${id}"]`) as HTMLElement | null);
+              if (dest) dest.scrollIntoView({ behavior: "smooth", block: "start" });
+              return;
+            }
+            // Any other link inside the preview — prevent accidental navigation.
+            e.preventDefault();
+            return;
+          }
+          t = t.parentElement;
+        }
+      }
+
+      // Walk up to find an editable element.
+      //
+      // Cases:
+      //   1. Headings (h2–h6) / TD / TH: data-source-line is stamped directly
+      //      on the element by the Lua filter.
+      //   2. Paragraphs: the Lua filter wraps them in a src-anchor div.
+      //   3. List items: the Lua filter wraps the entire <ul>/<ol> in a single
+      //      src-anchor div, so we must resolve to the specific <li> clicked,
+      //      not the first child of the wrapper.
+      //   4. Callout boxes / fenced divs: inner paragraphs are wrapped in
+      //      src-anchor divs inside the callout — same as case 2.
+      //   5. h1 headings: the Lua filter wraps them in a section-opener div
+      //      with no data-source-line on the <h1> itself. We detect the
+      //      section-opener parent and use the nearest heading as the edit
+      //      target, borrowing the line from the next src-anchor sibling.
+      //   6. Table cells: borrow data-source-line from nearest TR/TABLE
+      //      ancestor when the cell itself has no line stamp.
+
+      // Pre-pass: if we clicked inside a <li>, resolve it first (case 3) so
+      // the upward walk doesn’t accidentally grab a src-anchor before we
+      // identify the right list item.
+      let clickedLi: HTMLElement | null = null;
+      {
+        let t: HTMLElement | null = target;
+        while (t && t !== doc.body) {
+          if (t.tagName === "LI") { clickedLi = t; break; }
+          t = t.parentElement;
+        }
+      }
+
+      // Inline phrasing elements that are never editable targets themselves.
+      // When the click starts on STRONG, EM, CODE, SPAN, A, etc. the walk
+      // should pass straight through them to the containing block element
+      // (P, LI, Hx) so the normal cases can match. Without this guard the
+      // generic fallback at the bottom of the loop would still move el to
+      // parentElement, but the Case (7) bold-intro check depends on el being
+      // a <P> — if el is still <STRONG> when we test `el.tagName === "P"` it
+      // will never match, and the paragraph becomes unclickable.
+      const INLINE_SKIP_TAGS = new Set(["STRONG", "EM", "B", "I", "CODE", "SPAN", "A", "S", "U", "MARK", "SUB", "SUP", "ABBR", "CITE", "Q", "TIME"]);
+
+      let editEl: HTMLElement | null = null;
+      let el: HTMLElement | null = target;
+      while (el && el !== doc.body) {
+        // Skip inline/phrasing elements entirely — continue upward to the
+        // containing block (P, LI, Hx) so the block-level cases can match.
+        if (INLINE_SKIP_TAGS.has(el.tagName)) {
+          el = el.parentElement;
+          continue;
+        }
+        if (INLINE_EDITABLE_TAGS.has(el.tagName) && el.dataset.sourceLine) {
+          // Case (1): element directly carries source line.
+          editEl = el;
+          break;
+        }
+        if (el.dataset.sourceLine && el.classList.contains("src-anchor")) {
+          if (clickedLi) {
+            // Case (3): list item — use the specific <li> clicked, not the
+            // first child of the wrapper.
+            if (!clickedLi.dataset.sourceLine) {
+              clickedLi.dataset.sourceLine = el.dataset.sourceLine;
+            }
+            editEl = clickedLi;
+          } else {
+            // Case (2)/(4): paragraph / callout — first editable child.
+            const child = el.querySelector<HTMLElement>(
+              "p, h1, h2, h3, h4, h5, h6"
+            );
+            if (child) {
+              if (!child.dataset.sourceLine) {
+                child.dataset.sourceLine = el.dataset.sourceLine;
+              }
+              editEl = child;
+            }
+          }
+          break;
+        }
+        // Case (5): h1 inside a section-opener div. The Lua filter generates
+        //   <div class="section-opener">...<h1 class="section-h1">...</h1></div>
+        // with no data-source-line on the h1. Find the source line from the
+        // next sibling src-anchor after the section-opener.
+        if (el.classList.contains("section-opener")) {
+          const h1 = el.querySelector<HTMLElement>("h1");
+          if (h1) {
+            // Look for the nearest following src-anchor sibling to borrow its line.
+            let sib = el.nextElementSibling as HTMLElement | null;
+            while (sib) {
+              if (sib.dataset.sourceLine) {
+                h1.dataset.sourceLine = sib.dataset.sourceLine;
+                break;
+              }
+              sib = sib.nextElementSibling as HTMLElement | null;
+            }
+            if (h1.dataset.sourceLine) {
+              editEl = h1;
+              break;
+            }
+          }
+        }
+        // Case (7): bare <p> with no data-source-line. Two sub-cases:
+        //   a. The <p> is a direct child of a src-anchor wrapper — borrow the
+        //      wrapper's line. This covers bold-intro paragraphs like
+        //      "**Increm is not a valuation firm.**..." where the Lua filter
+        //      wraps the whole paragraph in a src-anchor but doesn't stamp the
+        //      <p> itself.
+        //   b. No src-anchor parent — search preceding/following siblings.
+        if (el.tagName === "P" && !el.dataset.sourceLine && !clickedLi) {
+          // Subcase (a): parent is a src-anchor — borrow directly.
+          const parent7 = el.parentElement;
+          if (parent7?.classList.contains("src-anchor") && parent7.dataset.sourceLine) {
+            el.dataset.sourceLine = parent7.dataset.sourceLine;
+          }
+          // Subcase (b): sibling search (same parent).
+          if (!el.dataset.sourceLine) {
+            let sib = el.previousElementSibling as HTMLElement | null;
+            while (sib) {
+              if (sib.dataset.sourceLine) {
+                el.dataset.sourceLine = sib.dataset.sourceLine;
+                break;
+              }
+              sib = sib.previousElementSibling as HTMLElement | null;
+            }
+          }
+          if (!el.dataset.sourceLine) {
+            // Try next sibling as fallback.
+            let nsib = el.nextElementSibling as HTMLElement | null;
+            while (nsib) {
+              if (nsib.dataset.sourceLine) {
+                el.dataset.sourceLine = nsib.dataset.sourceLine;
+                break;
+              }
+              nsib = nsib.nextElementSibling as HTMLElement | null;
+            }
+          }
+          if (el.dataset.sourceLine) {
+            editEl = el;
+            break;
+          }
+        }
+        // Case (5b): any heading (h1–h6) with no data-source-line that did not
+        // match the section-opener check above. Handles h1 section-opener headings
+        // when the click lands directly on the <h1> (not on the wrapper div).
+        // Walk: ancestors → preceding siblings of the element itself → forward
+        // siblings of the *parent* (needed for section-opener h1s whose source
+        // line lives on the next sibling src-anchor of the section-opener div).
+        if (
+          ["H1","H2","H3","H4","H5","H6"].includes(el.tagName) &&
+          !el.dataset.sourceLine
+        ) {
+          // Walk up ancestors.
+          let anc: HTMLElement | null = el.parentElement;
+          while (anc && anc !== doc.body) {
+            if (anc.dataset.sourceLine) {
+              el.dataset.sourceLine = anc.dataset.sourceLine;
+              break;
+            }
+            anc = anc.parentElement;
+          }
+          // Walk preceding siblings inside the same parent.
+          if (!el.dataset.sourceLine) {
+            let sib = el.previousElementSibling as HTMLElement | null;
+            while (sib) {
+              if (sib.dataset.sourceLine) {
+                el.dataset.sourceLine = sib.dataset.sourceLine;
+                break;
+              }
+              sib = sib.previousElementSibling as HTMLElement | null;
+            }
+          }
+          // Walk forward siblings of the element itself. This covers brands
+          // (e.g. northface) where the h1 follows a `.section-number` eyebrow
+          // div as a bare sibling — NOT wrapped in a `.section-opener`. The
+          // source line lives on the next `.src-anchor` sibling after the h1.
+          if (!el.dataset.sourceLine) {
+            let fsib = el.nextElementSibling as HTMLElement | null;
+            while (fsib) {
+              if (fsib.dataset.sourceLine) {
+                el.dataset.sourceLine = fsib.dataset.sourceLine;
+                break;
+              }
+              fsib = fsib.nextElementSibling as HTMLElement | null;
+            }
+          }
+          // For section-opener h1s: the source line is on the next sibling of
+          // the section-opener *parent* div. Walk forward siblings of the parent.
+          if (!el.dataset.sourceLine && el.parentElement?.classList.contains("section-opener")) {
+            let psib = el.parentElement.nextElementSibling as HTMLElement | null;
+            while (psib) {
+              if (psib.dataset.sourceLine) {
+                el.dataset.sourceLine = psib.dataset.sourceLine;
+                break;
+              }
+              psib = psib.nextElementSibling as HTMLElement | null;
+            }
+          }
+          if (el.dataset.sourceLine) {
+            editEl = el;
+            break;
+          }
+        }
+        // Case (6): table cell — borrow data-source-line from nearest ancestor.
+        if ((el.tagName === "TD" || el.tagName === "TH") && !el.dataset.sourceLine) {
+          let ancestor: HTMLElement | null = el.parentElement;
+          while (ancestor && ancestor !== doc.body) {
+            if (ancestor.dataset.sourceLine) {
+              el.dataset.sourceLine = ancestor.dataset.sourceLine;
+              break;
+            }
+            ancestor = ancestor.parentElement;
+          }
+          if (el.dataset.sourceLine) {
+            editEl = el;
+            break;
+          }
+        }
+        el = el.parentElement;
+      }
+
+      if (editEl) {
+        e.preventDefault();
+        const srcLine = Number(editEl.dataset.sourceLine);
+        // Capture click position for comment insertion — cleared after use.
+        if (srcLine > 0) lastClickedLineRef.current = srcLine;
+        // If a section containing this line is folded, remove the fold so the
+        // source textarea is no longer read-only. Use unfoldLine (not
+        // jumpToLine) so focus is NOT moved to the textarea — jumpToLine calls
+        // el.focus() in a rAF, which would steal focus back from the
+        // contenteditable element the moment the author starts typing.
+        if (srcLine > 0) unfoldLineRef.current(srcLine);
+        makeEditableRef.current(editEl);
+        return;
+      }
+
+      // Non-editable click — in review posture just ignore it (clicking a
+      // table or figure shouldn't move anything). In source posture, jump
+      // to the nearest source line so the textarea scrolls to context.
+      if (postureRef.current === "edit") {
+        const all = anchorsRef.current();
+        if (all.length === 0) return;
+        const y = e.clientY + win.scrollY;
+        let nearest = all[0];
+        let best = Infinity;
+        for (const a of all) {
+          const d = Math.abs(docTopRef.current(a.el, win) - y);
+          if (d < best) { best = d; nearest = a; }
+        }
+        // Capture for comment insertion.
+        lastClickedLineRef.current = nearest.line;
+        jumpToLineRef.current(nearest.line);
+      }
+    };
+  }
+
+  // Attach the stable click handler and cursor styles once when the iframe
+  // loads, and re-attach after each full preview HTML reload.
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    const handler = iframeClickHandler.current!;
+
+    const attach = () => {
+      const doc = frame.contentDocument;
+      if (!doc) return;
+      // Remove any prior copy before adding (idempotent).
+      doc.removeEventListener("click", handler);
+      doc.addEventListener("click", handler);
+      injectEditCursor();
+      injectZoomHandlers();
+    };
+
+    const attachAndHighlight = () => {
+      attach();
+      // Small delay so the iframe document is fully painted before we query it.
+      setTimeout(() => injectCommentHighlights(null), 100);
+    };
+
+    // Re-attach every time the iframe navigates to new HTML.
+    frame.addEventListener("load", attachAndHighlight);
+    // Also attach immediately if already loaded.
+    attachAndHighlight();
+
+    return () => {
+      frame.removeEventListener("load", attachAndHighlight);
+      frame.contentDocument?.removeEventListener("click", handler);
+    };
+  // Only re-run when the iframe element itself changes or HTML reloads.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewHtml]);
+
+  // Re-run highlights whenever comments change (e.g. after adding/resolving).
+  useEffect(() => {
+    injectCommentHighlights(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsedComments]);
+
+  // Wrapper div click — events are handled inside the iframe directly.
+  const onPreviewClick = useCallback(
+    (_e: React.MouseEvent<HTMLDivElement>) => { /* handled by iframe listener */ },
+    []
+  );
+
+  // Phase 4a: selection toolbar — show floating toolbar when text is selected in preview.
+  useEffect(() => {
+    if (editorMode !== "edit") return;
+    const frame = frameRef.current;
+    if (!frame) return;
+
+    const handleSelection = () => {
+      const win = frame.contentWindow;
+      if (!win) return;
+      const sel = win.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+        setSelectionToolbar((s) => s.visible ? { ...s, visible: false } : s);
+        return;
+      }
+      const text = sel.toString().trim();
+      if (!text) { setSelectionToolbar((s) => s.visible ? { ...s, visible: false } : s); return; }
+      const range = sel.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      const frameRect = frame.getBoundingClientRect();
+      // Resolve character offsets by searching source content for the selected text.
+      // indexOf gives us the first occurrence; this is best-effort for the preview
+      // selection path (the textarea path always has exact offsets from selectionStart/End).
+      //
+      // Normalise before comparing: pandoc renders straight quotes as curly smart
+      // quotes, and may expand other entities. Curly quotes map to the same
+      // character count in JS strings (both BMP codepoints), so the normalised
+      // position maps back to the original source correctly.
+      const normalise = (s: string) =>
+        s
+          .replace(/[‘’]/g, "'")   // curly single quotes → straight
+          .replace(/[“”]/g, '"')   // curly double quotes → straight
+          .replace(/–/g, "-")           // en dash → hyphen
+          .replace(/—/g, "--")          // em dash → double hyphen
+          .replace(/ /g, " ");          // non-breaking space → space
+      const normText    = normalise(text);
+      const normContent = normalise(content);
+      const srcStart = normContent.indexOf(normText);
+      // If the selected text doesn’t appear verbatim in the Markdown source
+      // (even after normalisation), hide the toolbar rather than showing it
+      // with start:0, end:0, which the API rejects as “That scope is empty.”
+      if (srcStart < 0) {
+        setSelectionToolbar((s) => s.visible ? { ...s, visible: false } : s);
+        return;
+      }
+      const srcEnd = srcStart + normText.length;
+      setSelectionToolbar({
+        visible: true,
+        // Position above the selection, relative to the viewport
+        top: frameRect.top + rect.top - 44,
+        left: frameRect.left + rect.left + rect.width / 2,
+        selectedText: text,
+        selStart: srcStart,
+        selEnd: srcEnd,
+      });
+    };
+
+    const attach = () => {
+      const doc = frame.contentDocument;
+      if (!doc) return;
+      doc.addEventListener("selectionchange", handleSelection);
+    };
+    attach();
+    frame.addEventListener("load", attach);
+    return () => {
+      frame.removeEventListener("load", attach);
+      frame.contentDocument?.removeEventListener("selectionchange", handleSelection);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewHtml, editorMode]);
+
+  /* ---------------- directed rewrite ---------------- */
+
+  // Opens the bar against the current textarea selection. Refuses an empty
+  // selection rather than silently falling back to the whole document — a
+  // human who selected nothing almost certainly meant to select something,
+  // and "rewrite everything" from an empty selection is the kind of surprise
+  // that erodes trust in the feature on first use.
+  const openSelectionRewrite = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el || isFolded) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    if (end <= start) return;
+    const selected = content.slice(start, end);
+    const label =
+      selected.trim().length > 60 ? selected.trim().slice(0, 57) + "…" : selected.trim();
+    const top = Math.max(0, offsetForLine(content.slice(0, start).split("\n").length) - el.scrollTop);
+    setProposal(null);
+    setAcceptedNote(null);
+    setRewriteTarget({ kind: "range", start, end, label: label || "selection", top });
+  }, [content, isFolded, offsetForLine]);
+
+  // Opens the bar against a whole section, addressed by heading text so it
+  // survives a reorder between opening the bar and the request landing.
+  const openSectionRewrite = useCallback(
+    (h: Heading) => {
+      const top = Math.max(0, offsetForLine(h.line) - (textareaRef.current?.scrollTop ?? 0));
+      setProposal(null);
+      setAcceptedNote(null);
+      setRewriteTarget({ kind: "section", heading: h.text, label: h.text, top });
+    },
+    [offsetForLine]
+  );
+
+  const closeRewrite = useCallback(() => {
+    setRewriteTarget(null);
+    setProposal(null);
+  }, []);
+
+  /* ---------------- strike ----------------
+   * Deterministic text transform, not a serialiser (HANDOVER.md section 7b,
+   * decision 2): toggles a .struck class in the heading's own pandoc
+   * attribute block. A heading with no block gets one added; the body is
+   * never touched, so strike is trivially undoable and commits only on
+   * save, same as any other edit. */
+  const isStruck = useCallback(
+    (h: Heading): boolean => {
+      const line = content.split("\n")[h.line - 1] ?? "";
+      const attrs = line.match(/\{([^}]*)\}\s*$/)?.[1] ?? "";
+      return /(^|\s)\.struck(\s|$)/.test(attrs);
+    },
+    [content]
+  );
+
+  const toggleStrike = useCallback(
+    (h: Heading) => {
+      const lines = content.split("\n");
+      const line = lines[h.line - 1] ?? "";
+      const attrMatch = line.match(/^(#{1,6}\s+.*?)\s*\{([^}]*)\}\s*$/);
+      let next: string;
+      if (attrMatch) {
+        const head = attrMatch[1];
+        const attrs = attrMatch[2];
+        const already = /(^|\s)\.struck(\s|$)/.test(attrs);
+        const nextAttrs = already
+          ? attrs.replace(/(^|\s)\.struck(\s|$)/, " ").trim()
+          : (attrs.trim() + " .struck").trim();
+        next = nextAttrs ? head + " {" + nextAttrs + "}" : head;
+      } else {
+        const m = line.match(/^(#{1,6}\s+.*\S)\s*$/);
+        next = m ? m[1] + " {.struck}" : line;
+      }
+      lines[h.line - 1] = next;
+      const joined = lines.join("\n");
+      const pos = offsetForLine(h.line);
+      applyEdit(joined, pos, pos + next.length);
+    },
+    [content, applyEdit, offsetForLine]
+  );
+
+  /* ---------------- reorder ----------------
+   * Also a deterministic text transform (HANDOVER.md section 7b, decision
+   * 2): each same-level section (heading line through the line before the
+   * next heading of equal-or-shallower level) is extracted as a contiguous
+   * string and the buffer is reassembled with sections in the requested
+   * order. Content is never parsed into a tree -- this is string slicing
+   * plus concatenation, safe against nesting and adjacent fenced divs by
+   * construction (a section's fenced divs are wholly inside its own slice,
+   * since sectionEnd already respects heading boundaries).
+   */
+  const moveSection = useCallback(
+    (fromLine: number, toLine: number) => {
+      if (fromLine === toLine) return;
+      const from = headings.find((h) => h.line === fromLine);
+      const to = headings.find((h) => h.line === toLine);
+      if (!from || !to || from.level !== to.level) return;
+
+      const lines = content.split("\n");
+      const slice = (h: Heading) => {
+        const end = sectionEnd(h);
+        return lines.slice(h.line - 1, end).join("\n");
+      };
+
+      // Only resequence among same-level headings, since a section's own
+      // subsections travel with it inside its slice -- reordering across
+      // levels would be ambiguous about where the moved block nests.
+      const peers = headings.filter((h) => h.level === from.level);
+      const order = peers.map((h) => h.line);
+      const fromIdx = order.indexOf(fromLine);
+      const toIdx = order.indexOf(toLine);
+      if (fromIdx === -1 || toIdx === -1) return;
+      const moved = order.splice(fromIdx, 1)[0];
+      order.splice(toIdx, 0, moved);
+
+      const peerSlices = new Map(peers.map((h) => [h.line, slice(h)]));
+      const orderedText = order.map((line) => peerSlices.get(line)).join("\n");
+
+      const firstPeer = peers[0];
+      const lastPeer = peers[peers.length - 1];
+      const before = lines.slice(0, firstPeer.line - 1).join("\n");
+      const after = lines.slice(sectionEnd(lastPeer)).join("\n");
+
+      const rejoined = [before, orderedText, after].filter((s) => s.length > 0).join("\n");
+      applyEdit(rejoined, 0, 0);
+    },
+    [content, headings, sectionEnd, applyEdit]
+  );
+
+  // Resolved lazily inside RewriteBar, at request time — never at open time —
+  // so a proposal always reflects what is currently selected/scoped, not a
+  // stale snapshot from when the bar first appeared.
+  const getScope = useCallback(():
+    | { kind: "section"; heading: string }
+    | { kind: "range"; start: number; end: number } => {
+    if (!rewriteTarget) return { kind: "range", start: 0, end: 0 };
+    if (rewriteTarget.kind === "section") return { kind: "section", heading: rewriteTarget.heading };
+    return { kind: "range", start: rewriteTarget.start, end: rewriteTarget.end };
+  }, [rewriteTarget]);
+
+  // Accepting a proposal goes through the exact same primitive every
+  // formatting button uses, so undo, dirty-state and preview invalidation
+  // behave identically for an AI-authored change and a hand-typed one.
+  const acceptProposal = useCallback(
+    (finalContent: string, accepted: RewriteProposal, newSha: string | null) => {
+      applyEdit(finalContent, accepted.span.start, accepted.span.start + accepted.after.length);
+      // The accept endpoint committed to the repo and returned a new blob SHA.
+      // Update baseSha so the next autosave (or manual save) sends the right
+      // SHA and doesn't get a spurious 409 "stale conflict" response.
+      if (newSha) {
+        setBaseSha(newSha);
+        // Advance the committed baseline so dirty = false immediately.
+        // Without this, content !== committedContentRef.current stays true
+        // and autosave fires 3s later with the old baseSha, getting a 409.
+        committedContentRef.current = finalContent;
+        // Mark as saved so the toolbar reflects the committed state.
+        setSave({ kind: "saved", sha: newSha });
+      }
+      setAcceptedNote(`Accepted — ${accepted.model.label}: "${accepted.instruction}"`);
+      setProposal(null);
+      setRewriteTarget(null);
+    },
+    [applyEdit]
+  );
+
+  // Inline marks (bold, italic, code, strikethrough) toggle. If the selection
+  // is already wrapped — or sits immediately inside the marks — the marks are
+  // removed instead of nested, because "**\*\*bold\*\***" is the classic way a
+  // toolbar silently corrupts a document.
+  //
+  // In Edit mode the preview is a rendered HTML iframe — setting innerText to
+  // raw Markdown would display the asterisks as literal characters. Instead we
+  // resolve the selected text back to its position in the Markdown source
+  // buffer and apply the marks there via applyEdit, exactly as the source-mode
+  // path does. The 1.2 s debounced re-render then updates the preview.
+  //
+  // Selection resolution uses the same normalise + indexOf approach that the
+  // Rewrite/Shorten toolbar already uses (see selectionchange handler above).
   const toggleInline = useCallback(
     (mark: string, placeholder: string) => {
       if (isFolded) return;
+
+      // --- Edit-mode path: resolve via Markdown source buffer ---
+      // This fires whether we got here from the format bar (active contenteditable
+      // or not) or from a keyboard shortcut while the preview has focus.
+      if (editorMode === "edit" || editorMode === "review") {
+        const win = frameRef.current?.contentWindow;
+        const ifrSel = win?.getSelection();
+        const selectedText = ifrSel && !ifrSel.isCollapsed ? ifrSel.toString() : "";
+
+        if (selectedText) {
+          // Normalise smart punctuation so the indexOf probe matches the raw source.
+          const normalise = (s: string) =>
+            s
+              .replace(/[\u2018\u2019]/g, "'")
+              .replace(/[\u201C\u201D]/g, '"')
+              .replace(/\u2013/g, "-")
+              .replace(/\u2014/g, "--")
+              .replace(/\u00A0/g, " ");
+          const normSel  = normalise(selectedText);
+          const normSrc  = normalise(content);
+          const srcStart = normSrc.indexOf(normSel);
+          if (srcStart < 0) return; // text not found in source — bail safely
+          const srcEnd = srcStart + normSel.length;
+          const len = mark.length;
+
+          // Marks already wrap this region — remove them.
+          const before = content.slice(Math.max(0, srcStart - len), srcStart);
+          const after  = content.slice(srcEnd, srcEnd + len);
+          if (before === mark && after === mark) {
+            applyEdit(
+              content.slice(0, srcStart - len) + normSel + content.slice(srcEnd + len),
+              srcStart - len,
+              srcStart - len + normSel.length
+            );
+            return;
+          }
+          // Marks inside the selected text — remove them.
+          if (
+            normSel.length >= len * 2 &&
+            normSel.startsWith(mark) &&
+            normSel.endsWith(mark)
+          ) {
+            const inner = normSel.slice(len, -len);
+            applyEdit(
+              content.slice(0, srcStart) + inner + content.slice(srcEnd),
+              srcStart,
+              srcStart + inner.length
+            );
+            return;
+          }
+          // Wrap with marks.
+          const wrapped = mark + content.slice(srcStart, srcEnd) + mark;
+          applyEdit(
+            content.slice(0, srcStart) + wrapped + content.slice(srcEnd),
+            srcStart + len,
+            srcStart + len + (srcEnd - srcStart)
+          );
+          return;
+        }
+
+        // No iframe selection — if we're inside a contenteditable element
+        // insert the placeholder at the cursor's source-line position.
+        const editEl = activeEditEl.current;
+        if (editEl) {
+          const srcLine = Number(editEl.dataset.sourceLine);
+          if (srcLine > 0) {
+            const lines = content.split("\n");
+            const idx = srcLine - 1;
+            if (idx >= 0 && idx < lines.length) {
+              const line = lines[idx];
+              const inserted = mark + placeholder + mark;
+              lines[idx] = line + inserted;
+              applyEdit(lines.join("\n"), 0, 0);
+            }
+          }
+          return;
+        }
+        // No selection and no active element — nothing to do.
+        return;
+      }
+
+      // --- CM6 path (Source mode or split view) ---
       const { start, end } = getSelection();
       const doc = getDoc();
       const selected = doc.slice(start, end);
@@ -653,16 +2223,45 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       const text = mark + body + mark;
       applyEdit(doc.slice(0, start) + text + doc.slice(end), start + len, start + len + body.length);
     },
-    [isFolded, getSelection, getDoc, applyEdit]
+    [content, isFolded, editorMode, applyEdit, activeEditEl, getDoc, getSelection]
   );
-
-  // Mutable ref so CM6 keymap can always call the latest version
-  const toggleInlineRef = useRef(toggleInline);
+  // Update mutable refs for CM6 keymap
   toggleInlineRef.current = toggleInline;
 
+  // Line-level transforms operate on whole lines, so the selection is first
+  // expanded to line boundaries. Without that, applying a heading to a
+  // mid-line cursor would inject '#' into the middle of a sentence.
+  //
+  // In Edit mode the active contenteditable element maps to a single source
+  // line. We apply the transform directly to that source line and let the
+  // debounced re-render update the preview — we do NOT rewrite innerText,
+  // because that element is rendered HTML and writing Markdown prefixes there
+  // would display the raw syntax characters.
   const transformLines = useCallback(
     (fn: (lines: string[]) => string[]) => {
       if (isFolded) return;
+
+      // --- Edit-mode path: operate on the source line for the active element ---
+      if (editorMode === "edit" || editorMode === "review") {
+        const editEl = activeEditEl.current;
+        if (editEl) {
+          const sourceLine = Number(editEl.dataset.sourceLine);
+          if (!sourceLine) return;
+          const lines = content.split("\n");
+          const idx = sourceLine - 1;
+          if (idx < 0 || idx >= lines.length) return;
+          const transformed = fn([lines[idx]]);
+          if (transformed.length > 0 && transformed[0] !== lines[idx]) {
+            lines[idx] = transformed[0];
+            applyEdit(lines.join("\n"), 0, 0);
+          }
+          return;
+        }
+        // No active element — nothing to transform in Edit mode.
+        return;
+      }
+
+      // --- CM6 / Textarea path (Source mode / split view) ---
       const { start, end } = getSelection();
       const doc = getDoc();
       const from = doc.lastIndexOf("\n", start - 1) + 1;
@@ -673,9 +2272,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       const next = fn(block.split("\n")).join("\n");
       applyEdit(doc.slice(0, from) + next + doc.slice(effectiveTo), from, from + next.length);
     },
-    [isFolded, getSelection, getDoc, applyEdit]
+    [content, isFolded, applyEdit, getDoc, getSelection]
   );
 
+  // Headings cycle: applying the level already present removes it, so the
+  // same button both promotes and clears.
   const applyHeading = useCallback(
     (level: number) => {
       const hashes = "#".repeat(level);
@@ -714,7 +2315,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     });
   }, [transformLines]);
 
-  const applyQuoteBlock = useCallback(() => {
+  const applyQuote = useCallback(() => {
     transformLines((lines) => {
       const allQ = lines.every((l) => l.trim() === "" || /^\s*>\s?/.test(l));
       return lines.map((l) => {
@@ -724,6 +2325,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     });
   }, [transformLines]);
 
+  // A link keeps whatever the author selected as the visible text and puts the
+  // cursor on the URL, which is the part they still have to supply.
   const insertLink = useCallback(() => {
     if (isFolded) return;
     const { start, end } = getSelection();
@@ -733,9 +2336,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     const text = `[${label}](url)`;
     const urlAt = start + label.length + 3;
     applyEdit(doc.slice(0, start) + text + doc.slice(end), urlAt, urlAt + 3);
-  }, [isFolded, getSelection, getDoc, applyEdit]);
-
-  const insertLinkRef = useRef(insertLink);
+  }, [content, isFolded, applyEdit, getDoc, getSelection]);
   insertLinkRef.current = insertLink;
 
   const insertRule = useCallback(() => {
@@ -746,7 +2347,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     const text = `${atLineStart ? "" : "\n"}\n---\n\n`;
     const pos = start + text.length;
     applyEdit(doc.slice(0, start) + text + doc.slice(start), pos, pos);
-  }, [isFolded, getSelection, getDoc, applyEdit]);
+  }, [content, isFolded, applyEdit, getDoc, getSelection]);
 
   const insertCodeBlock = useCallback(() => {
     if (isFolded) return;
@@ -759,7 +2360,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     const text = `${lead}\`\`\`\n${body}\n\`\`\`\n`;
     const bodyAt = start + lead.length + 4;
     applyEdit(doc.slice(0, start) + text + doc.slice(end), bodyAt, bodyAt + body.length);
-  }, [isFolded, getSelection, getDoc, applyEdit]);
+  }, [content, isFolded, applyEdit, getDoc, getSelection]);
 
   const insertTable = useCallback(() => {
     if (isFolded) return;
@@ -769,7 +2370,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     const lead = atLineStart ? "" : "\n";
     const tbl = `${lead}| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |\n| Cell | Cell | Cell |\n`;
     applyEdit(doc.slice(0, start) + tbl + doc.slice(start), start + lead.length + 2, start + lead.length + 10);
-  }, [isFolded, getSelection, getDoc, applyEdit]);
+  }, [content, isFolded, applyEdit, getDoc, getSelection]);
 
   const insertImage = useCallback(() => {
     if (isFolded) return;
@@ -780,10 +2381,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     const text = `![${alt}](url)`;
     const urlAt = start + alt.length + 4;
     applyEdit(doc.slice(0, start) + text + doc.slice(end), urlAt, urlAt + 3);
-  }, [isFolded, getSelection, getDoc, applyEdit]);
+  }, [content, isFolded, applyEdit, getDoc, getSelection]);
 
   const insertHighlight = useCallback(() => {
     toggleInline("==", "highlighted text");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toggleInline]);
 
   const insertUnderline = useCallback(() => {
@@ -794,81 +2396,10 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     const body = selected || "underlined text";
     const text = `<u>${body}</u>`;
     applyEdit(doc.slice(0, start) + text + doc.slice(end), start + 3, start + 3 + body.length);
-  }, [isFolded, getSelection, getDoc, applyEdit, toggleInline]);
+  }, [content, isFolded, applyEdit, getDoc, getSelection]);
 
-  const doUndo = useCallback(() => {
-    const view = cmViewRef.current;
-    if (view) undo(view);
-  }, []);
-
-  const doRedo = useCallback(() => {
-    const view = cmViewRef.current;
-    if (view) redo(view);
-  }, []);
-
-  // ── Directed rewrite ──────────────────────────────────────────────────────
-
-  const offsetForLine = useCallback((line: number): number => {
-    return offsetForCmLine(line);
-  }, [offsetForCmLine]);
-
-  const openSelectionRewrite = useCallback(() => {
-    if (isFolded) return;
-    const { start, end } = getSelection();
-    if (end <= start) return;
-    const doc = getDoc();
-    const selected = doc.slice(start, end);
-    const label = selected.trim().length > 60 ? selected.trim().slice(0, 57) + "…" : selected.trim();
-    const scrollTop = cmViewRef.current?.scrollDOM.scrollTop ?? 0;
-    const top = Math.max(0, offsetForLine(doc.slice(0, start).split("\n").length) - scrollTop);
-    setProposal(null); setAcceptedNote(null);
-    setRewriteTarget({ kind: "range", start, end, label: label || "selection", top });
-  }, [isFolded, getSelection, getDoc, offsetForLine]);
-
-  const openSectionRewrite = useCallback(
-    (h: Heading) => {
-      const scrollTop = cmViewRef.current?.scrollDOM.scrollTop ?? 0;
-      const top = Math.max(0, offsetForLine(h.line) - scrollTop);
-      setProposal(null); setAcceptedNote(null);
-      setRewriteTarget({ kind: "section", heading: h.text, label: h.text, top });
-    },
-    [offsetForLine]
-  );
-
-  const closeRewrite = useCallback(() => { setRewriteTarget(null); setProposal(null); }, []);
-
-  const getScope = useCallback(():
-    | { kind: "section"; heading: string }
-    | { kind: "range"; start: number; end: number } => {
-    if (!rewriteTarget) return { kind: "range", start: 0, end: 0 };
-    if (rewriteTarget.kind === "section") return { kind: "section", heading: rewriteTarget.heading };
-    return { kind: "range", start: rewriteTarget.start, end: rewriteTarget.end };
-  }, [rewriteTarget]);
-
-  const acceptProposal = useCallback(
-    (finalContent: string, accepted: RewriteProposal) => {
-      applyEdit(finalContent, accepted.span.start, accepted.span.start + accepted.after.length);
-      setBaseSha((prev) => prev);
-      setAcceptedNote(`Accepted — ${accepted.model.label}: "${accepted.instruction}"`);
-      setProposal(null);
-      setRewriteTarget(null);
-    },
-    [applyEdit]
-  );
-
-  // ── Snippet insertion ─────────────────────────────────────────────────────
-
-  const insertSnippet = useCallback((snippet: string) => {
-    const { start, end } = getSelection();
-    const doc = getDoc();
-    const selected = doc.slice(start, end);
-    const body = selected || "Content goes here.";
-    const text = snippet.replace("$BODY$", body);
-    const next = doc.slice(0, start) + text + doc.slice(end);
-    const cursor = start + text.indexOf(body);
-    applyEdit(next, cursor, cursor + body.length);
-    setShowPalette(false);
-  }, [getSelection, getDoc, applyEdit]);
+  const doUndo = useCallback(() => { const v = cmViewRef.current; if (v) undo(v); }, []);
+  const doRedo = useCallback(() => { const v = cmViewRef.current; if (v) redo(v); }, []);
 
   const snippets = useMemo(
     () =>
@@ -887,76 +2418,320 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           id: b.id,
           description: b.description,
           snippet: selfClosing ? `${opener}\n:::\n` : `${opener}\n$BODY$\n:::\n`,
+          opener,
         };
       }),
     [vocabulary]
   );
 
-  // ── Derived stats ─────────────────────────────────────────────────────────
+  // insertSnippet: used by the primitives toolbar row and the command palette.
+  const insertSnippet = useCallback((snippet: string) => {
+    const { start, end } = getSelection();
+    const doc = getDoc();
+    const selected = doc.slice(start, end);
+    const body = selected || "Content goes here.";
+    const text = snippet.replace("$BODY$", body);
+    const next = doc.slice(0, start) + text + doc.slice(end);
+    const cursor = start + text.indexOf(body);
+    applyEdit(next, cursor, cursor + body.length);
+  }, [getDoc, getSelection, applyEdit]);
+
+  // Keep slashCmdRef in sync so keydown handler reads current value.
+  slashCmdRef.current = slashCmd;
+
+  /* Phase 3a: slash command helpers */
+
+  // Compute approximate {top, left} of cursor in the textarea using a mirror div.
+  const getCursorPos = useCallback((): { top: number; left: number } => {
+    const el = textareaRef.current;
+    if (!el) return { top: 0, left: 0 };
+    const pos = el.selectionStart;
+    const cs = getComputedStyle(el);
+    const mirror = document.createElement("div");
+    Object.assign(mirror.style, {
+      position: "absolute", visibility: "hidden", pointerEvents: "none",
+      top: "0", left: "-9999px", whiteSpace: "pre-wrap",
+      wordBreak: cs.wordBreak, overflowWrap: cs.overflowWrap,
+      font: cs.font, fontFamily: cs.fontFamily, fontSize: cs.fontSize,
+      lineHeight: cs.lineHeight, letterSpacing: cs.letterSpacing,
+      tabSize: cs.tabSize, padding: cs.padding,
+      boxSizing: cs.boxSizing, width: `${el.offsetWidth}px`,
+    });
+    const before = document.createElement("span");
+    before.textContent = el.value.slice(0, pos);
+    const cursor = document.createElement("span");
+    cursor.textContent = "|";
+    mirror.appendChild(before);
+    mirror.appendChild(cursor);
+    document.body.appendChild(mirror);
+    const rect = cursor.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    document.body.removeChild(mirror);
+    return {
+      top: rect.top - elRect.top - el.scrollTop + rect.height,
+      left: rect.left - elRect.left,
+    };
+  }, []);
+
+  // Close slash menu.
+  const closeSlashMenu = useCallback(() => {
+    setSlashCmd((s) => ({ ...s, open: false, query: "", selectedIdx: 0 }));
+  }, []);
+
+  // Filter snippets by slash query.
+  const slashFiltered = useMemo(() => {
+    if (!slashCmd.query) return snippets;
+    const q = slashCmd.query.toLowerCase();
+    return snippets.filter(
+      (s) => s.id.includes(q) || s.description.toLowerCase().includes(q)
+    );
+  }, [snippets, slashCmd.query]);
+
+  // Insert a snippet from the slash menu, removing the slash trigger.
+  const insertFromSlash = useCallback((s: { snippet: string }) => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const pos = el.selectionStart;
+    // Find start of current "/query" on the current line.
+    const lineStart = content.lastIndexOf("\n", pos - 1) + 1;
+    const lineText = content.slice(lineStart, pos);
+    const slashIdx = lineText.lastIndexOf("/");
+    const removeFrom = lineStart + (slashIdx >= 0 ? slashIdx : 0);
+    const body = "Content goes here.";
+    const text = s.snippet.replace("$BODY$", body);
+    const next = content.slice(0, removeFrom) + text + content.slice(pos);
+    setContent(next);
+    closeSlashMenu();
+    requestAnimationFrame(() => {
+      el.focus();
+      const cursor = removeFrom + text.indexOf(body);
+      el.setSelectionRange(cursor, cursor + body.length);
+    });
+  }, [content, closeSlashMenu]);
+
+  // Keyboard shortcuts for the marks authors reach for most. Registered on the
+  // textarea rather than the window so they cannot hijack typing elsewhere.
+  const onSourceKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // Phase 3a: slash menu navigation takes priority.
+      if (slashCmdRef.current.open) {
+        if (e.key === "Escape") { e.preventDefault(); closeSlashMenu(); return; }
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setSlashCmd((s) => ({ ...s, selectedIdx: Math.min(s.selectedIdx + 1, slashFiltered.length - 1) }));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setSlashCmd((s) => ({ ...s, selectedIdx: Math.max(0, s.selectedIdx - 1) }));
+          return;
+        }
+        if (e.key === "Enter" || e.key === "Tab") {
+          e.preventDefault();
+          const item = slashFiltered[slashCmdRef.current.selectedIdx];
+          if (item) insertFromSlash(item);
+          return;
+        }
+      }
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === "b") { e.preventDefault(); toggleInline("**", "bold text"); }
+      else if (k === "i") { e.preventDefault(); toggleInline("*", "italic text"); }
+      else if (k === "e") { e.preventDefault(); toggleInline("\`", "code"); }
+      else if (k === "k") { e.preventDefault(); insertLink(); }
+    },
+    [toggleInline, insertLink, closeSlashMenu, insertFromSlash, slashFiltered]
+  );
+
+  /* ---------------- snippet insertion ---------------- */
+
+  /* ---------------- render ---------------- */
 
   const lineCount = content.split("\n").length;
   const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
     <div className="editor">
-      {/* ── Top toolbar ── */}
       <div className="editor-toolbar">
         <div className="editor-toolbar-left">
-          <button className="btn btn-secondary" onClick={() => setShowPalette((v) => !v)}>
-            Insert block <kbd>⌘/</kbd>
-          </button>
           <button
             className="btn btn-secondary"
             onClick={() => setShowOutline((v) => !v)}
             data-active={showOutline}
             title="Toggle document outline"
           >
-            Outline
+            ☰ Outline
           </button>
-          <div className="mode-toggle" role="group" aria-label="Working posture">
-            <button className="mode-btn" data-active={posture === "edit"} onClick={() => setPosture("edit")} title="Authoring — source takes the space">Edit</button>
-            <button className="mode-btn" data-active={posture === "review"} onClick={() => setPosture("review")} title="Judgement — read it as the reader will">Review</button>
+          {/* Phase 2c: split-screen toggle in Edit and Review mode */}
+          {(editorMode === "edit" || editorMode === "review") && (
+            <button
+              className="btn btn-secondary"
+              onClick={() => setSplitView((v) => !v)}
+              data-active={splitView}
+              title="Toggle split source/preview view"
+            >
+              ⋯ Split
+            </button>
+          )}
+          {/* Mode switcher: Edit · Print · Source (Review hidden until feature-complete) */}
+          <div className="mode-toggle" role="group" aria-label="Editor mode">
+            <button
+              className="mode-btn"
+              data-active={editorMode === "edit"}
+              onClick={() => setEditorMode("edit")}
+              title="Edit in the preview — click any paragraph or heading to edit it directly"
+            >
+              Edit
+            </button>
+            <button
+              className="mode-btn"
+              data-active={editorMode === "pages"}
+              onClick={() => setEditorMode("pages")}
+              title="Print preview — paginated PDF, exact print fidelity"
+            >
+              Print{pdfStale && editorMode === "pages" ? " •" : ""}
+            </button>
+            <button
+              className="mode-btn source-mode-btn"
+              data-active={editorMode === "source"}
+              onClick={() => setEditorMode("source")}
+              title="Source — edit raw Markdown directly (power mode)"
+            >
+              ‹› Source
+            </button>
           </div>
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowComments((v) => !v)}
+            data-active={showComments}
+            title="Toggle comments panel"
+          >
+            💬 Comments{openCommentCount > 0 && (
+              <span className="rail-tab-badge" style={{ marginLeft: 5 }}>{openCommentCount}</span>
+            )}
+          </button>
           <span className="editor-stat">{lineCount} lines · {wordCount} words</span>
-          {isFolded && <span className="diag-pill" data-severity="warning" title="Unfold to edit">folded — read only</span>}
+          {isFolded && (
+            <span className="diag-pill" data-severity="warning" title="Unfold to edit">
+              folded — read only
+            </span>
+          )}
         </div>
 
         <div className="editor-toolbar-right">
-          <div className="mode-toggle" role="group" aria-label="Preview mode">
-            <button className="mode-btn" data-active={mode === "html"} onClick={() => setMode("html")} title="Fast preview with synchronised scrolling">Preview</button>
-            <button className="mode-btn" data-active={mode === "pdf"} onClick={() => setMode("pdf")} title="Paginated PDF — exact print fidelity">PDF{pdfStale && mode === "pdf" ? " •" : ""}</button>
-          </div>
-          {mode === "pdf" && (
-            <button className="btn btn-secondary" onClick={() => runPdfPreview(content)} disabled={previewing || errors.length > 0}>
-              {previewing ? "Rendering…" : pdfStale ? "Re-render PDF" : "Render PDF"}
+          {/* Zoom stepper — only in HTML preview modes */}
+          {editorMode !== "pages" && editorMode !== "source" && (
+            <div className="zoom-stepper">
+              <button
+                className="zoom-step-btn"
+                onClick={() => {
+                  const next = Math.max(50, Math.round(previewZoomRef.current / 10) * 10 - 10);
+                  previewZoomRef.current = next;
+                  setPreviewZoom(next);
+                  const doc = frameRef.current?.contentDocument;
+                  if (doc?.body) doc.body.style.zoom = String(next / 100);
+                }}
+                title="Zoom out"
+                disabled={previewZoom <= 50}
+              >−</button>
+              <button
+                className="zoom-pct"
+                onClick={() => {
+                  previewZoomRef.current = 100;
+                  setPreviewZoom(100);
+                  const doc = frameRef.current?.contentDocument;
+                  if (doc?.body) doc.body.style.zoom = "1";
+                }}
+                title="Reset to 100%"
+              >{previewZoom}%</button>
+              <button
+                className="zoom-step-btn"
+                onClick={() => {
+                  const next = Math.min(200, Math.round(previewZoomRef.current / 10) * 10 + 10);
+                  previewZoomRef.current = next;
+                  setPreviewZoom(next);
+                  const doc = frameRef.current?.contentDocument;
+                  if (doc?.body) doc.body.style.zoom = String(next / 100);
+                }}
+                title="Zoom in"
+                disabled={previewZoom >= 200}
+              >+</button>
+            </div>
+          )}
+          {editorMode === "pages" ? (
+            <>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setEditorMode("edit")}
+                title="Return to editing"
+              >
+                ← Edit document
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => runPdfPreview(content)}
+                disabled={previewing || errors.length > 0}
+              >
+                {previewing ? "Generating…" : pdfStale ? "Refresh PDF" : "Refresh PDF"}
+              </button>
+              {!previewing && (
+                <EditorExportDropdown brand={brand} slug={slug} previewUrl={previewUrl} />
+              )}
+            </>
+          ) : (
+            <EditorExportDropdown brand={brand} slug={slug} previewUrl={null} />
+          )}
+          {previewing && editorMode === "pages" && <span className="editor-stat">generating PDF…</span>}
+          {/* Health pill — collapses to one item, always right of Export */}
+          {errors.length > 0 ? (
+            <button
+              className="diag-pill diag-pill-btn"
+              data-severity="error"
+              onClick={() => setShowErrors((v) => !v)}
+              title={showErrors ? "Hide errors" : "Show all errors"}
+              aria-expanded={showErrors}
+            >
+              ✕ {errors.length} error{errors.length > 1 ? "s" : ""}
             </button>
+          ) : warnings.length > 0 ? (
+            <button
+              className="diag-pill diag-pill-btn"
+              data-severity="warning"
+              onClick={() => setShowErrors((v) => !v)}
+              title={showErrors ? "Hide warnings" : "Show all warnings"}
+              aria-expanded={showErrors}
+            >
+              ⚠ {warnings.length} warning{warnings.length > 1 ? "s" : ""}
+            </button>
+          ) : (
+            <span className="diag-pill" data-severity="ok">✓ healthy</span>
           )}
-          {previewing && <span className="editor-stat">rendering…</span>}
-          {errors.length > 0 && <span className="diag-pill" data-severity="error">{errors.length} error{errors.length > 1 ? "s" : ""}</span>}
-          {errors.length === 0 && warnings.length > 0 && <span className="diag-pill" data-severity="warning">{warnings.length} warning{warnings.length > 1 ? "s" : ""}</span>}
-          {errors.length === 0 && warnings.length === 0 && <span className="diag-pill" data-severity="ok">valid</span>}
-          {dirty && (
-            <input
-              className="commit-summary"
-              type="text"
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-              placeholder="What changed? (optional)"
-              aria-label="Describe this revision"
-              maxLength={72}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void doSave(); } }}
-            />
-          )}
-          <button className="btn" onClick={doSave} disabled={save.kind === "saving" || errors.length > 0 || !dirty}>
-            {save.kind === "saving" ? "Saving…" : "Save"} <kbd>⌘S</kbd>
-          </button>
+
+          {/* Autosave status — replaces the Save button entirely */}
+          {save.kind === "saving" ? (
+            <span className="autosave-status" data-state="saving">Saving…</span>
+          ) : save.kind === "error" ? (
+            <button className="autosave-status" data-state="error" onClick={doSave} title="Click to retry">
+              ⚠ Save failed
+            </button>
+          ) : save.kind === "stale" ? (
+            <button className="autosave-status" data-state="stale" onClick={handleReconcile}>
+              ⚠ Conflict
+            </button>
+          ) : savedVisible ? (
+            <span className="autosave-status" data-state="saved">Saved ✓</span>
+          ) : null}
         </div>
       </div>
 
-      {/* ── Rich format bar: Row 1 (inline / block formatting) ── */}
-      <div className="format-bar format-bar-row1" role="toolbar" aria-label="Markdown formatting">
+      {/* ── Rich format toolbar: Row 1 (inline formatting) — always shown in edit/source/review ── */}
+      {editorMode !== "pages" && <>
+      <div
+        className="format-bar format-bar-row1"
+        role="toolbar"
+        aria-label="Markdown formatting"
+        onMouseEnter={() => { savedIframeSelection.current = getIframeSelection(); }}
+      >
         {/* Paragraph / heading dropdown */}
         <div className="format-group">
           <select
@@ -969,8 +2744,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               else if (v) { applyHeading(parseInt(v, 10)); }
               e.target.value = "";
             }}
-            title="Paragraph style"
-            aria-label="Paragraph style"
+            title="Paragraph style" aria-label="Paragraph style"
           >
             <option value="" disabled>Paragraph</option>
             <option value="p">Paragraph</option>
@@ -980,77 +2754,37 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             <option value="4">Heading 4</option>
           </select>
         </div>
-
         <div className="format-divider" />
-
         <div className="format-group">
-          <button className="format-btn" onClick={() => toggleInline("**", "bold text")} disabled={isFolded} title="Bold — ⌘B" aria-label="Bold">
-            <Bold size={14} strokeWidth={2.5} />
-          </button>
-          <button className="format-btn" onClick={() => toggleInline("*", "italic text")} disabled={isFolded} title="Italic — ⌘I" aria-label="Italic">
-            <Italic size={14} strokeWidth={2} />
-          </button>
-          <button className="format-btn" onClick={insertUnderline} disabled={isFolded} title="Underline" aria-label="Underline">
-            <Underline size={14} strokeWidth={2} />
-          </button>
-          <button className="format-btn" onClick={() => toggleInline("~~", "struck text")} disabled={isFolded} title="Strikethrough" aria-label="Strikethrough">
-            <Strikethrough size={14} strokeWidth={2} />
-          </button>
-          <button className="format-btn" onClick={insertHighlight} disabled={isFolded} title="Highlight (==text==)" aria-label="Highlight">
-            <Highlighter size={14} strokeWidth={2} />
-          </button>
+          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("**", "bold text"); }} disabled={isFolded} title="Bold — ⌘B" aria-label="Bold"><Bold size={14} strokeWidth={2.5} /></button>
+          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("*", "italic text"); }} disabled={isFolded} title="Italic — ⌘I" aria-label="Italic"><Italic size={14} strokeWidth={2} /></button>
+          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertUnderline(); }} disabled={isFolded} title="Underline" aria-label="Underline"><Underline size={14} strokeWidth={2} /></button>
+          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("~~", "struck text"); }} disabled={isFolded} title="Strikethrough" aria-label="Strikethrough"><Strikethrough size={14} strokeWidth={2} /></button>
+          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertHighlight(); }} disabled={isFolded} title="Highlight (==text==)" aria-label="Highlight"><Highlighter size={14} strokeWidth={2} /></button>
         </div>
-
         <div className="format-divider" />
-
         <div className="format-group">
-          <button className="format-btn" onClick={insertLink} disabled={isFolded} title="Link — ⌘K" aria-label="Insert link">
-            <Link2 size={14} strokeWidth={2} />
-          </button>
-          <button className="format-btn" onClick={applyBullets} disabled={isFolded} title="Bulleted list" aria-label="Bulleted list">
-            <List size={14} strokeWidth={2} />
-          </button>
-          <button className="format-btn" onClick={applyNumbered} disabled={isFolded} title="Numbered list" aria-label="Numbered list">
-            <ListOrdered size={14} strokeWidth={2} />
-          </button>
-          <button className="format-btn" onClick={insertTable} disabled={isFolded} title="Insert table" aria-label="Insert table">
-            <Table size={14} strokeWidth={2} />
-          </button>
-          <button className="format-btn" onClick={insertImage} disabled={isFolded} title="Insert image" aria-label="Insert image">
-            <Image size={14} strokeWidth={2} />
-          </button>
-          <button className="format-btn" onClick={insertCodeBlock} disabled={isFolded} title="Code block" aria-label="Code block">
-            <Code2 size={14} strokeWidth={2} />
-          </button>
-          <button className="format-btn" onClick={insertRule} disabled={isFolded} title="Horizontal rule" aria-label="Horizontal rule">
-            <Minus size={14} strokeWidth={2} />
-          </button>
+          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertLink(); }} disabled={isFolded} title="Link — ⌘K" aria-label="Insert link"><Link2 size={14} strokeWidth={2} /></button>
+          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); applyBullets(); }} disabled={isFolded} title="Bulleted list" aria-label="Bulleted list"><List size={14} strokeWidth={2} /></button>
+          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); applyNumbered(); }} disabled={isFolded} title="Numbered list" aria-label="Numbered list"><ListOrdered size={14} strokeWidth={2} /></button>
+          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertTable(); }} disabled={isFolded} title="Insert table" aria-label="Insert table"><Table size={14} strokeWidth={2} /></button>
+          <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertImage(); }} disabled={isFolded} title="Insert image" aria-label="Insert image"><Image size={14} strokeWidth={2} /></button>
+          <button className="format-btn" onClick={insertCodeBlock} disabled={isFolded} title="Code block" aria-label="Code block"><Code2 size={14} strokeWidth={2} /></button>
+          <button className="format-btn" onClick={insertRule} disabled={isFolded} title="Horizontal rule" aria-label="Horizontal rule"><Minus size={14} strokeWidth={2} /></button>
         </div>
-
         <div className="format-divider" />
-
         <div className="format-group">
-          <button className="format-btn" onClick={doUndo} disabled={isFolded} title="Undo" aria-label="Undo">
-            <Undo2 size={14} strokeWidth={2} />
-          </button>
-          <button className="format-btn" onClick={doRedo} disabled={isFolded} title="Redo" aria-label="Redo">
-            <Redo2 size={14} strokeWidth={2} />
-          </button>
+          <button className="format-btn" onClick={doUndo} disabled={isFolded} title="Undo" aria-label="Undo"><Undo2 size={14} strokeWidth={2} /></button>
+          <button className="format-btn" onClick={doRedo} disabled={isFolded} title="Redo" aria-label="Redo"><Redo2 size={14} strokeWidth={2} /></button>
         </div>
-
         <div className="format-divider" />
-
-        {/* Rewrite */}
         <div className="format-group">
-          <button className="format-btn format-btn-wide" onClick={openSelectionRewrite} disabled={isFolded} title="Select text first, then direct a rewrite" aria-label="Rewrite selection">
-            ✨ Rewrite
-          </button>
+          <button className="format-btn format-btn-wide" onClick={openSelectionRewrite} disabled={isFolded} title="Select text first, then direct a rewrite" aria-label="Rewrite selection">✨ Rewrite</button>
         </div>
-
         {isFolded && <span className="format-note">unfold a section to edit</span>}
       </div>
 
-      {/* ── Rich format bar: Row 2 (vocabulary / primitive blocks) ── */}
+      {/* ── Rich format toolbar: Row 2 (vocabulary blocks) ── */}
       <div className="format-bar format-bar-row2" role="toolbar" aria-label="Docgent vocabulary blocks">
         <span className="format-bar-label">Blocks</span>
         {snippets.map((s) => {
@@ -1070,35 +2804,31 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           );
         })}
       </div>
+      </>}
 
-      {/* ── Block palette (⌘/) ── */}
-      {showPalette && (
-        <div className="palette">
-          <div className="palette-head">Vocabulary — the closed set of blocks you may use</div>
-          <div className="palette-grid">
-            {snippets.map((s) => (
-              <button key={s.id} className="palette-item" onClick={() => insertSnippet(s.snippet)}>
-                <span className="palette-item-id">{s.id}</span>
-                <span className="palette-item-desc">{s.description}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Banners ── */}
       {save.kind === "stale" && (
         <div className="banner" data-kind="stale">
           <strong>This document changed while you were editing.</strong>
           <div>{save.message}</div>
           <div style={{ marginTop: 8 }}>
-            <button className="btn btn-secondary" onClick={() => window.location.reload()}>Reload and reapply</button>
+            <button className="btn btn-secondary" onClick={handleReconcile}>
+              Keep my changes and retry
+            </button>
           </div>
         </div>
       )}
-      {save.kind === "error" && <div className="banner" data-kind="error">{save.message}</div>}
-      {save.kind === "saved" && <div className="banner" data-kind="ok">Saved{save.commit?.sha ? ` as ${save.commit.sha.slice(0, 7)}` : ""}.</div>}
-      {acceptedNote && <div className="banner" data-kind="ok">{acceptedNote} — committed. Save is not needed for this change.</div>}
+      {reconcileNote && (
+        <div className="banner" data-kind="ok">{reconcileNote}</div>
+      )}
+      {save.kind === "error" && (
+        <div className="banner" data-kind="error">{save.message}</div>
+      )}
+      {/* Saved confirmation is now shown inline in the toolbar as autosave-status. */}
+      {acceptedNote && (
+        <div className="banner" data-kind="ok">
+          {acceptedNote} — committed. Save is not needed for this change.
+        </div>
+      )}
 
       {rewriteTarget && !proposal && (
         <RewriteBar
@@ -1124,40 +2854,191 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
       )}
 
-      {/* ── Two-pane layout ── */}
-      <div className="editor-panes" data-posture={posture}>
-        <div className="pane pane-source" data-outline={showOutline && headings.length > 0}>
-          {showOutline && headings.length > 0 && (
-            <nav className="outline" aria-label="Document outline">
-              <div className="outline-head">
-                <span>Outline</span>
-                <span className="outline-count">{headings.length}</span>
-              </div>
-              <div className="outline-list">
-                {headings.map((h) => {
-                  const foldable = sectionEnd(h) > h.line;
-                  const isOpen = !folded.includes(h.line);
-                  return (
-                    <div key={h.line} className="outline-row" data-level={h.level}>
-                      <button className="outline-fold" onClick={() => toggleFold(h.line)} disabled={!foldable} aria-label={isOpen ? "Fold section" : "Unfold section"} title={foldable ? (isOpen ? "Fold section" : "Unfold section") : "Nothing to fold"}>
-                        {foldable ? (isOpen ? "▾" : "▸") : "·"}
-                      </button>
-                      <button className="outline-link" onClick={() => jumpToLine(h.line)} title={`${h.text} — line ${h.line}`}>{h.text}</button>
-                      <button className="outline-direct" onClick={() => openSectionRewrite(h)} title={`Direct a rewrite of "${h.text}"`} aria-label={`Direct a rewrite of ${h.text}`}>✨</button>
-                    </div>
-                  );
-                })}
-              </div>
-            </nav>
-          )}
+      {showErrors && diagnostics.length > 0 && (
+        <div className="errors-panel" role="alert" aria-label="Document diagnostics">
+          <div className="errors-panel-header">
+            <span className="errors-panel-title">
+              {errors.length > 0 ? (
+                <>
+                  <span className="errors-panel-icon" data-severity="error">✕</span>
+                  {errors.length} error{errors.length !== 1 ? "s" : ""}
+                  {warnings.length > 0 ? `, ${warnings.length} warning${warnings.length !== 1 ? "s" : ""}` : ""}
+                </>
+              ) : (
+                <>
+                  <span className="errors-panel-icon" data-severity="warning">⚠</span>
+                  {warnings.length} warning{warnings.length !== 1 ? "s" : ""}
+                </>
+              )}
+            </span>
+            <button
+              className="errors-panel-close"
+              onClick={() => setShowErrors(false)}
+              aria-label="Close diagnostics panel"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="errors-panel-body">
+            {diagnostics.map((d, i) => (
+              <button
+                key={i}
+                className="errors-panel-row"
+                data-severity={d.severity}
+                onClick={() => { jumpToLine(d.line); setShowErrors(false); }}
+                title={`Jump to line ${d.line}`}
+              >
+                <span className="errors-panel-severity">{d.severity === "error" ? "E" : "W"}</span>
+                <span className="errors-panel-lineno">L{d.line}</span>
+                <span className="errors-panel-msg">{d.message}</span>
+              </button>
+            ))}
+          </div>
+          <div className="errors-panel-footer">
+            Click any row to jump to that line
+          </div>
+        </div>
+      )}
 
-          {/* CodeMirror 6 host */}
+      {noteTarget && (
+        <div className="note-composer" style={{ top: noteTarget.top }} role="dialog" aria-label="Add a note">
+          <div className="note-composer-head">
+            <span>Note — line {noteTarget.line}</span>
+            <button className="note-composer-close" onClick={closeNote} aria-label="Cancel">×</button>
+          </div>
+          <textarea
+            className="note-composer-input"
+            autoFocus
+            rows={2}
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            placeholder="Direction for the next pass — e.g. &quot;shorter, cut the second example&quot;"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                commitNote();
+              }
+              if (e.key === "Escape") closeNote();
+            }}
+          />
+          <div className="note-composer-actions">
+            <button className="btn btn-secondary" onClick={closeNote}>Cancel</button>
+            <button className="btn" onClick={commitNote} disabled={!noteDraft.trim()}>
+              Add note <kbd>⌘⏎</kbd>
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div
+        className="editor-panes"
+        data-posture={posture}
+        data-mode={editorMode}
+        data-split={(splitView && editorMode === "edit") || (splitView && editorMode === "review")}
+        data-comments={showComments}
+        data-outline={showOutline && headings.length > 0}
+      >
+        {/* Collapsible outline sidebar (Phase 2b) — grid column, pushes content pane */}
+        {showOutline && headings.length > 0 && (
+          <nav
+            className="outline-sidebar"
+            aria-label="Document outline"
+          >
+            <div className="outline-head" style={{ position: "sticky", top: 0, zIndex: 1 }}>
+              <span>Outline</span>
+              <span className="outline-count">{headings.length}</span>
+              <button
+                className="outline-close"
+                onClick={() => setShowOutline(false)}
+                aria-label="Close outline"
+                title="Close outline"
+              >&times;</button>
+            </div>
+            <div className="outline-list">
+              {headings.map((h) => {
+                const foldable = sectionEnd(h) > h.line;
+                const isOpen = !folded.includes(h.line);
+                const struck = isStruck(h);
+                return (
+                  <div
+                    key={h.line}
+                    className="outline-row"
+                    data-level={h.level}
+                    data-struck={struck}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("text/x-docgent-line", String(h.line));
+                      e.dataTransfer.setData("text/x-docgent-level", String(h.level));
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragOver={(e) => {
+                      if (e.dataTransfer.types.includes("text/x-docgent-line")) {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                      }
+                    }}
+                    onDrop={(e) => {
+                      const fromLine = Number(e.dataTransfer.getData("text/x-docgent-line"));
+                      if (!Number.isFinite(fromLine) || fromLine === h.line) return;
+                      e.preventDefault();
+                      moveSection(fromLine, h.line);
+                    }}
+                    title="Drag to reorder"
+                  >
+                    <button
+                      className="outline-fold"
+                      onClick={() => toggleFold(h.line)}
+                      disabled={!foldable}
+                      aria-label={isOpen ? "Fold section" : "Unfold section"}
+                      title={foldable ? (isOpen ? "Fold section" : "Unfold section") : "Nothing to fold"}
+                    >
+                      {foldable ? (isOpen ? "▾" : "▸") : "·"}
+                    </button>
+                    <button
+                      className="outline-link"
+                      onClick={() => jumpToLine(h.line)}
+                      title={`${h.text} — line ${h.line}`}
+                    >
+                      {h.text}
+                    </button>
+                    <button
+                      className="outline-strike"
+                      onClick={() => toggleStrike(h)}
+                      data-active={struck}
+                      title={struck ? "Unstrike section" : "Strike section"}
+                      aria-label={struck ? `Unstrike ${h.text}` : `Strike ${h.text}`}
+                    >
+                      S
+                    </button>
+                    <button
+                      className="outline-direct"
+                      onClick={() => openSectionRewrite(h)}
+                      title={`Direct a rewrite of "${h.text}"`}
+                      aria-label={`Direct a rewrite of ${h.text}`}
+                    >
+                      ✨
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </nav>
+        )}
+        {/* Source pane: shown in Source mode always, in Edit+split mode when split is on */}
+        {/* Source pane: shown in Source mode always, in Edit+split mode when split is on */}
+        {(editorMode === "source" || (editorMode === "edit" && splitView) || (editorMode === "review" && splitView)) && (
+        <div className="pane pane-source">
+          {editorMode === "source" && (
+            <div className="source-mode-banner">
+              ‹› You are editing the document source
+            </div>
+          )}
+          {/* CodeMirror 6 editor host */}
           <div
             ref={cmContainerRef}
             className={`cm-host${isFolded ? " cm-host-readonly" : ""}`}
             aria-label="Document source editor"
           />
-
           {diagnostics.length > 0 && (
             <div className="diagnostics">
               {diagnostics.slice(0, 12).map((d, i) => (
@@ -1168,9 +3049,50 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               ))}
             </div>
           )}
+          {/* Phase 3a: slash command palette */}
+          {slashCmd.open && slashFiltered.length > 0 && (
+            <div
+              className="slash-menu"
+              style={{ top: slashCmd.top, left: Math.max(0, slashCmd.left) }}
+              role="listbox"
+              aria-label="Insert block"
+            >
+              {slashCmd.query && (
+                <div className="slash-menu-search">
+                  Searching: /{slashCmd.query}
+                </div>
+              )}
+              {slashFiltered.slice(0, 20).map((s, i) => (
+                <button
+                  key={s.id}
+                  className="slash-menu-item"
+                  data-selected={i === slashCmd.selectedIdx}
+                  role="option"
+                  aria-selected={i === slashCmd.selectedIdx}
+                  onMouseDown={(e) => { e.preventDefault(); insertFromSlash(s); }}
+                >
+                  <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--accent)", minWidth: 100 }}>{s.id}</span>
+                  <span style={{ fontSize: 12, color: "var(--ink-faint)" }}>{s.description}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+        )}
 
-        <div className="pane pane-preview">
+        {/* Preview/Pages pane: shown in Edit, Review, Pages modes */}
+        {editorMode !== "source" && (
+        <div
+          className="pane pane-preview"
+          data-annotatable={posture === "review" && mode === "html"}
+          onClick={onPreviewClick}
+        >
+          {/* Phase 5b: Review mode banner */}
+          {editorMode === "review" && (
+            <div className="review-mode-banner">
+              🔍 Review mode — agent suggestions and comments. Click any note to jump to source.
+            </div>
+          )}
           {previewError ? (
             <div className="banner" data-kind="error" style={{ margin: 12 }}>
               <strong>Preview failed.</strong>
@@ -1178,19 +3100,170 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             </div>
           ) : mode === "html" ? (
             previewHtml ? (
-              <iframe ref={frameRef} className="preview-frame" srcDoc={previewHtml} title="Live preview" sandbox="allow-same-origin" />
+              <iframe
+                ref={frameRef}
+                className="preview-frame"
+                srcDoc={previewHtml}
+                title="Live preview"
+                sandbox="allow-same-origin allow-scripts allow-forms"
+                onLoad={() => {
+                  // Restore scroll position after re-render so the view
+                  // doesn't jump to the top when the iframe reloads.
+                  const win = frameRef.current?.contentWindow;
+                  if (win && savedPreviewScroll.current > 0) {
+                    win.scrollTo({ top: savedPreviewScroll.current, behavior: "instant" as ScrollBehavior });
+                  }
+                }}
+              />
             ) : (
               <div className="empty">Rendering first preview…</div>
             )
           ) : previewUrl ? (
-            <iframe className="preview-frame" src={previewUrl} title="PDF preview" />
+            <iframe className="preview-frame" src={previewUrl} title="PDF preview" style={{ flex: 1 }} />
           ) : (
-            <div className="empty">{previewing ? "Rendering PDF…" : "Render the PDF to see paginated output."}</div>
+            <div className="empty">
+              {previewing ? "Rendering PDF…" : "Render the PDF to see paginated output."}
+            </div>
           )}
-          {previewUrl && previewing && <div className="preview-rendering-note" aria-live="polite">Rendering PDF…</div>}
-          {errors.length > 0 && <div className="preview-stale-note">Preview paused — fix {errors.length} error{errors.length > 1 ? "s" : ""} to resume.</div>}
+          {previewUrl && previewing && (
+            <div className="preview-rendering-note" aria-live="polite">
+              Rendering PDF…
+            </div>
+          )}
+          {errors.length > 0 && (
+            <div className="preview-stale-note">
+              Preview paused — fix {errors.length} error{errors.length > 1 ? "s" : ""} to resume.
+            </div>
+          )}
         </div>
+        )}
+
+        {/* Comments rail — shown to the right of editor panes when toggled */}
+        {showComments && (
+          <div className="editor-comments-rail">
+            <div className="editor-comments-rail-head">
+              <span>Comments</span>
+              <button
+                className="editor-comments-close"
+                onClick={() => setShowComments(false)}
+                aria-label="Close comments panel"
+              >
+                ×
+              </button>
+            </div>
+            <CommentsPanel
+              comments={parsedComments}
+              onResolve={handleResolveComment}
+              onAdd={handleAddComment}
+              onJump={jumpToComment}
+              canEdit={true}
+            />
+          </div>
+        )}
       </div>
+
+      {/* Phase 4a: Floating agent toolbar on text selection in preview */}
+      {selectionToolbar.visible && editorMode === "edit" && (
+        <div
+          className="selection-toolbar"
+          style={{
+            position: "fixed",
+            top: Math.max(8, selectionToolbar.top),
+            left: selectionToolbar.left,
+            transform: "translateX(-50%)",
+            zIndex: 200,
+          }}
+        >
+          <button
+            className="selection-toolbar-btn"
+            onClick={() => {
+              const top = offsetForLine(1);
+              setRewriteTarget({ kind: "range", start: selectionToolbar.selStart, end: selectionToolbar.selEnd, label: selectionToolbar.selectedText.slice(0, 60), top });
+              setSelectionToolbar((s) => ({ ...s, visible: false }));
+            }}
+            title="Rewrite selected text"
+          >Rewrite</button>
+          <button
+            className="selection-toolbar-btn"
+            onClick={() => {
+              const top = offsetForLine(1);
+              setRewriteTarget({ kind: "range", start: selectionToolbar.selStart, end: selectionToolbar.selEnd, label: "Shorten: " + selectionToolbar.selectedText.slice(0, 40), top });
+              setSelectionToolbar((s) => ({ ...s, visible: false }));
+            }}
+            title="Make it shorter"
+          >Shorten</button>
+          <button
+            className="selection-toolbar-btn"
+            onClick={() => {
+              const top = offsetForLine(1);
+              setRewriteTarget({ kind: "range", start: selectionToolbar.selStart, end: selectionToolbar.selEnd, label: "Strengthen: " + selectionToolbar.selectedText.slice(0, 40), top });
+              setSelectionToolbar((s) => ({ ...s, visible: false }));
+            }}
+            title="Make it stronger"
+          >Strengthen</button>
+          <button
+            className="selection-toolbar-btn"
+            onClick={() => setSelectionToolbar((s) => ({ ...s, visible: false }))}
+            title="Dismiss"
+          >×</button>
+        </div>
+      )}
+
+      {/* Phase 4b: Command palette ⌘K */}
+      {cmdPalette && (
+        <div
+          className="cmd-palette-overlay"
+          onClick={(e) => { if (e.target === e.currentTarget) setCmdPalette(false); }}
+        >
+          <div className="cmd-palette">
+            <div className="cmd-palette-search">
+              <span className="cmd-palette-icon">⌘</span>
+              <input
+                className="cmd-palette-input"
+                autoFocus
+                placeholder="Type a command…"
+                value={cmdQuery}
+                onChange={(e) => { setCmdQuery(e.target.value); setCmdSelectedIdx(0); }}
+                onKeyDown={(e) => {
+                  const cmds = [
+                    { label: "Print preview (PDF)", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
+                    { label: "Open Source view", action: () => { setEditorMode("source"); setCmdPalette(false); } },
+                    { label: "Toggle Outline", action: () => { setShowOutline((v) => !v); setCmdPalette(false); } },
+                    { label: "Edit mode", action: () => { setEditorMode("edit"); setCmdPalette(false); } },
+                    { label: "Print preview (PDF)", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
+                  ];
+                  const filtered = cmds.filter((c) => !cmdQuery || c.label.toLowerCase().includes(cmdQuery.toLowerCase()));
+                  if (e.key === "Escape") { setCmdPalette(false); }
+                  else if (e.key === "ArrowDown") { e.preventDefault(); setCmdSelectedIdx((i) => Math.min(i + 1, filtered.length - 1)); }
+                  else if (e.key === "ArrowUp") { e.preventDefault(); setCmdSelectedIdx((i) => Math.max(0, i - 1)); }
+                  else if (e.key === "Enter") { e.preventDefault(); filtered[cmdSelectedIdx]?.action(); }
+                }}
+              />
+            </div>
+            <div className="cmd-palette-list">
+              {([
+                { label: "Print preview (PDF)", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
+                { label: "Open Source view", action: () => { setEditorMode("source"); setCmdPalette(false); } },
+                { label: "Toggle Outline", action: () => { setShowOutline((v) => !v); setCmdPalette(false); } },
+                { label: "Edit mode", action: () => { setEditorMode("edit"); setCmdPalette(false); } },
+                { label: "Print preview (PDF)", action: () => { setEditorMode("pages"); setCmdPalette(false); } },
+              ] as Array<{label:string;action:()=>void}>)
+                .filter((c) => !cmdQuery || c.label.toLowerCase().includes(cmdQuery.toLowerCase()))
+                .map((c, i) => (
+                  <button
+                    key={c.label}
+                    className="cmd-palette-item"
+                    data-selected={i === cmdSelectedIdx}
+                    onClick={c.action}
+                  >
+                    {c.label}
+                  </button>
+                ))
+              }
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

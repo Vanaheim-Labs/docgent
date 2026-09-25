@@ -27,7 +27,7 @@ function guardBrandPath(req: NextRequest, allowedBrands: string[] | null): NextR
   const isBrandRoute =
     segments.length > 0 &&
     !isStaticFile &&
-    !["api", "signin", "_next", "favicon.ico"].includes(segments[0]);
+    !["api", "admin", "signin", "_next", "favicon.ico"].includes(segments[0]);
 
   const brandSegment = isBrandRoute
     ? segments[0]
@@ -44,6 +44,42 @@ function guardBrandPath(req: NextRequest, allowedBrands: string[] | null): NextR
   if (!allowedBrands) return null;
 
   if (!allowedBrands.includes(brandSegment)) {
+    return NextResponse.rewrite(new URL("/not-found", req.url));
+  }
+
+  return null;
+}
+
+/**
+ * /admin is a separate concern from per-brand access entirely: it is not
+ * about viewing/editing any one brand's documents, it is about managing
+ * brand *configuration* across all brands, so it is deliberately not
+ * folded into guardBrandPath's allowedBrands check above. A user can be in
+ * every brand's access list and still not be an admin, and vice versa.
+ *
+ * No session: send to sign-in same as any other protected route (auth()
+ * itself would also catch this, but redirecting here gives a cleaner URL
+ * than falling through to the default sign-in flow). Signed in but not
+ * admin: not-found, not a 403 — consistent with guardBrandPath's choice not
+ * to reveal *why* access was refused, and reusing the existing not-found
+ * page instead of adding a new one.
+ */
+function guardAdminPath(req: NextRequest, session: { isAdmin?: boolean } | null): NextResponse | null {
+  const segments = req.nextUrl.pathname.split("/").filter(Boolean);
+  const isAdminApiRoute = segments[0] === "api" && segments[1] === "admin";
+  const isAdminPageRoute = segments[0] === "admin";
+  if (!isAdminApiRoute && !isAdminPageRoute) return null;
+
+  if (!session) {
+    // API routes must return JSON errors, not HTML redirects — a fetch()
+    // following a 307 to /signin gets back an HTML page and JSON.parse throws.
+    if (isAdminApiRoute) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const signInUrl = new URL("/signin", req.url);
+    return NextResponse.redirect(signInUrl);
+  }
+
+  if (!session.isAdmin) {
+    if (isAdminApiRoute) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     return NextResponse.rewrite(new URL("/not-found", req.url));
   }
 
@@ -91,10 +127,14 @@ function withPublicHost(req: NextRequest): NextRequest {
 type AuthMiddlewareFn = (request: NextRequest, event: NextFetchEvent) => ReturnType<typeof NextResponse.next> | Promise<Response>;
 
 const authMiddleware = auth((req) => {
-  const allowedBrands =
-    (req.auth?.user as { allowedBrands?: string[] } | undefined)?.allowedBrands ?? null;
-  const guarded = guardBrandPath(req, allowedBrands);
+  const user = req.auth?.user as { allowedBrands?: string[]; isAdmin?: boolean } | undefined;
+
+  const guardedAdmin = guardAdminPath(req, req.auth ? { isAdmin: user?.isAdmin } : null);
+  if (guardedAdmin) return guardedAdmin;
+
+  const guarded = guardBrandPath(req, user?.allowedBrands ?? null);
   if (guarded) return guarded;
+
   return NextResponse.next();
 }) as unknown as AuthMiddlewareFn;
 
@@ -110,5 +150,5 @@ export const runtime = "nodejs";
 export const config = {
   // Guard everything except auth endpoints, the sign-in page, the health
   // probe, and static assets.
-  matcher: ["/((?!api/auth|api/health|signin|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!api/auth|api/health|api/og|signin|_next/static|_next/image|favicon.ico).*)"],
 };

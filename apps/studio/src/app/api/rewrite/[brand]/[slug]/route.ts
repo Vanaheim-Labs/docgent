@@ -94,7 +94,7 @@ export async function POST(
   let source: string;
   let baseSha: string | null;
   try {
-    const { docs } = storesFor(brand);
+    const { docs } = await storesFor(brand);
     const doc = await docs.readDocument(brand, slug);
     source = doc.content;
     baseSha = doc.sha ?? null;

@@ -4,12 +4,16 @@ import { redirect } from "next/navigation";
 export default async function SignIn({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; callbackUrl?: string }>;
 }) {
+  const { error, callbackUrl } = await searchParams;
+  // Only local absolute paths: reject protocol-relative URLs, backslashes
+  // and controls before passing an untrusted query parameter to OAuth.
+  const returnTo = typeof callbackUrl === "string" && callbackUrl.startsWith("/") &&
+    !callbackUrl.startsWith("//") && !/[\\\\\u0000-\u0020\u007f]/.test(callbackUrl)
+    ? callbackUrl : "/";
   const session = await auth();
-  if (session) redirect("/");
-
-  const { error } = await searchParams;
+  if (session) redirect(returnTo);
 
   return (
     <div className="signin-wrap">
@@ -34,7 +38,7 @@ export default async function SignIn({
           <form
             action={async () => {
               "use server";
-              await signIn("google", { redirectTo: "/" });
+              await signIn("google", { redirectTo: returnTo });
             }}
           >
             <button type="submit" className="btn" style={{ width: "100%" }}>

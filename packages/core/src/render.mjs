@@ -16,6 +16,21 @@ import { lintHtml, lintPdf, summarise } from "./lint.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, "..", "..", "..");
 
+/**
+ * Where brand.yaml + assets/css/doctypes/fonts live.
+ *
+ * Defaults to ROOT/brands (the historical in-repo layout: fine for a fork
+ * that keeps its own brands committed). DOCGENT_BRANDS_DIR overrides it so
+ * brand config can live outside this repo entirely — e.g. a private git
+ * submodule checked out elsewhere — which is how Vanaheim Labs runs this
+ * same code against brand data that isn't in the public repo. Studio's
+ * lib/store.ts resolves the same env var independently (it has its own
+ * Vercel-bundling constraints); this is the CLI/renderer's equivalent.
+ */
+export const BRANDS_ROOT = process.env.DOCGENT_BRANDS_DIR
+  ? path.resolve(process.env.DOCGENT_BRANDS_DIR)
+  : path.join(ROOT, "brands");
+
 const CORE = path.join(ROOT, "packages", "core");
 const TEMPLATE = path.join(CORE, "templates", "document.html");
 const FILTER = path.join(CORE, "filters", "vocabulary.lua");
@@ -30,7 +45,7 @@ export function readFrontmatter(mdPath) {
 }
 
 export function loadBrand(brandId) {
-  const dir = path.join(ROOT, "brands", brandId);
+  const dir = path.join(BRANDS_ROOT, brandId);
   const yml = path.join(dir, "brand.yaml");
   if (!fs.existsSync(yml)) throw new Error(`Unknown brand '${brandId}' (no ${yml})`);
   return { id: brandId, dir, ...parseYaml(fs.readFileSync(yml, "utf8")) };
@@ -72,7 +87,7 @@ export const DEFAULT_REPO = null;
 
 /** Lists every known brand and the repo it writes to. */
 export function brandRepoMap() {
-  const dir = path.join(ROOT, "brands");
+  const dir = BRANDS_ROOT;
   const out = {};
   if (!fs.existsSync(dir)) return out;
   for (const id of fs.readdirSync(dir)) {
@@ -173,7 +188,10 @@ export function mdToHtml(mdPath, { brand, frontmatter, outHtml, cssHrefs }) {
   for (const k of ["capital_sought", "instrument", "target_close", "contact"]) {
     if (frontmatter[k]) args.push("--metadata", `${k}=${frontmatter[k]}`);
   }
-  if (frontmatter.toc) args.push("--toc", "--toc-depth=2");
+  if (frontmatter.toc) {
+    const tocDepth = brand.toc?.depth ?? 2;
+    args.push("--toc", `--toc-depth=${tocDepth}`);
+  }
   for (const href of cssHrefs) args.push("--css", href);
   execFileSync("pandoc", args, { stdio: ["ignore", "pipe", "pipe"] });
   return outHtml;

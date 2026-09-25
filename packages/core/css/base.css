@@ -190,6 +190,38 @@ h1.numbered::before { content: counter(h1counter) ".  "; color: var(--accent); }
 h2.numbered { counter-increment: h2counter; }
 h2.numbered::before { content: counter(h1counter) "." counter(h2counter) "  "; color: var(--accent); font-weight: 500; }
 
+/* Struck sections (Studio Phase 10). A human's "cut this" direction to the
+   next AI pass, not a deletion -- the section and its body stay in the
+   document and in print, visibly marked, until someone removes the heading
+   attribute or the text itself. Dimmed + struck-through rather than hidden:
+   hiding it here would silently change what ships, which is exactly what
+   HANDOVER.md's "strike is trivially undoable" promise depends on not doing.
+
+   Strike is stored as one attribute on the heading (a deterministic text
+   transform, not a serialiser -- decision 2), but the whole section needs to
+   *read* as cut, not just its title: a dimmed headline over full-strength
+   body text looks like a rendering bug, not a directive. The vocabulary
+   filter's wrap_struck_sections() groups a struck heading with the blocks
+   that belong to it (up to the next heading of equal-or-shallower level)
+   into a .struck-section wrapper server-side, so this is one selector
+   rather than a heading rule plus a fragile sibling-combinator hack that
+   can't express "until the next heading" in CSS alone. */
+.struck-section {
+  opacity: 0.55;
+}
+.struck-section > h1,
+.struck-section > h2,
+.struck-section > h3,
+.struck-section > h4,
+.struck-section > h5,
+.struck-section > h6 {
+  text-decoration: line-through;
+}
+.struck-section > h1::before,
+.struck-section > h2::before {
+  color: inherit;
+}
+
 p { margin: 0 0 0.7rem; text-align: var(--body-align, justify); }
 p.lead { font-size: 1.12rem; line-height: 1.45; color: var(--ink-soft); text-align: left; }
 
@@ -519,9 +551,8 @@ table:not(.datatable table) td {
 .columns[data-count="3"] { column-count: 3; font-size: 0.92rem; }
 
 /* ---------- structural ---------- */
-.pagebreak { break-after: page; height: 0; }
-.pagebreak[data-to="left"] { break-after: left; }
-.pagebreak[data-to="right"] { break-after: right; }
+/* pagebreak: break is injected by vocabulary.lua directly onto the following
+   block as an inline style; no marker element appears in the rendered HTML. */
 .landscape { page: landscape; break-before: page; break-after: page; }
 .appendix { break-before: page; }
 .appendix h1 { string-set: section "Appendix"; break-before: avoid; }
@@ -548,6 +579,9 @@ table:not(.datatable table) td {
 .signature-role, .signature-date { color: var(--ink-faint); font-size: 0.78rem; }
 
 /* ---------- toc ---------- */
+/* h1.toc-anchor: native Header node re-inserted by vocabulary.lua so pandoc
+   includes eyebrow-styled H1s in the auto-TOC. Hidden from body flow. */
+h1.toc-anchor { display: none; }
 .toc { break-after: page; }
 .toc h2 { font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); border-bottom: 1pt solid var(--rule); padding-bottom: 0.4rem; }
 .toc ul { list-style: none; padding-left: 0; }
@@ -840,5 +874,450 @@ em.accent { font-style: normal; color: var(--accent); }
   font-size: 0.92rem;
   font-weight: 700;
   color: var(--ink);
+}
+
+/* ---------- product-cards (::product-cards) ---------- */
+/*
+  2-column float grid. Each .prod card has an ink top rule and a
+  Crimson Pro title. Bullet rows use an em-dash glyph prefix.
+  Float is used so WeasyPrint (no grid support) lays two cards per row.
+*/
+.prod-grid {
+  margin: 1.4rem 0;
+}
+.prod-grid::after { content: ""; display: table; clear: both; }
+.prod {
+  float: left;
+  width: calc(50% - 0.6rem);
+  margin-right: 1.2rem;
+  margin-bottom: 1.2rem;
+  break-inside: avoid;
+  padding-top: 0.6rem;
+  border-top: 1.5pt solid var(--ink);
+}
+.prod:nth-child(even) { margin-right: 0; }
+.prod-tag {
+  font-family: var(--font-sans);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.2rem;
+}
+.prod-title {
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 0.25rem;
+}
+.prod-sub {
+  font-family: var(--font-sans);
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+  margin-bottom: 0.4rem;
+}
+.prod-row {
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  padding: 0.18rem 0 0.18rem 1.1rem;
+  border-bottom: 0.5pt solid var(--rule);
+  position: relative;
+}
+.prod-row::before {
+  content: "\2014"; /* em-dash */
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+  font-weight: 400;
+}
+
+/* ---------- comparison-grid (::comparison-grid) ---------- */
+/*
+  Each .cc column renders side-by-side. Highlighted column (.hl) has
+  accent-coloured name and a light mist background.
+*/
+.cg {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.8rem;
+  margin: 1.4rem 0;
+}
+.cc {
+  break-inside: avoid;
+  padding: 0.8rem 0.9rem;
+  background: var(--paper-alt);
+  border-radius: 2px;
+  border-top: 2pt solid var(--rule);
+}
+.cc.hl {
+  background: var(--accent-soft);
+  border-top-color: var(--accent);
+}
+.cc-lbl {
+  font-family: var(--font-sans);
+  font-size: 0.64rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 0.18rem;
+}
+.cc-name {
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 0.2rem;
+}
+.cc.hl .cc-name { color: var(--accent); }
+.cc-price {
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  margin-bottom: 0.4rem;
+}
+.cc-note {
+  font-family: var(--font-sans);
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+}
+.cc p { margin: 0 0 0.3rem; }
+.cc ul, .cc ol { margin: 0.3rem 0; padding-left: 1rem; }
+.cc li { font-size: 0.76rem; margin-bottom: 0.15rem; }
+
+/* ---------- spec (::spec) — screenshot 3-column grid ---------- */
+.spec {
+  margin: 1.4rem 0;
+  break-inside: avoid;
+}
+.spec-title {
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+  margin-bottom: 0.2rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1pt solid var(--rule);
+}
+.spec-sub {
+  font-family: var(--font-sans);
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+  margin-bottom: 0.6rem;
+}
+/* Images inside a spec block flow in a 3-column grid */
+.spec p:has(img),
+.spec figure {
+  display: inline-block;
+  width: calc(33.3% - 0.5rem);
+  margin: 0 0.4rem 0.4rem 0;
+  vertical-align: top;
+}
+.spec img {
+  width: 100%;
+  height: auto;
+  border: 0.5pt solid var(--rule);
+  border-radius: 2px;
+  display: block;
+}
+
+/* ---------- roadmap (::roadmap) ---------- */
+/*
+  4-column table. .rm-head row: teal caps, hairline border.
+  .rm-period row: Crimson Pro italic.
+  .rm-tranche cell: teal background accent.
+  .rm-item: accent bullet list inside a tranche cell.
+*/
+.rm-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4rem 0;
+  break-inside: avoid;
+  font-family: var(--font-sans);
+  font-size: 0.76rem;
+}
+.rm-head { background: var(--paper-alt); }
+.rm-head th {
+  padding: 0.5rem 0.55rem;
+  font-family: var(--font-sans);
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink);
+  border-bottom: 1.5pt solid var(--ink);
+  text-align: left;
+}
+.rm-head th:first-child { width: 22%; }
+.rm-period td {
+  padding: 0.5rem 0.55rem;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  border-bottom: 0.5pt solid var(--rule);
+  background: var(--paper-alt);
+}
+.rm-tranche td {
+  padding: 0.4rem 0.55rem;
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border-bottom: 0;
+}
+.rm-item td {
+  padding: 0.3rem 0.55rem 0.3rem 1rem;
+  color: var(--ink-soft);
+  border-bottom: 0.5pt solid var(--rule);
+  position: relative;
+}
+.rm-item td::before {
+  content: "\2022"; /* bullet */
+  position: absolute;
+  left: 0.4rem;
+  color: var(--accent);
+}
+.rm-item td:first-child { color: var(--ink); font-weight: 500; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHASE H — Final polish
+   Applies across all brands; brand CSS may narrow or override as needed.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ---------- print-color-adjust: exact ------------------------------------ */
+/*
+  Browsers and WeasyPrint may strip tinted backgrounds in print mode unless
+  told not to. Force exact colour rendering for the entire document so
+  callout tints, kpi-card tops, tranche rows, tension-box, and cover all
+  appear as designed.
+*/
+* {
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+/* ---------- tabular-nums extension --------------------------------------- */
+/*
+  roadmap, product-grid, and comparison-grid weren't in the original selector
+  list. Add them so any numeric content aligns properly.
+*/
+.rm-table, .prod-grid, .cg {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ---------- section eyebrow (section-number) ------------------------------ */
+/*
+  The vocabulary filter emits .section-header > .section-number ahead of
+  each h1. Brands style the visual detail (font size, colour, letter-spacing);
+  the base layer handles flow control so the eyebrow never splits from the
+  heading it precedes.
+*/
+.section-number {
+  display: block;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+.section-number + h1 {
+  break-before: avoid;
+  page-break-before: avoid;
+}
+/* The section-number is a structural wrapper; its ::before/::after are
+   reserved for brands to add separators — suppress any core inheritance. */
+.section-number::before { content: none; }
+
+/* ---------- no-break utility --------------------------------------------- */
+/*
+  .no-break keeps a block together with the element that follows it.
+  Used by the vocabulary filter on .section-header wrappers.
+*/
+.no-break {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+/* ---------- section-opener ----------------------------------------------- */
+/*
+  Full-page section dividers. The vocabulary filter emits .section-opener
+  wrapping the eyebrow + H1 + optional blurb. Base layer handles page
+  assignment and page-break semantics; brands control the visual design
+  (padding, ghost numeral, accent rule, etc.).
+*/
+.section-opener {
+  page: section-opener;
+  break-before: page;
+  page-break-before: always;
+}
+
+/* Eyebrow and H1 must stay together on the opener page */
+.section-opener .section-number {
+  break-before: avoid;
+  page-break-before: avoid;
+}
+.section-opener .section-number + h1,
+.section-opener .section-number + .section-h1 {
+  break-before: avoid;
+  page-break-before: avoid;
+}
+
+/* .section-h1: the H1 inside a section-opener is emitted as raw HTML so it
+   stays firmly inside the containing div (native pandoc Header elements can
+   be pulled out of raw-HTML block context by WeasyPrint's block formatter).
+   Style it identically to h1 so brands only need to target one selector. */
+.section-h1 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--ink);
+  break-after: avoid;
+  page-break-after: avoid;
+  /* string-set so the running header updates to the new section title */
+  string-set: section content();
+}
+
+/* Hidden span that forces WeasyPrint's string-set to fire for the section
+   running header. Because .section-h1 is raw HTML, the filter also emits
+   this span to carry the string-set value. */
+.section-string-set {
+  string-set: section content();
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* ---------- section-ghost ------------------------------------------------ */
+/*
+  Large ghost numeral behind the section heading. Brands set font-size,
+  opacity, position. Base layer: absolute positioning + non-interactive.
+*/
+.section-ghost {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1;
+}
+
+/* Content on opener pages sits above the ghost */
+.section-opener .section-open,
+.section-opener > .section-number,
+.section-opener > h1 {
+  position: relative;
+  z-index: 2;
+}
+
+/* ---------- heading keep-with-next (belt-and-braces) --------------------- */
+/*
+  The heading rule already sets break-after:avoid on h1-h6. These add the
+  legacy page-break-* aliases WeasyPrint also honours, and extend coverage
+  to h5/h6 which the earlier rule omitted. They also cover .section-header
+  wrappers that the filter emits around h1s on section openers.
+*/
+h5, h6 {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+.section-header {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+/* ---------- widow/orphan extension --------------------------------------- */
+/*
+  The body rule sets orphans:3; widows:3. These extend it to elements that
+  weren't covered: definition blocks, phase blocks, comparison-grid notes.
+*/
+.definition, .phase, .cc-note, .prod-row, .rm-item {
+  orphans: 3;
+  widows: 3;
+}
+
+/* ---------- fine-tuning -------------------------------------------------- */
+/*
+  Small typographic improvements to match the v36 original more closely.
+*/
+
+/* Tighten large headings slightly more than the current -0.015em */
+h1 { letter-spacing: -0.02em; }
+
+/* H2: hairline separator aids navigation in long documents */
+h2 {
+  padding-bottom: 0.15rem;
+  border-bottom: 0.4pt solid var(--rule);
+}
+
+/* H3: stone caps eyebrow treatment matches v36 sub-section style */
+h3 {
+  letter-spacing: 0.02em;
+}
+
+/* Section-number separator dots: brands override colour via --accent */
+.section-number-sep {
+  margin: 0 0.25em;
+  color: var(--accent);
+}
+
+/* ---------- opt-in native editorial cover -------------------------------
+   A4 portrait contract; requires nocover: true and placement before body.
+   Nothing here selects the legacy .cover or changes ordinary page defaults.
+   Text remains native; logo is the only image. Do not hide overflow: overly
+   long author content must remain visible and be caught by pagination tests. */
+@page native-cover {
+  size: A4;
+  margin: 0;
+  @top-left { content: none; }
+  @top-center { content: none; }
+  @top-right { content: none; }
+  @bottom-left { content: none; }
+  @bottom-center { content: none; }
+  @bottom-right { content: none; }
+}
+.native-cover {
+  page: native-cover;
+  box-sizing: border-box;
+  width: 210mm;
+  height: 297mm;
+  position: relative;
+  padding: 23mm 24mm 20mm;
+  margin: 0;
+  break-after: page;
+  background: var(--native-cover-surface, #101e27);
+  color: var(--native-cover-ink, #f5f3ec);
+  font-family: var(--font-sans, sans-serif);
+  font-size: 12pt;
+  line-height: 1.4;
+  text-align: left;
+  hyphens: none;
+}
+.native-cover .native-cover-masthead {
+  border-bottom: 0.5pt solid var(--native-cover-rule, #526264);
+  padding-bottom: 10mm;
+}
+.native-cover .native-cover-logo { width: 61mm; height: auto; display: block; margin: 0 0 9mm; }
+.native-cover .native-cover-eyebrow,
+.native-cover .native-cover-insight-label { font-size: 12pt; letter-spacing: 0.13em; color: var(--native-cover-accent, #b8dcc9); }
+.native-cover .native-cover-introduction { margin-top: 18mm; }
+.native-cover .native-cover-subtitle { font-family: var(--font-serif, Georgia, serif); font-size: 35pt; font-weight: 500; line-height: 1.08; letter-spacing: -0.025em; max-width: 154mm; }
+.native-cover .native-cover-insight { margin-top: 20mm; }
+.native-cover .native-cover-thesis { font-family: var(--font-serif, Georgia, serif); font-size: 21pt; line-height: 1.32; color: inherit; margin: 6mm 0 5mm; text-align: left; }
+.native-cover .native-cover-metric { color: var(--native-cover-accent, #b8dcc9); font-weight: 600; }
+.native-cover .native-cover-source { font-size: 12pt; line-height: 1.45; color: var(--native-cover-muted, #c3cbc8); max-width: 151mm; }
+.native-cover .native-cover-footer { position: absolute; left: 24mm; right: 24mm; bottom: 20mm; border-top: 0.5pt solid var(--native-cover-rule, #526264); padding-top: 6mm; }
+.native-cover .native-cover-partners { display: flex; justify-content: space-between; gap: 8mm; font-size: 12pt; color: var(--native-cover-accent, #b8dcc9); margin-bottom: 6mm; }
+.native-cover .native-cover-partner, .native-cover .native-cover-licence { max-width: 78mm; }
+.native-cover .native-cover-version { font-size: 12pt; letter-spacing: 0.1em; margin-bottom: 4mm; }
+.native-cover .native-cover-legal p { font-size: 12pt; line-height: 1.45; color: var(--native-cover-muted, #c3cbc8); margin: 0; text-align: left; }
+
+/* Figures: tighten caption spacing */
+.figure-caption { margin-top: 0.3rem; }
+
+/* Tables: last row of a tbody gets a heavier closing rule */
+tbody tr:last-child td {
+  border-bottom: 1pt solid var(--rule);
 }
 
