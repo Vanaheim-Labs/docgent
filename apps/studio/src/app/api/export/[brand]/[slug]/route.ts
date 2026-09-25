@@ -25,6 +25,10 @@ export async function GET(
   if (!authz.ok) return new Response("unauthorised", { status: 401 });
 
   const { searchParams } = new URL(req.url);
+  const ref = searchParams.get("ref");
+  if (ref !== null && !/^[a-f0-9]{40}$/.test(ref)) {
+    return Response.json({ error: "Use a full immutable commit SHA for ref." }, { status: 400 });
+  }
   const format = searchParams.get("format");
   if (format !== "docx") {
     return Response.json(
@@ -40,7 +44,7 @@ export async function GET(
 
   try {
     const { git, docs } = await storesFor(brand);
-    const commitSha = await git.head();
+    const commitSha = searchParams.get("ref") || await git.head();
     const doc = await docs.readAt(brand, slug, commitSha);
 
     // Collect assets (assets/, figures/, and images/) the same way the PDF route does.
@@ -97,9 +101,10 @@ export async function GET(
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "Content-Disposition": `attachment; filename="${slug}.docx"`,
+        "Content-Disposition": `attachment; filename="${slug}-${commitSha.slice(0, 7)}.docx"`,
         "Cache-Control": "no-store",
         "X-Docgent-Render-Ms": renderMs,
+        "X-Docgent-Revision": commitSha,
       },
     });
   } catch (e) {
