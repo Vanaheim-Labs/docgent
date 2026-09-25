@@ -15,6 +15,11 @@
 .editor[data-unified="true"] .editor-panes > .pane { flex:1 1 0; width:auto; min-width:320px; min-height:0; }
 .editor[data-unified="true"][data-layout="split"] .workspace-output { display:flex; border-left:1px solid var(--line,#ddd); }
 .editor[data-unified="true"] .workspace-mobile-toggle { display:none; }
+.editor[data-unified="true"] > .editor-toolbar { display:none; }
+.editor[data-unified="true"][data-insert="false"] .format-bars-wrap { display:none; }
+.workspace-format { display:flex; flex-wrap:wrap; gap:6px; padding:8px 20px; border-bottom:1px solid var(--line,#ddd); }
+.workspace-format button { min-height:32px; border:1px solid var(--line,#ccc); border-radius:4px; background:var(--paper,white); padding:4px 10px; }
+.editor[data-unified="true"] .editor-comments-rail { flex:0 0 320px; display:flex; overflow:auto; }
 .workspace-context { flex:0 0 340px; min-width:300px; overflow:auto; padding:12px; border-left:1px solid var(--line,#ddd); background:var(--paper,white); }
 @media(max-width:760px) {
  .workspace-context { position:absolute; inset:0; z-index:20; min-width:0; }

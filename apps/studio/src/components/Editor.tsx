@@ -160,6 +160,7 @@ type Props = {
     initialEditing?: boolean;
     viewingSha?: string;
     status?: string;
+    details?: Record<string, string>;
   };
 };
 
@@ -235,7 +236,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const [exporting, setExporting] = useState(false);
   const [conflictHead, setConflictHead] = useState<{ content: string; sha: string } | null>(null);
   const [visualNotice, setVisualNotice] = useState("");
-  const [contextPanel, setContextPanel] = useState<"history" | null>(null);
+  const [contextPanel, setContextPanel] = useState<"history" | "details" | null>(null);
+  const [showInsert, setShowInsert] = useState(false);
   const [historicalSha, setHistoricalSha] = useState<string | undefined>(workspace?.viewingSha);
   const viewRevision = (sha?: string) => { setHistoricalSha(sha); setLayout("preview"); };
   const draftKey = `docgent.draft:${brand}/${slug}`;
@@ -2733,7 +2735,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
 
   return (
-    <div className="editor" data-unified={!!workspace} data-layout={layout} data-authoring={authoring} data-mobile-pane={mobilePane}>
+    <div className="editor" data-unified={!!workspace} data-layout={layout} data-authoring={authoring} data-mobile-pane={mobilePane} data-insert={showInsert}>
       {workspace && <header className="workspace-header">
         <nav aria-label="Application navigation"><a href="/">Documents</a> · <a href="/primitives">Primitives</a></nav>
         <h1>{workspace.title}</h1>
@@ -2757,6 +2759,9 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         <span>{layout === "preview" ? "Read-only preview" : "Editing"}</span>
         {visualNotice && <span role="status" aria-label="Visual editing notice">{visualNotice}</span>}
         <button aria-expanded={contextPanel === "history"} onClick={() => setContextPanel(contextPanel === "history" ? null : "history")}>History</button>
+        <button aria-expanded={contextPanel === "details"} onClick={() => { setShowComments(false); setContextPanel(contextPanel === "details" ? null : "details"); }}>Details</button>
+        <button aria-expanded={showComments} onClick={() => { setContextPanel(null); setShowComments(!showComments); }}>Comments</button>
+        <button aria-expanded={showOutline} onClick={() => setShowOutline(!showOutline)}>Outline</button>
         {layout === "split" && <button className="workspace-mobile-toggle" onClick={() => setMobilePane(mobilePane === "editor" ? "preview" : "editor")}>Show {mobilePane === "editor" ? "preview" : "editor"}</button>}
       </header>}
       {historicalSha && <div className="banner" role="status" aria-label="Historical revision">
@@ -3077,6 +3082,15 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         </div>
       )}
 
+      {workspace && editorMode !== "pages" && <div className="workspace-format" role="toolbar" aria-label="Common formatting" onMouseDown={(event) => { event.preventDefault(); savedIframeSelection.current = getIframeSelection(); }}>
+        <button onClick={() => toggleInline("**", "bold text")}>Bold</button>
+        <button onClick={() => toggleInline("*", "italic text")}>Italic</button>
+        <button onClick={() => applyHeading(2)}>Heading</button>
+        <button onClick={applyBullets}>List</button>
+        <button onClick={insertLink}>Link</button>
+        <button onClick={doUndo}>Undo</button><button onClick={doRedo}>Redo</button>
+        <button aria-expanded={showInsert} onClick={() => setShowInsert(!showInsert)}>Insert</button>
+      </div>}
       {editorMode !== "pages" && (
       <div className="format-bars-wrap">
             {/* ── ROW 1: Word-style formatting + most common Docgent primitives (Autype layout) ── */}
@@ -3450,6 +3464,13 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
           <button onClick={() => setContextPanel(null)}>Close history</button>
           <WorkspaceHistory brand={brand} slug={slug} timeline={workspace.timeline} baseSha={!dirty && workspace.canEdit ? baseSha || undefined : undefined} viewingSha={historicalSha} onView={viewRevision} />
         </aside>}
+        {workspace && contextPanel === "details" && <aside className="workspace-context" aria-label="Details panel">
+          <button onClick={() => setContextPanel(null)}>Close details</button>
+          <h2>Document details</h2>
+          <dl>{Object.entries({ Brand: brand, Document: slug, Status: workspace.status || "draft", ...workspace.details }).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value)}</dd></div>)}</dl>
+          <p>{wordCount} words · {lineCount} source lines</p>
+          <p>Source revision: {historicalSha || baseSha || "unknown"}</p>
+        </aside>}
         {/* Comments rail — shown to the right of editor panes when toggled */}
         {showComments && (
           <div className="editor-comments-rail">
@@ -3464,11 +3485,12 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
               </button>
             </div>
             <CommentsPanel
+              key={historicalSha || layout}
               comments={parsedComments}
-              onResolve={handleResolveComment}
-              onAdd={handleAddComment}
+              onResolve={workspace && (layout === "preview" || historicalSha || !workspace.canEdit) ? undefined : handleResolveComment}
+              onAdd={workspace && (layout === "preview" || historicalSha || !workspace.canEdit) ? undefined : handleAddComment}
               onJump={jumpToComment}
-              canEdit={true}
+              canEdit={!workspace || (workspace.canEdit && layout !== "preview" && !historicalSha)}
             />
           </div>
         )}

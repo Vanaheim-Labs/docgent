@@ -9,6 +9,27 @@ test.beforeEach(async({page})=>{
   return route.fulfill({status:502,body:'Fixture renderer unavailable'});
  });
 });
+test('library filters use metadata and survive opening a document and returning',async({page})=>{
+ await page.goto(server.url+'/library');
+ await page.getByRole('searchbox',{name:'Search documents'}).fill('Useful description');
+ await expect(page.getByRole('link',{name:/Alpha report/})).toBeVisible();await expect(page.getByRole('link',{name:/Beta memo/})).toHaveCount(0);
+ await page.getByLabel('Document type').selectOption('report');await page.getByLabel('Status filter').selectOption('draft');await page.getByLabel('Brand filter').selectOption('example');
+ await page.getByRole('link',{name:/Alpha report/}).click();
+ await page.goBack();
+ await expect(page.getByRole('searchbox',{name:'Search documents'})).toHaveValue('Useful description');await expect(page.getByLabel('Document type')).toHaveValue('report');
+ await page.getByRole('button',{name:'Clear filters',exact:true}).click();await expect(page.getByRole('link',{name:/Beta memo/})).toBeVisible();
+ await page.getByLabel('Sort documents').selectOption('title-az');expect(await page.locator('.queue-row-title').allTextContents()).toEqual(['Alpha report','Beta memo']);
+});
+test('context controls expose details and comments without legacy export or a wall of insert blocks',async({page})=>{
+ await page.goto(server.url);
+ await expect(page.getByRole('button',{name:'Export ↓',exact:true})).not.toBeVisible();
+ await page.getByRole('button',{name:'Details',exact:true}).click();await expect(page.getByRole('complementary',{name:'Details panel'})).toContainText('example');
+ await page.getByRole('button',{name:'Comments',exact:true}).click();await expect(page.getByText('No open comments.',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'+ Add',exact:true})).not.toBeVisible();
+ await page.getByRole('button',{name:'Editor only',exact:true}).click();
+ await page.getByRole('button',{name:'Insert',exact:true}).click();
+ await expect(page.getByRole('toolbar',{name:'Docgent vocabulary blocks'})).toBeVisible();
+});
 test('visual mode refuses lossy edits to formatted or complex blocks and leaves source byte-equivalent',async({page})=>{
  await page.route('**/api/preview/**/html',route=>route.fulfill({contentType:'text/html',body:'<p data-source-line="20">Keep <strong>formatting</strong> intact.</p>'}));
  await page.goto(server.url);await page.getByRole('button',{name:'Editor only',exact:true}).click();
