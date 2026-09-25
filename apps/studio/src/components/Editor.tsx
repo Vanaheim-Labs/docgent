@@ -3046,37 +3046,37 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
             >
               {/* Paragraph / heading style */}
               <div className="format-group">
-                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); transformLines((lines) => lines.map((l) => l.replace(/^#{1,6}\s+/, ""))); }} disabled={isFolded} title="Paragraph" data-tooltip="Paragraph">P</button>
-                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(1); }} disabled={isFolded} title="Heading 1" data-tooltip="Heading 1">H1</button>
-                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(2); }} disabled={isFolded} title="Heading 2" data-tooltip="Heading 2">H2</button>
-                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(3); }} disabled={isFolded} title="Heading 3" data-tooltip="Heading 3">H3</button>
-                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(4); }} disabled={isFolded} title="Heading 4" data-tooltip="Heading 4">H4</button>
+                <Tooltip text="Paragraph" disabled={isFolded}><button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); transformLines((lines) => lines.map((l) => l.replace(/^#{1,6}\s+/, ""))); }} disabled={isFolded}>P</button></Tooltip>
+                <Tooltip text="Heading 1" disabled={isFolded}><button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(1); }} disabled={isFolded}>H1</button></Tooltip>
+                <Tooltip text="Heading 2" disabled={isFolded}><button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(2); }} disabled={isFolded}>H2</button></Tooltip>
+                <Tooltip text="Heading 3" disabled={isFolded}><button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(3); }} disabled={isFolded}>H3</button></Tooltip>
+                <Tooltip text="Heading 4" disabled={isFolded}><button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(4); }} disabled={isFolded}>H4</button></Tooltip>
               </div>
               <div className="format-divider" />
               {/* Inline marks */}
               <div className="format-group">
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("**", "bold text"); }} disabled={isFolded} title="Bold — ⌘B" data-tooltip="Bold — ⌘B"><Bold size={14} strokeWidth={2.5} /></button>
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("*", "italic text"); }} disabled={isFolded} title="Italic — ⌘I" data-tooltip="Italic — ⌘I"><Italic size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertUnderline(); }} disabled={isFolded} title="Underline" data-tooltip="Underline"><Underline size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("~~", "struck text"); }} disabled={isFolded} title="Strikethrough" data-tooltip="Strikethrough"><Strikethrough size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertHighlight(); }} disabled={isFolded} title="Highlight" data-tooltip="Highlight"><Highlighter size={14} strokeWidth={2} /></button>
+                <Tooltip text="Bold — ⌘B" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("**", "bold text"); }} disabled={isFolded}><Bold size={14} strokeWidth={2.5} /></button></Tooltip>
+                <Tooltip text="Italic — ⌘I" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("*", "italic text"); }} disabled={isFolded}><Italic size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Underline" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertUnderline(); }} disabled={isFolded}><Underline size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Strikethrough" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); savedIframeSelection.current = getIframeSelection(); toggleInline("~~", "struck text"); }} disabled={isFolded}><Strikethrough size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Highlight" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertHighlight(); }} disabled={isFolded}><Highlighter size={14} strokeWidth={2} /></button></Tooltip>
               </div>
               <div className="format-divider" />
               {/* Lists + insert */}
               <div className="format-group">
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertLink(); }} disabled={isFolded} title="Link — ⌘K" data-tooltip="Link — ⌘K"><Link2 size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); applyBullets(); }} disabled={isFolded} title="Bulleted list" data-tooltip="Bulleted list"><List size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); applyNumbered(); }} disabled={isFolded} title="Numbered list" data-tooltip="Numbered list"><ListOrdered size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertTable(); }} disabled={isFolded} title="Table" data-tooltip="Table"><Table size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertImage(); }} disabled={isFolded} title="Image" data-tooltip="Image"><Image size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onClick={insertCodeBlock} disabled={isFolded} title="Code block" data-tooltip="Code block"><Code2 size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onClick={insertRule} disabled={isFolded} title="Horizontal rule" data-tooltip="Horizontal rule"><Minus size={14} strokeWidth={2} /></button>
+                <Tooltip text="Link — ⌘K" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertLink(); }} disabled={isFolded}><Link2 size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Bulleted list" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); applyBullets(); }} disabled={isFolded}><List size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Numbered list" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); applyNumbered(); }} disabled={isFolded}><ListOrdered size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Table" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertTable(); }} disabled={isFolded}><Table size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Image" disabled={isFolded}><button className="format-btn" onMouseDown={(e) => { e.preventDefault(); insertImage(); }} disabled={isFolded}><Image size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Code block" disabled={isFolded}><button className="format-btn" onClick={insertCodeBlock} disabled={isFolded}><Code2 size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Horizontal rule" disabled={isFolded}><button className="format-btn" onClick={insertRule} disabled={isFolded}><Minus size={14} strokeWidth={2} /></button></Tooltip>
               </div>
               <div className="format-divider" />
               {/* Undo / redo */}
               <div className="format-group">
-                <button className="format-btn" onClick={doUndo} disabled={isFolded} title="Undo" data-tooltip="Undo"><Undo2 size={14} strokeWidth={2} /></button>
-                <button className="format-btn" onClick={doRedo} disabled={isFolded} title="Redo" data-tooltip="Redo"><Redo2 size={14} strokeWidth={2} /></button>
+                <Tooltip text="Undo"><button className="format-btn" onClick={doUndo} disabled={isFolded}><Undo2 size={14} strokeWidth={2} /></button></Tooltip>
+                <Tooltip text="Redo"><button className="format-btn" onClick={doRedo} disabled={isFolded}><Redo2 size={14} strokeWidth={2} /></button></Tooltip>
               </div>
               <div className="format-divider" />
               {/* Most common Docgent primitives — right on Row 1, matching Autype */}
@@ -3089,21 +3089,22 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                     const Icon = BLOCK_ICONS[s.id];
                     const tip = s.description ? `${s.id} — ${s.description}` : s.id;
                     return (
-                      <button key={s.id}
-                        className={`format-btn format-btn-prim${s.id === "pagebreak" ? " format-btn-prim-accent" : ""}`}
-                        onClick={() => insertSnippet(s.snippet)}
-                        disabled={isFolded}
-                        title={tip} data-tooltip={tip}
-                      >
-                        {Icon ? <Icon size={14} strokeWidth={2} /> : null}
-                      </button>
+                      <Tooltip key={s.id} text={tip} disabled={isFolded}>
+                        <button
+                          className={`format-btn format-btn-prim${s.id === "pagebreak" ? " format-btn-prim-accent" : ""}`}
+                          onClick={() => insertSnippet(s.snippet)}
+                          disabled={isFolded}
+                        >
+                          {Icon ? <Icon size={14} strokeWidth={2} /> : null}
+                        </button>
+                      </Tooltip>
                     );
                   });
               })()}
               <div className="format-divider" />
               {/* AI rewrite */}
               <div className="format-group">
-                <button className="format-btn format-btn-wide" onClick={openSelectionRewrite} disabled={isFolded} title="Rewrite selection" data-tooltip="Rewrite selection">✨</button>
+                <Tooltip text="Rewrite selection"><button className="format-btn format-btn-wide" onClick={openSelectionRewrite} disabled={isFolded}>✨</button></Tooltip>
               </div>
               {isFolded && <span className="format-note">unfold a section to edit</span>}
             </div>
@@ -3137,17 +3138,16 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                   const Icon = BLOCK_ICONS[s.id];
                   const tip = s.description ? `${s.id} — ${s.description}` : s.id;
                   return (
-                    <button
-                      key={s.id}
-                      className="format-btn format-btn-prim"
-                      onClick={() => { insertSnippet(s.snippet); setShowMoreBlocks(false); }}
-                      disabled={isFolded}
-                      title={tip}
-                      data-tooltip={tip}
-                      aria-label={s.description || s.id}
-                    >
-                      {Icon ? <Icon size={14} strokeWidth={2} /> : <span className="format-btn-prim-fallback">{s.id.slice(0, 2).toUpperCase()}</span>}
-                    </button>
+                    <Tooltip key={s.id} text={tip} disabled={isFolded}>
+                      <button
+                        className="format-btn format-btn-prim"
+                        onClick={() => { insertSnippet(s.snippet); setShowMoreBlocks(false); }}
+                        disabled={isFolded}
+                        aria-label={s.description || s.id}
+                      >
+                        {Icon ? <Icon size={14} strokeWidth={2} /> : <span className="format-btn-prim-fallback">{s.id.slice(0, 2).toUpperCase()}</span>}
+                      </button>
+                    </Tooltip>
                   );
                 };
 
