@@ -18,21 +18,90 @@ import { docgentLanguage } from "@/lib/docgent-lang";
 import {
   Bold, Italic, Underline, Strikethrough, Highlighter, Link2,
   List, ListOrdered, Table, Image, Code2, Minus, Undo2, Redo2,
-  Columns, MessageSquare, Quote, BarChart2, SplitSquareVertical,
-  Calendar, PenLine,
+  // Block icon set
+  SplitSquareVertical, // pagebreak
+  ListTree,           // toc
+  Columns2,           // columns
+  MessageSquareDot,   // callout
+  Quote,              // pullquote
+  Sigma,              // keyfigure / key-figure
+  BarChart2,          // chart / kpigrid / kpi-row
+  BarChart,           // kpicard
+  ImageIcon,          // figure / image
+  TableIcon,          // datatable / financialtable / comparison-grid
+  ClipboardList,      // summary
+  Lightbulb,          // recommendation
+  BookOpen,           // definition / term
+  Layers,             // native-cover / exec-intro
+  Globe,              // landscape
+  BookMarked,         // appendix
+  PenLine,            // signature
+  Filter,             // funnel
+  Milestone,          // milestones / timeline / roadmap
+  PieChart,           // allocation
+  Calendar,           // daygrid / daycell
+  Zap,                // tensionbox
+  FileCode,           // spec
+  LayoutGrid,         // product-cards / icon-grid
+  Library,            // note
+  Grid3x3,            // kpigrid alternate
+  ShieldAlert,        // risk
+  Eye,                // redact (hidden/censored)
+  Superscript,        // footnoteref
+  Paintbrush,         // accent
+  BadgeCheck,         // claim
+  CornerDownLeft,     // br
 } from "lucide-react";
 
 const BLOCK_ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: number }>> = {
-  pagebreak:     SplitSquareVertical,
-  toc:           List,
-  columnsLayout: Columns,
-  callout:       MessageSquare,
-  pullquote:     Quote,
-  keyfigure:     BarChart2,
-  chart:         BarChart2,
-  date:          Calendar,
-  signature:     PenLine,
-  image:         Image,
+  // Layout & structure
+  "native-cover":    Layers,
+  "columns":         Columns2,
+  "landscape":       Globe,
+  "appendix":        BookMarked,
+  "exec-intro":      Layers,
+  "pagebreak":       SplitSquareVertical,
+  "toc":             ListTree,
+  // Content blocks
+  "callout":         MessageSquareDot,
+  "pullquote":       Quote,
+  "summary":         ClipboardList,
+  "recommendation":  Lightbulb,
+  "definition":      BookOpen,
+  "note":            MessageSquareDot,
+  "tensionbox":      Zap,
+  "spec":            FileCode,
+  "term":            BookOpen,
+  "redact":          Eye,
+  "footnoteref":     Superscript,
+  "accent":          Paintbrush,
+  "claim":           BadgeCheck,
+  "br":              CornerDownLeft,
+  // Data & metrics
+  "keyfigure":       Sigma,
+  "key-figure":      Sigma,
+  "figure":          ImageIcon,
+  "image":           ImageIcon,
+  "datatable":       TableIcon,
+  "financialtable":  TableIcon,
+  "comparison-grid": TableIcon,
+  "chart":           BarChart2,
+  "kpigrid":         Grid3x3,
+  "kpicard":         BarChart,
+  "kpi-row":         BarChart2,
+  "allocation":      PieChart,
+  "risk":            ShieldAlert,
+  "icon-grid":       LayoutGrid,
+  "product-cards":   LayoutGrid,
+  // Timeline & planning
+  "funnel":          Filter,
+  "milestones":      Milestone,
+  "timeline":        Milestone,
+  "roadmap":         Milestone,
+  "daygrid":         Calendar,
+  "daycell":         Calendar,
+  // Authorship
+  "signature":       PenLine,
 };
 
 /**
