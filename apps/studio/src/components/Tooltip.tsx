@@ -2,13 +2,12 @@
 /**
  * Tooltip.tsx
  *
- * A portal-based tooltip that renders into document.body so it is never
- * clipped by overflow:hidden on any ancestor (editor, pane-source, etc.).
+ * Portal-based tooltip. Renders into document.body so no ancestor
+ * overflow:hidden can clip it.
  *
- * Usage:
- *   <Tooltip text="Bold — ⌘B">
- *     <button ...><Bold /></button>
- *   </Tooltip>
+ * The wrapper is display:inline-flex so getBoundingClientRect() returns
+ * a real box. display:contents looks right but gives zero dimensions —
+ * the tooltip always ends up at (0,0) and is never visible.
  */
 import { useRef, useState, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
@@ -31,12 +30,10 @@ export function Tooltip({ text, children, disabled }: Props) {
       const el = ref.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
-      setPos({
-        top: r.top - 8,          // 8px above the element
-        left: r.left + r.width / 2,
-      });
+      if (r.width === 0 && r.height === 0) return; // guard against zero-rect
+      setPos({ top: r.top, left: r.left + r.width / 2 });
       setVisible(true);
-    }, 120); // slight delay feels natural, not instant flash
+    }, 100);
   }, [disabled]);
 
   const hide = useCallback(() => {
@@ -44,40 +41,41 @@ export function Tooltip({ text, children, disabled }: Props) {
     setVisible(false);
   }, []);
 
-  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
 
   return (
     <span
       ref={ref}
       onMouseEnter={show}
       onMouseLeave={hide}
-      onFocus={show}
-      onBlur={hide}
-      style={{ display: "contents" }}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
     >
       {children}
-      {visible && typeof document !== "undefined" && createPortal(
-        <div
-          style={{
-            position: "fixed",
-            top: pos.top,
-            left: pos.left,
-            transform: "translate(-50%, -100%)",
-            background: "#1a1f2e",
-            color: "#f0f4f8",
-            fontSize: 11,
-            fontFamily: "var(--sans, system-ui, sans-serif)",
-            fontWeight: 500,
-            lineHeight: 1.3,
-            whiteSpace: "nowrap",
-            padding: "4px 8px",
-            borderRadius: 5,
-            pointerEvents: "none",
-            zIndex: 9999,
-            boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
-            marginTop: -4,
-          }}
-        >
+      {visible && typeof window !== "undefined" && createPortal(
+        <div style={{
+          position: "fixed",
+          top: pos.top - 6,
+          left: pos.left,
+          transform: "translate(-50%, -100%)",
+          background: "#1a1f2e",
+          color: "#f0f4f8",
+          fontSize: 11,
+          fontFamily: "var(--sans, system-ui, sans-serif)",
+          fontWeight: 500,
+          lineHeight: 1.3,
+          whiteSpace: "nowrap",
+          padding: "4px 8px",
+          borderRadius: 5,
+          pointerEvents: "none",
+          zIndex: 9999,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+        }}>
           {text}
         </div>,
         document.body
