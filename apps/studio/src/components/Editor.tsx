@@ -232,6 +232,14 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const [authoring, setAuthoring] = useState<"visual" | "source">("visual");
   const [layout, setLayout] = useState<"editor" | "split" | "preview">(workspace?.initialEditing ? "editor" : "preview");
   const [preferencesReady, setPreferencesReady] = useState(false);
+  const [libraryUrl, setLibraryUrl] = useState("/");
+  useEffect(() => {
+    if (!workspace) return;
+    try {
+      const saved = sessionStorage.getItem("docgent.library.url");
+      if (saved && /^\/(?:\?bucket=(?:needs-review|in-progress|done))?$/.test(saved)) setLibraryUrl(saved);
+    } catch { /* Keep a safe local default. */ }
+  }, [!!workspace]);
   const [mobilePane, setMobilePane] = useState<"editor" | "preview">("editor");
   const [exportState, setExportState] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -315,7 +323,9 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const [legacyEditorMode, setEditorMode] = useState<EditorMode>("edit");
   const editorMode: EditorMode = workspace ? (layout === "preview" ? "pages" : authoring === "source" ? "source" : "edit") : legacyEditorMode;
   // Derived internal state for existing scroll sync / preview logic.
-  const mode: PreviewMode = editorMode === "pages" ? "pdf" : "html";
+  const [pdfViewerAvailable, setPdfViewerAvailable] = useState(true);
+  useEffect(() => { setPdfViewerAvailable(navigator.pdfViewerEnabled === true); }, []);
+  const mode: PreviewMode = editorMode === "pages" && (!workspace || historicalSha || pdfViewerAvailable) ? "pdf" : "html";
   const posture: Posture = editorMode === "source" ? "edit" : "review";  // review/edit/pages all use review posture for preview
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -326,6 +336,24 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const [splitView, setSplitView] = useState(false);
   const [showOutline, setShowOutline] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  useEffect(() => {
+    if (!workspace || (!contextPanel && !showComments)) return;
+    const opener = document.activeElement as HTMLElement | null;
+    const panel = document.querySelector<HTMLElement>('.editor[data-unified="true"] .workspace-context, .editor[data-unified="true"] .editor-comments-rail');
+    if (!panel) return;
+    const focusable = () => Array.from(panel.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]')).filter(el => el.getClientRects().length > 0);
+    focusable()[0]?.focus();
+    const keyboard = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setContextPanel(null); setShowComments(false); }
+      if (event.key === "Tab" && window.matchMedia("(max-width: 1100px)").matches) {
+        const items = focusable(), first = items[0], last = items[items.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
+    };
+    panel.addEventListener("keydown", keyboard);
+    return () => { panel.removeEventListener("keydown", keyboard); if (opener?.isConnected) opener.focus(); };
+  }, [!!workspace, contextPanel, showComments]);
   const [folded, setFolded] = useState<number[]>([]);
   const [showErrors, setShowErrors] = useState(false);
   const [showMoreBlocks, setShowMoreBlocks] = useState(false);
@@ -783,6 +811,22 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
+
+  // Next's same-document Back/Forward never fires beforeunload. Cancel the
+  // navigation before the router receives popstate; do not add sentinel entries
+  // or rewrite Next's private history state. Cross-document exits use the native
+  // beforeunload handler below. Recovery storage is a second line of defence.
+  useEffect(() => {
+    if (!workspace || !dirty) return;
+    const navigation = (window as Window & { navigation?: EventTarget }).navigation;
+    const guard = (event: Event) => {
+      const next = event as Event & { destination?: { sameDocument: boolean }; navigationType?: string };
+      if (next.cancelable && next.destination?.sameDocument && next.navigationType !== "reload" &&
+          !window.confirm("Leave with unsaved changes? Your draft will remain available in this tab.")) next.preventDefault();
+    };
+    navigation?.addEventListener("navigate", guard);
+    return () => navigation?.removeEventListener("navigate", guard);
+  }, [!!workspace, dirty]);
 
   /* ---------------- scroll sync ---------------- */
 
@@ -1568,7 +1612,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   // replaces the entire document and the listeners are lost.
   const injectZoomHandlers = useCallback(() => {
     const doc = frameRef.current?.contentDocument;
-    if (!doc || doc.getElementById("__docgent_zoom")) return;
+    if (!doc?.head || !doc.body || doc.getElementById("__docgent_zoom")) return;
 
     // Marker so we don't double-inject.
     const marker = doc.createElement("meta");
@@ -1635,7 +1679,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   // a text cursor on mouseover, making the surface discoverable.
   const injectEditCursor = useCallback(() => {
     const doc = frameRef.current?.contentDocument;
-    if (!doc || doc.getElementById("__docgent_edit_cursor")) return;
+    if (!doc?.head || !doc.body || doc.getElementById("__docgent_edit_cursor")) return;
     const style = doc.createElement("style");
     style.id = "__docgent_edit_cursor";
     style.textContent = [
@@ -2758,11 +2802,12 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   return (
     <div className="editor" data-unified={!!workspace} data-layout={layout} data-authoring={authoring} data-mobile-pane={mobilePane} data-insert={showInsert}>
       {workspace && <header className="workspace-header">
-        <nav aria-label="Application navigation"><a href="/">Documents</a> · <a href="/primitives">Primitives</a></nav>
+        <nav aria-label="Application navigation"><a href={libraryUrl}>Documents</a> · <a href="/primitives">Primitives</a></nav>
         <h1>{String(selectedMetadata.title || (historicalSha ? "Historical revision" : workspace.title))}</h1>
         <span>{String(selectedMetadata.status || workspace.status || "Draft")}</span>
         <button disabled={!workspace.canEdit || !!historicalSha || save.kind === "saving"} onClick={() => doSave()}>Save</button>
         <span role="status" aria-label="Save status">{save.kind === "saving" ? "Saving…" : save.kind === "stale" ? "Conflict — draft retained" : save.kind === "error" ? "Save failed — draft retained" : dirty ? "Unsaved changes" : "Saved"}</span>
+        <div className="workspace-tools" role="group" aria-label="Document tools">
         <button disabled={exporting || save.kind === "saving"} onClick={() => exportRevision("pdf")}>Export {historicalSha ? "revision" : "latest"} PDF</button>
         <button disabled={exporting || save.kind === "saving"} onClick={() => exportRevision("docx")}>Export {historicalSha ? "revision" : "latest"} DOCX</button>
         <span role="status" aria-label="Export status">{exportState}</span>
@@ -2779,10 +2824,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         </div>
         <span>{layout === "preview" ? "Read-only preview" : "Editing"}</span>
         {visualNotice && <span role="status" aria-label="Visual editing notice">{visualNotice}</span>}
-        <button aria-expanded={contextPanel === "history"} onClick={() => setContextPanel(contextPanel === "history" ? null : "history")}>History</button>
+        <button aria-expanded={contextPanel === "history"} onClick={() => { setShowComments(false); setContextPanel(contextPanel === "history" ? null : "history"); }}>History</button>
         <button aria-expanded={contextPanel === "details"} onClick={() => { setShowComments(false); setContextPanel(contextPanel === "details" ? null : "details"); }}>Details</button>
         <button aria-expanded={showComments} onClick={() => { setContextPanel(null); setShowComments(!showComments); }}>Comments</button>
         <button aria-expanded={showOutline} onClick={() => setShowOutline(!showOutline)}>Outline</button>
+        </div>
         {layout === "split" && <button className="workspace-mobile-toggle" onClick={() => setMobilePane(mobilePane === "editor" ? "preview" : "editor")}>Show {mobilePane === "editor" ? "preview" : "editor"}</button>}
       </header>}
       {historicalSha && <div className="banner" role="status" aria-label="Historical revision">
@@ -3438,7 +3484,12 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
               <div><code>{previewError}</code></div>
             </div>
           )}
-          {mode === "html" ? (
+          {workspace && layout === "preview" && mode === "html" ? (
+            <>
+              <div className="source-mode-banner">Read-only HTML preview · PDF downloads remain available</div>
+              {previewHtml ? <iframe title="Read-only output preview" className="preview-frame" srcDoc={previewHtml} sandbox="" /> : <div className="empty">Rendering first preview…</div>}
+            </>
+          ) : mode === "html" ? (
             previewHtml ? (
               <iframe
                 ref={frameRef}
@@ -3459,6 +3510,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
               <div className="empty">Rendering first preview…</div>
             )
           ) : previewUrl ? (
+            workspace && !pdfViewerAvailable ? <div className="empty" role="status">This browser cannot display PDF pages inline. <a href={previewUrl} download={`${slug}.pdf`}>Download the rendered PDF{historicalSha ? ` revision ${historicalSha.slice(0, 7)}` : ""}</a></div> :
             <iframe className="preview-frame" src={previewUrl} title="PDF preview" style={{ flex: 1 }} />
           ) : (
             <div className="empty">
@@ -3478,7 +3530,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         </div>
         )}
 
-        {workspace && layout === "split" && <section className="pane workspace-output" aria-label="Read-only output">
+        {workspace && layout === "split" && <section className="pane workspace-output" aria-label="Read-only output" tabIndex={0}>
           <div className="source-mode-banner">Read-only output · draft HTML preview</div>
           {previewHtml ? <iframe title="Read-only output preview" className="preview-frame" srcDoc={previewHtml} sandbox="" /> : <p>Waiting for preview…</p>}
         </section>}

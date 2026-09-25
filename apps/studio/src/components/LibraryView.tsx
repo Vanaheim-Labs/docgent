@@ -153,6 +153,10 @@ export function LibraryView({
 }) {
   const searchParams = useSearchParams();
   const bucketParam = searchParams?.get("bucket") as QueueBucket | null;
+  useEffect(() => {
+    if (!unified) return;
+    try { sessionStorage.setItem("docgent.library.url", "/" + (bucketParam ? `?bucket=${encodeURIComponent(bucketParam)}` : "")); } catch { /* Optional return context. */ }
+  }, [unified, bucketParam]);
 
   const [filters, setFilters] = useState<LibraryFilters>({
     brands: new Set(),
@@ -187,9 +191,17 @@ export function LibraryView({
       const position = JSON.parse(sessionStorage.getItem("docgent.library.scroll") || "{}");
       requestAnimationFrame(() => { window.scrollTo(0, Number(position.window) || 0); if (contentRef.current) contentRef.current.scrollTop = Number(position.content) || 0; });
     } catch { /* Optional scroll restoration. */ }
-    const remember = () => { try { sessionStorage.setItem("docgent.library.scroll", JSON.stringify({ window: window.scrollY, content: contentRef.current?.scrollTop || 0 })); } catch {} };
+    let leaving = false;
+    const remember = () => { if (leaving) return; try { sessionStorage.setItem("docgent.library.scroll", JSON.stringify({ window: window.scrollY, content: contentRef.current?.scrollTop || 0 })); } catch {} };
+    // Next resets window scroll before the old route has necessarily unmounted.
+    // Capture the list position at activation, then ignore that navigation reset.
+    const depart = (event: MouseEvent) => {
+      const link = (event.target as Element)?.closest<HTMLAnchorElement>("a[href]");
+      if (link && link.origin === location.origin && link.pathname !== "/") { remember(); leaving = true; }
+    };
+    document.addEventListener("click", depart, true);
     window.addEventListener("scroll", remember, true);
-    return () => window.removeEventListener("scroll", remember, true);
+    return () => { document.removeEventListener("click", depart, true); window.removeEventListener("scroll", remember, true); };
   }, [restored, unified]);
   const clearFilters = () => { setFilters({ brands: new Set(), statuses: new Set(), search: "" }); setTypeFilter(""); setStatusFilter(""); };
 
