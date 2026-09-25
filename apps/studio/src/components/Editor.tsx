@@ -8,6 +8,7 @@ import { Tooltip } from "@/components/Tooltip";
 import { ProposalReview } from "@/components/ProposalReview";
 import { CommentsPanel } from "@/components/CommentsPanel";
 import { WorkspaceHistory } from "@/components/WorkspaceHistory";
+import { parseFrontmatter } from "@docgent/core/yaml";
 import { parseComments, setCommentResolved, insertComment } from "@/lib/comments";
 
 // CodeMirror 6
@@ -239,6 +240,19 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const [contextPanel, setContextPanel] = useState<"history" | "details" | null>(null);
   const [showInsert, setShowInsert] = useState(false);
   const [historicalSha, setHistoricalSha] = useState<string | undefined>(workspace?.viewingSha);
+  const [historicalSource, setHistoricalSource] = useState<string | null>(workspace?.viewingSha ? initialContent : null);
+  const [historicalError, setHistoricalError] = useState("");
+  useEffect(() => {
+    if (!historicalSha) return;
+    if (historicalSha === workspace?.viewingSha) { setHistoricalSource(initialContent); return; }
+    const controller = new AbortController();
+    setHistoricalSource(null); setHistoricalError("");
+    fetch(`/api/doc/${brand}/${slug}?ref=${historicalSha}`, { signal: controller.signal })
+      .then(async response => { if (!response.ok) throw new Error("Could not load revision details. Select the revision again to retry."); return response.json(); })
+      .then(data => { if (!controller.signal.aborted) setHistoricalSource(data.content); })
+      .catch(error => { if (!controller.signal.aborted) setHistoricalError(error.message); });
+    return () => controller.abort();
+  }, [historicalSha, brand, slug]);
   const viewRevision = (sha?: string) => { setHistoricalSha(sha); setLayout("preview"); };
   const draftKey = `docgent.draft:${brand}/${slug}`;
   const [recoveredDraft, setRecoveredDraft] = useState<{ content: string; baseSha: string | null } | null>(null);
@@ -265,6 +279,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
     try { localStorage.setItem("docgent.workspace.preferences", JSON.stringify({ authoring, layout })); } catch { /* Optional preference. */ }
   }, [authoring, layout, preferencesReady]);
   const [content, setContent] = useState(initialContent);
+  const selectedSource = historicalSha ? historicalSource || "" : content;
+  const selectedMetadata = useMemo(() => {
+    try { return parseFrontmatter(selectedSource) as Record<string, unknown>; }
+    catch { return { title: "Invalid frontmatter — fix in Source", status: "unknown" }; }
+  }, [selectedSource]);
   const [baseSha, setBaseSha] = useState(initialSha);
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
   const savingRef = useRef(false);
@@ -2740,8 +2759,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
     <div className="editor" data-unified={!!workspace} data-layout={layout} data-authoring={authoring} data-mobile-pane={mobilePane} data-insert={showInsert}>
       {workspace && <header className="workspace-header">
         <nav aria-label="Application navigation"><a href="/">Documents</a> · <a href="/primitives">Primitives</a></nav>
-        <h1>{workspace.title}</h1>
-        <span>{workspace.status || "Draft"}</span>
+        <h1>{String(selectedMetadata.title || (historicalSha ? "Historical revision" : workspace.title))}</h1>
+        <span>{String(selectedMetadata.status || workspace.status || "Draft")}</span>
         <button disabled={!workspace.canEdit || !!historicalSha || save.kind === "saving"} onClick={() => doSave()}>Save</button>
         <span role="status" aria-label="Save status">{save.kind === "saving" ? "Saving…" : save.kind === "stale" ? "Conflict — draft retained" : save.kind === "error" ? "Save failed — draft retained" : dirty ? "Unsaved changes" : "Saved"}</span>
         <button disabled={exporting || save.kind === "saving"} onClick={() => exportRevision("pdf")}>Export {historicalSha ? "revision" : "latest"} PDF</button>
@@ -2768,6 +2787,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
       </header>}
       {historicalSha && <div className="banner" role="status" aria-label="Historical revision">
         Historical revision {historicalSha.slice(0, 7)} — read only. Your current draft is retained.
+        {historicalError && <span role="alert">{historicalError}</span>}
         {workspace?.viewingSha ? <a href={`/${brand}/${slug}`}>Return to latest</a> : <button onClick={() => viewRevision()}>Return to latest</button>}
       </div>}
       {workspace && recoveredDraft && <div className="banner" role="status">
@@ -3469,9 +3489,9 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         {workspace && contextPanel === "details" && <aside className="workspace-context" aria-label="Details panel">
           <button onClick={() => setContextPanel(null)}>Close details</button>
           <h2>Document details</h2>
-          <dl>{Object.entries({ Brand: brand, Document: slug, Status: workspace.status || "draft", ...workspace.details }).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value)}</dd></div>)}</dl>
+          <dl>{Object.entries({ Brand: brand, Document: slug, ...selectedMetadata }).filter(([, value]) => typeof value !== "object").map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value)}</dd></div>)}</dl>
           <p>{wordCount} words · {lineCount} source lines</p>
-          <p>Source revision: {historicalSha || baseSha || "unknown"}</p>
+          <p>{historicalSha ? "Commit" : "Saved blob"}: {historicalSha || baseSha || "unknown"}</p>
         </aside>}
         {/* Comments rail — shown to the right of editor panes when toggled */}
         {showComments && (
@@ -3488,7 +3508,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
             </div>
             <CommentsPanel
               key={historicalSha || layout}
-              comments={parsedComments}
+              comments={historicalSha ? parseComments(selectedSource) : parsedComments}
               onResolve={workspace && (layout === "preview" || historicalSha || !workspace.canEdit) ? undefined : handleResolveComment}
               onAdd={workspace && (layout === "preview" || historicalSha || !workspace.canEdit) ? undefined : handleAddComment}
               onJump={jumpToComment}

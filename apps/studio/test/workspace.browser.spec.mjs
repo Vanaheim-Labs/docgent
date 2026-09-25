@@ -9,6 +9,16 @@ test.beforeEach(async({page})=>{
   return route.fulfill({status:502,body:'Fixture renderer unavailable'});
  });
 });
+test('header and details reflect the selected source rather than stale loaded metadata',async({page})=>{
+ await page.route('**/api/doc/**',route=>route.fulfill({json:{content:'---\ntitle: Historical title\nstatus: review\n---\nOld body'}}));
+ await page.goto(server.url);await page.getByRole('button',{name:'Source',exact:true}).click();await page.getByRole('button',{name:'Editor only',exact:true}).click();
+ await page.locator('.cm-content').press('ControlOrMeta+a');await page.keyboard.insertText(complex.replace('Short fixture','Updated title'));
+ await expect(page.getByRole('heading',{level:1,name:'Updated title'})).toBeVisible();
+ await page.getByRole('button',{name:'History',exact:true}).click();await page.getByRole('link',{name:'View',exact:true}).last().click();
+ await expect(page.getByRole('heading',{level:1,name:'Historical title'})).toBeVisible();
+ await page.getByRole('button',{name:'Details',exact:true}).click();await expect(page.getByRole('complementary',{name:'Details panel'})).toContainText('review');
+ await page.getByRole('button',{name:'Return to latest',exact:true}).click();await expect(page.getByRole('heading',{level:1,name:'Updated title'})).toBeVisible();
+});
 test('historical render retry stays pinned and reports HTTP failures rather than iframe load success',async({page})=>{
  const refs=[];let failed=true;
  await page.route('**/api/render/**',async route=>{refs.push(new URL(route.request().url()).searchParams.get('ref'));await route.fulfill(failed?{status:502,body:'historical fixture unavailable'}:{contentType:'application/pdf',body:'explicit PDF fixture bytes'});});
