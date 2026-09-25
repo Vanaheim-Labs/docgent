@@ -16,6 +16,12 @@ const boundaries={
  '@/components/Editor':{Editor}
 };
 function find(node,type){if(!node)return null;if(node.type===type)return node;for(const c of [node.props?.children].flat(Infinity)){const r=find(c,type);if(r)return r;}return null;}
+test('flagged edit route denies an unrelated brand before reading document content',async()=>{
+ const old=process.env.DOCGENT_UNIFIED_WORKSPACE;process.env.DOCGENT_UNIFIED_WORKSPACE='1';let touched=false;
+ try{const page=load('app/[brand]/[slug]/edit/page.tsx',{...boundaries,'@/auth':{auth:async()=>({user:{allowedBrands:['other']}})},'@/lib/store':{storesFor:async()=>{touched=true;return {docs:{readDocument:async()=>doc}};}}}).default;
+ await assert.rejects(page({params:Promise.resolve({brand:'example',slug:'fixture'})}),/notFound/);assert.equal(touched,false);
+ }finally{if(old===undefined)delete process.env.DOCGENT_UNIFIED_WORKSPACE;else process.env.DOCGENT_UNIFIED_WORKSPACE=old;}
+});
 test('feature flag routes reader and legacy /edit into the same editor shell with read-only historical state',async()=>{
  const old=process.env.DOCGENT_UNIFIED_WORKSPACE;process.env.DOCGENT_UNIFIED_WORKSPACE='1';
  try{
