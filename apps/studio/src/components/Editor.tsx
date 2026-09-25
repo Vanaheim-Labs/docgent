@@ -2973,25 +2973,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               onMouseEnter={() => { savedIframeSelection.current = getIframeSelection(); }}
             >
               <div className="format-group">
-                <select
-                  className="heading-select"
-                  disabled={isFolded}
-                  defaultValue=""
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === "p") { transformLines((lines) => lines.map((l) => l.replace(/^#{1,6}\s+/, ""))); }
-                    else if (v) { applyHeading(parseInt(v, 10)); }
-                    e.target.value = "";
-                  }}
-                  title="Paragraph style" aria-label="Paragraph style"
-                >
-                  <option value="" disabled>Paragraph</option>
-                  <option value="p">Paragraph</option>
-                  <option value="1">Heading 1</option>
-                  <option value="2">Heading 2</option>
-                  <option value="3">Heading 3</option>
-                  <option value="4">Heading 4</option>
-                </select>
+                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); transformLines((lines) => lines.map((l) => l.replace(/^#{1,6}\s+/, ""))); }} disabled={isFolded} title="Paragraph">P</button>
+                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(1); }} disabled={isFolded} title="Heading 1">H1</button>
+                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(2); }} disabled={isFolded} title="Heading 2">H2</button>
+                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(3); }} disabled={isFolded} title="Heading 3">H3</button>
+                <button className="format-btn format-btn-style" onMouseDown={(e) => { e.preventDefault(); applyHeading(4); }} disabled={isFolded} title="Heading 4">H4</button>
               </div>
               <div className="format-divider" />
               <div className="format-group">
@@ -3023,7 +3009,6 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               {isFolded && <span className="format-note">unfold a section to edit</span>}
             </div>
             <div className="format-bar format-bar-row2" role="toolbar" aria-label="Docgent vocabulary blocks">
-              <span className="format-bar-label">Blocks</span>
               {snippets.map((s) => {
                 const Icon = BLOCK_ICONS[s.id];
                 return (
@@ -3032,11 +3017,10 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                     className={`format-btn format-btn-prim${s.id === "pagebreak" ? " format-btn-prim-accent" : ""}`}
                     onClick={() => insertSnippet(s.snippet)}
                     disabled={isFolded}
-                    title={s.description || s.id}
+                    title={s.description ? `${s.id} — ${s.description}` : s.id}
                     aria-label={s.description || s.id}
                   >
-                    {Icon ? <Icon size={14} strokeWidth={2} /> : null}
-                    <span className="format-btn-prim-label">{s.id}</span>
+                    {Icon ? <Icon size={14} strokeWidth={2} /> : <span className="format-btn-prim-fallback">{s.id.slice(0, 2).toUpperCase()}</span>}
                   </button>
                 );
               })}
