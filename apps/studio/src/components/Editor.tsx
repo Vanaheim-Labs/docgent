@@ -3087,6 +3087,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                     onClick={() => insertSnippet(s.snippet)}
                     disabled={isFolded}
                     title={s.description ? `${s.id} — ${s.description}` : s.id}
+                    data-tooltip={s.description ? `${s.id} — ${s.description}` : s.id}
                     aria-label={s.description || s.id}
                   >
                     {Icon ? <Icon size={14} strokeWidth={2} /> : <span className="format-btn-prim-fallback">{s.id.slice(0, 2).toUpperCase()}</span>}
