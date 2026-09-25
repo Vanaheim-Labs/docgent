@@ -416,6 +416,7 @@ kbd {
   grid-template-columns: minmax(160px, 232px) 1fr;
   grid-template-rows: 1fr auto;
 }
+.pane-source[data-outline="true"] .cm-host { grid-column: 2; grid-row: 1; }
 .pane-source[data-outline="true"] .source { grid-column: 2; grid-row: 1; }
 .pane-source[data-outline="true"] .diagnostics { grid-column: 1 / -1; grid-row: 2; }
 
@@ -469,6 +470,9 @@ kbd {
 .outline-link:hover { color: var(--accent, #2563eb); text-decoration: underline; }
 
 .source[readonly] { background: var(--paper-alt); cursor: default; }
+/* CM6 folded state */
+.cm-host-readonly { background: var(--paper-alt); }
+.cm-host-readonly .cm-editor { background: var(--paper-alt); }
 
 /* Block tinting. The textarea cannot carry per-line styling, so the tint is
    painted underneath it as a repeating gradient keyed to line height. This
@@ -484,62 +488,197 @@ kbd {
   color: var(--accent, #2563eb);
 }
 
-/* ---- markdown formatting bar ----
-   A quieter second rail beneath the main toolbar. Buttons are square and
-   monochrome so the eye still lands on Save and the validity pill first;
-   formatting is frequent but never the most important thing on screen. */
+/* ── CodeMirror 6 host ──────────────────────────────────────────────────────
+   The .cm-host div is the mount point for EditorView. It must flex-fill
+   the pane and scroll internally — the old textarea flex: 1 behaviour. */
+.cm-host {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;
+  overflow: hidden;
+  background: var(--paper);
+}
+/* CodeMirror itself fills .cm-host */
+.cm-host .cm-editor {
+  flex: 1;
+  height: 100%;
+  outline: none;
+}
+.cm-host .cm-scroller {
+  overflow: auto;
+  flex: 1;
+}
+.cm-host-readonly .cm-editor {
+  background: var(--paper-alt);
+  cursor: default;
+}
+/* Selection */
+.cm-host .cm-selectionBackground { background: rgba(31,75,110,0.15) !important; }
+.cm-host .cm-focused .cm-selectionBackground { background: rgba(31,75,110,0.2) !important; }
+/* Gutter */
+.cm-host .cm-gutters {
+  background: var(--paper-alt);
+  border-right: 1px solid var(--rule);
+  color: var(--ink-faint);
+  font-size: 11.5px;
+  font-family: var(--mono);
+  user-select: none;
+}
+
+/* ── Rich format bar ────────────────────────────────────────────────────────
+   Two distinct rows:
+   Row 1: inline/block formatting — paragraph select, bold/italic/etc, undo/redo
+   Row 2: Docgent vocabulary block buttons
+   Separated by a thin rule between rows, thin vertical dividers within rows. */
+
 .format-bar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px;
-  padding: 6px 20px;
-  background: var(--paper-alt);
+  gap: 2px;
+  padding: 5px 16px;
+  background: var(--paper);
   border-bottom: 1px solid var(--rule);
   position: sticky;
-  top: 45px;
   z-index: 7;
 }
+.format-bar-row1 { top: 45px; }
+.format-bar-row2 {
+  top: 79px; /* row1 is ~34px tall */
+  background: var(--paper-alt);
+  padding: 4px 16px;
+  gap: 3px;
+  font-size: 11.5px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.format-bar-row2::-webkit-scrollbar { display: none; }
+
+/* Paragraph / heading dropdown */
+.heading-select {
+  height: 28px;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-soft);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  cursor: pointer;
+  min-width: 108px;
+  appearance: auto;
+}
+.heading-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.heading-select:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Thin vertical rule between logical groups */
+.format-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--rule);
+  margin: 0 5px;
+  flex-shrink: 0;
+}
+
 .format-group {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
 }
-.format-group + .format-group {
-  margin-left: 6px;
-  padding-left: 8px;
-  border-left: 1px solid var(--rule);
-}
+
+/* Icon button — 28×28, monochrome, rounded */
 .format-btn {
   appearance: none;
   border: 1px solid transparent;
   background: transparent;
   border-radius: 5px;
-  min-width: 28px;
-  height: 26px;
-  padding: 0 7px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   font: inherit;
-  font-size: 12.5px;
+  font-size: 12px;
   line-height: 1;
   color: var(--ink-soft);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
 }
 .format-btn:hover:not(:disabled) {
-  background: var(--paper);
+  background: var(--paper-alt);
   border-color: var(--rule);
   color: var(--ink);
 }
 .format-btn:active:not(:disabled) { background: var(--rule); }
 .format-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-.format-btn-mono { font-family: var(--mono); font-size: 11.5px; }
+
+/* Wide variant for labelled buttons (✨ Rewrite) */
+.format-btn-wide {
+  width: auto;
+  padding: 0 10px;
+  gap: 5px;
+  font-size: 12px;
+}
+
+/* Row 2 — primitive block buttons: icon + short label */
+.format-btn-prim {
+  width: auto;
+  height: 26px;
+  padding: 0 8px;
+  gap: 4px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.format-btn-prim:hover:not(:disabled) {
+  background: var(--paper);
+  border-color: var(--rule);
+  color: var(--ink);
+}
+/* pagebreak gets a gentle accent tint — it's the most important one */
+.format-btn-prim-accent {
+  color: var(--accent);
+  border-color: var(--accent-soft) !important;
+  background: var(--accent-soft);
+}
+.format-btn-prim-accent:hover:not(:disabled) {
+  background: #d0e4f2;
+  border-color: #a0c4df !important;
+}
+
+.format-btn-prim-label {
+  font-size: 10.5px;
+  font-family: var(--mono);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.format-bar-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-right: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .format-note {
   margin-left: 10px;
   font-size: 11.5px;
   color: var(--ink-faint);
   font-style: italic;
+  white-space: nowrap;
 }
 
 .editor-panes {
@@ -558,6 +697,8 @@ kbd {
 .pane-source { border-right: 1px solid var(--rule); background: var(--paper); }
 .pane-preview { background: var(--paper-alt); position: relative; }
 
+/* .source is no longer used — CM6 handles all source rendering.
+   Kept as a fallback stub to avoid breakage if anything references it. */
 .source {
   flex: 1;
   width: 100%;
@@ -572,6 +713,7 @@ kbd {
   background: var(--paper);
   tab-size: 2;
   min-height: 320px;
+  display: none; /* hidden — CM6 host renders instead */
 }
 
 .diagnostics {
