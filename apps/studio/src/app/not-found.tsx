@@ -11,6 +11,9 @@ export default function NotFound() {
         <Link href="/" className="btn">
           Back to documents
         </Link>
+        <Link href="/signin" className="btn btn-secondary" style={{ marginTop: "0.75rem" }}>
+          Sign in with a different account →
+        </Link>
       </div>
     </div>
   );
