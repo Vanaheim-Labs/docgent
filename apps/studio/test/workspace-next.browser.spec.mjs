@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {readFileSync} from 'node:fs';
 import {startNextFixture} from './next-fixture.mjs';
 let server;
 test.beforeAll(async()=>{test.setTimeout(120000);server=await startNextFixture();});
@@ -76,6 +77,19 @@ test('live Next renderer paints readable initial output on desktop and mobile',a
  await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Show preview',exact:true}).click();
  await expect(page.frameLocator('iframe[title="Read-only output preview"]').locator('.cover-title')).toBeInViewport();
  await page.screenshot({path:'.qa/workspace/screenshots/next-output-mobile.png'});expect(errors).toEqual([]);
+});
+test('real creation opens unified edit and exports the exact Git revision',async({page,context})=>{
+ test.setTimeout(120000);await server.login(context);await page.goto(server.url);
+ await page.getByRole('button',{name:'New document',exact:true}).click();await page.getByLabel('Document title').fill('Created synthetic report');await page.getByLabel('Document URL name').fill('created-fixture');
+ await page.getByRole('button',{name:'Create document',exact:true}).click();await expect(page).toHaveURL(/example\/created-fixture\/edit$/);await expect(page.getByRole('heading',{name:'Created synthetic report'})).toBeVisible();
+ expect(server.git('show','HEAD:documents/created-fixture/doc.md')).toContain('Created synthetic report');
+ // The test brand uses the renderer's synthetic vanaheim skin, not customer data.
+ await page.getByRole('button',{name:'Source',exact:true}).click();await expect(page.locator('.cm-content')).toContainText('Created synthetic report');
+ await page.locator('.cm-content').press('ControlOrMeta+a');await page.keyboard.insertText('---\ntitle: Created synthetic report\nbrand: vanaheim\ndoctype: report\nversion: 1\ndate: 2026-09-25\nstatus: draft\n---\n\n# Summary\n\nSynthetic creation and export.\n');
+ await page.getByRole('button',{name:'Save',exact:true}).click();await expect(page.getByRole('status',{name:'Save status'})).toHaveText('Saved');
+ const responsePromise=page.waitForResponse(r=>r.url().includes('/api/export/example/created-fixture'));
+ const downloadPromise=page.waitForEvent('download');await page.getByRole('button',{name:'Export latest DOCX',exact:true}).click();const response=await responsePromise;expect(response.status()).toBe(200);const revision=response.headers()['x-docgent-revision'];expect(revision).toBe(server.git('rev-parse','HEAD'));expect(response.url()).toContain('ref='+revision);const download=await downloadPromise;expect(readFileSync(await download.path()).subarray(0,2).toString()).toBe('PK');
+ await expect(page.getByRole('status',{name:'Export status'})).toContainText(revision.slice(0,7));
 });
 test('real Next traversal retains list filters and rejects unauthenticated writes',async({page,context})=>{
  test.setTimeout(120000);
