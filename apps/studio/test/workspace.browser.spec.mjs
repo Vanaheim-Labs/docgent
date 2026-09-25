@@ -9,6 +9,15 @@ test.beforeEach(async({page})=>{
   return route.fulfill({status:502,body:'Fixture renderer unavailable'});
  });
 });
+test('latest export saves first and downloads only that exact saved revision',async({page})=>{
+ const calls=[];const revision='a'.repeat(40);
+ await page.route('**/api/doc/**',async route=>{calls.push('save');await route.fulfill({json:{sha:'c'.repeat(40),revision,commit:{sha:revision}}});});
+ await page.route('**/api/export/**',async route=>{calls.push(route.request().url());await route.fulfill({contentType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',headers:{'x-docgent-revision':revision},body:'explicit fixture bytes'});});
+ await page.goto(server.url);
+ await page.getByRole('button',{name:'Export latest DOCX',exact:true}).click();
+ await expect(page.getByRole('status',{name:'Export status'})).toContainText('aaaaaaa');
+ expect(calls[0]).toBe('save');expect(calls[1]).toContain(`ref=${revision}`);
+});
 test('desktop panes have usable minimum widths and mobile offers a single-pane toggle',async({page})=>{
  await page.setViewportSize({width:1440,height:900});
  await page.goto(server.url);

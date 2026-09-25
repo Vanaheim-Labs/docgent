@@ -230,6 +230,8 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const [layout, setLayout] = useState<"editor" | "split" | "preview">(workspace?.initialEditing ? "editor" : "preview");
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [mobilePane, setMobilePane] = useState<"editor" | "preview">("editor");
+  const [exportState, setExportState] = useState("");
+  const [exporting, setExporting] = useState(false);
   useEffect(() => {
     if (!workspace) return;
     try {
@@ -555,6 +557,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   /* ---------------- save ---------------- */
 
   const doSave = useCallback(async () => {
+    if (workspace && !workspace.canEdit) return;
     if (errors.length > 0) {
       setSave({ kind: "error", message: `${errors.length} validation error${errors.length > 1 ? "s" : ""} — fix before saving.` });
       return;
@@ -567,6 +570,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         body: JSON.stringify({
           content,
           baseSha,
+          captureRevision: !!workspace,
           // Prefixed here rather than in the field so the author writes prose,
           // not conventional-commit syntax. VersionPanel strips this same
           // prefix back off for display.
@@ -598,10 +602,31 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
       setBaseSha(data.sha);
       committedContentRef.current = content; // advance baseline so dirty=false
       setSave({ kind: "saved", sha: data.sha, commit: data.commit });
+      return data.revision as string | undefined;
     } catch (e) {
       setSave({ kind: "error", message: e instanceof Error ? e.message : String(e) });
     }
   }, [brand, slug, content, baseSha, errors.length, initialContent]);
+
+  const exportRevision = async (format: "pdf" | "docx") => {
+    setExporting(true);
+    setExportState("Preparing saved revision…");
+    try {
+      const revision = workspace?.viewingSha || await doSave();
+      if (!revision || !/^[a-f0-9]{40}$/.test(revision)) throw new Error("Save must succeed before exporting. Your draft has not been exported.");
+      setExportState(`Rendering saved revision ${revision.slice(0, 7)}…`);
+      const url = format === "pdf" ? `/api/render/${brand}/${slug}?ref=${revision}` : `/api/export/${brand}/${slug}?format=docx&ref=${revision}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error((await response.text()).slice(0, 400));
+      if (response.headers.get("x-docgent-revision") !== revision) throw new Error("Export revision could not be verified. Nothing downloaded.");
+      const downloadUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = downloadUrl; link.download = `${slug}-${revision.slice(0, 7)}.${format}`;
+      link.click(); setTimeout(() => URL.revokeObjectURL(downloadUrl), 60_000);
+      setExportState(`Exported saved revision ${revision.slice(0, 7)} (${format.toUpperCase()})`);
+    } catch (error) { setExportState(`Export failed: ${error instanceof Error ? error.message : String(error)}`); }
+    finally { setExporting(false); }
+  };
 
   // Update mutable refs for CM6 keymap closures
   cmDoSaveRef.current = doSave;
@@ -2654,6 +2679,11 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         <nav aria-label="Application navigation"><a href="/">Documents</a> · <a href="/primitives">Primitives</a></nav>
         <h1>{workspace.title}</h1>
         <span>{workspace.status || "Draft"}</span>
+        <button disabled={!workspace.canEdit || save.kind === "saving"} onClick={() => doSave()}>Save</button>
+        <span role="status" aria-label="Save status">{save.kind === "saving" ? "Saving…" : save.kind === "stale" ? "Conflict — draft retained" : save.kind === "error" ? "Save failed — draft retained" : dirty ? "Unsaved changes" : "Saved"}</span>
+        <button disabled={exporting || save.kind === "saving"} onClick={() => exportRevision("pdf")}>Export {workspace.viewingSha ? "revision" : "latest"} PDF</button>
+        <button disabled={exporting || save.kind === "saving"} onClick={() => exportRevision("docx")}>Export {workspace.viewingSha ? "revision" : "latest"} DOCX</button>
+        <span role="status" aria-label="Export status">{exportState}</span>
         <div role="group" aria-label="Authoring mode">
           <button aria-pressed={authoring === "visual"} onClick={() => setAuthoring("visual")}>Visual</button>
           <button aria-pressed={authoring === "source"} onClick={() => setAuthoring("source")}>Source</button>

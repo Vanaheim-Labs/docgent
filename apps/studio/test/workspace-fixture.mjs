@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {load} from './load-module.mjs';
-export const short='---\ntitle: Short fixture\nbrand: example\ndoctype: report\n---\n\n# Summary\n\nA short paragraph.\n';
+export const short='---\ntitle: Short fixture\nbrand: example\ndoctype: report\nversion: 1\ndate: 2026-09-25\n---\n\n# Summary\n\nA short paragraph.\n';
 export const complex=short+'\n| Name | Value |\n| --- | --- |\n| Revenue | 42 |\n\n::: callout\nKeep **formatting** intact.\n:::\n\n::chart{type="bar" data="figures/chart.csv"}\n\n```unknown\nopaque content\n```\n';
 export async function serveFixture(){
  const vocabulary=load('lib/vocabulary.ts',{'node:fs':{default:fs},'node:path':{default:path}}).loadVocabulary();

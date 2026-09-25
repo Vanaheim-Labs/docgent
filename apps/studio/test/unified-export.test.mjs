@@ -14,6 +14,17 @@ test('DOCX rejects mutable and malformed revision references before rendering', 
     assert.equal(res.status,400);
   }
 });
+test('PDF receipts identify the concrete source revision on cache hits and fresh renders',async()=>{
+ for(const cached of [null,Buffer.from('fixture cached bytes')]){
+ const route=load('app/api/render/[brand]/[slug]/route.ts',{
+ '@/lib/agent-auth':{authorizeRequest:async()=>({ok:true})},
+ '@/lib/store':{storesFor:async()=>({git:{head:async()=>revision,tree:async()=>({entries:[]})},docs:{readAt:async()=>({content:'fixture',frontmatter:{}})}})},
+ '@/lib/render':{collectAssetsFromGit:async()=>({}),renderMarkdown:async()=>({pdf:Buffer.from('fixture rendered bytes'),renderMs:1})},
+ '@/lib/pdf-cache':{pdfStore:()=>({get:async()=>cached,put:async()=>{}}),cacheKey:()=> 'fixture-key',cacheDriver:()=> 'fixture'}
+ });
+ const res=await route.GET(new Request('https://local'),ctx);assert.equal(res.status,200);assert.equal(res.headers.get('x-docgent-revision'),revision);
+ }
+});
 const ctx = { params: Promise.resolve({brand:'example',slug:'fixture'}) };
 test('DOCX exports the requested immutable revision, including assets and receipt', async () => {
   const seen = [];
