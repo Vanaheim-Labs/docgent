@@ -956,13 +956,9 @@ kbd {
   background: var(--paper);
   border-bottom: 1px solid var(--rule);
   flex-shrink: 0;
-  position: sticky;
-  top: calc(var(--topbar-h, 0px) + var(--toolbar-h, 45px));
   z-index: 10;
 }
-.format-bar-row1 { top: 45px; }
 .format-bar-row2 {
-  top: 79px; /* row1 is ~34px tall */
   background: var(--paper-alt);
   padding: 4px 16px;
   gap: 3px;

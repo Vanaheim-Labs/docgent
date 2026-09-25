@@ -2,128 +2,137 @@
  * docgent-lang.ts
  *
  * CodeMirror 6 language extension for Docgent Markdown.
- * Uses StreamLanguage (no Lezer .grammar compilation) so it ships as plain TS.
  *
- * Token names used here are mapped to CSS classes via HighlightStyle below.
- * The classes are prefixed "dg-" so they cannot collide with CM6 defaults.
+ * StreamLanguage maps token strings → Tag instances via the `tokenTable`
+ * option, then HighlightStyle + syntaxHighlighting maps those Tags to CSS.
+ * This is the correct CM6 path — baseTheme .cm-tokenName does NOT work
+ * with StreamLanguage (those class names are not emitted).
  */
 
 import { StreamLanguage, HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { tags as t } from "@lezer/highlight";
-import { Tag, styleTags } from "@lezer/highlight";
+import { Tag } from "@lezer/highlight";
 import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
-// ─── Custom tag set ────────────────────────────────────────────────────────────
+// ─── Tag definitions ───────────────────────────────────────────────────────────
+// Each tag is a distinct semantic class. We define our own rather than
+// reusing the standard `tags` set so they don't accidentally inherit generic
+// highlight styles from third-party themes.
 
-const dgTags = {
-  heading1:    Tag.define(),
-  heading2:    Tag.define(),
-  heading3:    Tag.define(),
-  headingN:    Tag.define(),   // h4–h6
-  bold:        Tag.define(),
-  italic:      Tag.define(),
-  inlineCode:  Tag.define(),
-  pageFence:   Tag.define(),
-  directive:   Tag.define(),
-  fmFence:     Tag.define(),   // frontmatter --- delimiter
-  blockPrim:   Tag.define(),   // ::: pagebreak / ::: toc etc.
-  commentLine: Tag.define(),
+const dgHeading1  = Tag.define();
+const dgHeading2  = Tag.define();
+const dgHeading3  = Tag.define();
+const dgHeadingN  = Tag.define();
+const dgBold      = Tag.define();
+const dgItalic    = Tag.define();
+const dgCode      = Tag.define();
+const dgPageFence = Tag.define();
+const dgDirective = Tag.define();
+const dgFmFence   = Tag.define();
+const dgBlockPrim = Tag.define();
+
+// ─── Token name → Tag mapping ──────────────────────────────────────────────────
+// StreamLanguage.define({ tokenTable }) maps the string returned by token()
+// to a Tag. This is what replaces the broken .cm-tokenName approach.
+
+const tokenTable: Record<string, Tag> = {
+  heading1:  dgHeading1,
+  heading2:  dgHeading2,
+  heading3:  dgHeading3,
+  headingN:  dgHeadingN,
+  bold:      dgBold,
+  italic:    dgItalic,
+  inlineCode: dgCode,
+  pageFence: dgPageFence,
+  directive: dgDirective,
+  fmFence:   dgFmFence,
+  blockPrim: dgBlockPrim,
 };
 
 // ─── StreamLanguage tokeniser ──────────────────────────────────────────────────
 
-type TokenizerState = {
+type DocgentState = {
   inFrontmatter: boolean;
   frontmatterDone: boolean;
   lineIndex: number;
 };
 
-const docgentStream = StreamLanguage.define<TokenizerState>({
+const docgentStream = StreamLanguage.define<DocgentState>({
   name: "docgent",
 
-  startState(): TokenizerState {
+  tokenTable,
+
+  startState(): DocgentState {
     return { inFrontmatter: false, frontmatterDone: false, lineIndex: 0 };
   },
 
   token(stream, state) {
-    // Always consume the whole line; we do per-line tokens.
-    // (StreamLanguage re-enters at line start after a non-null token.)
-
-    // ── Frontmatter delimiter ─────────────────────────────────────────────────
     if (stream.sol()) {
       state.lineIndex++;
 
-      // First line "---" starts frontmatter
+      // Frontmatter open delimiter (first line only)
       if (state.lineIndex === 1 && stream.match(/^---\s*$/)) {
         state.inFrontmatter = true;
         stream.skipToEnd();
-        return "fmFence" as string;
+        return "fmFence";
       }
-      // Closing "---" ends frontmatter
+      // Frontmatter close delimiter
       if (state.inFrontmatter && !state.frontmatterDone && stream.match(/^---\s*$/)) {
         state.inFrontmatter = false;
         state.frontmatterDone = true;
         stream.skipToEnd();
-        return "fmFence" as string;
+        return "fmFence";
       }
+      // Inside frontmatter — no token (plain colour)
       if (state.inFrontmatter) {
         stream.skipToEnd();
-        return null; // frontmatter body — no tint
+        return null;
       }
 
-      // ── Page fence ───────────────────────────────────────────────────────────
+      // Page fence: ---page{ ... or ---/page---
       if (stream.match(/^---page\{/) || stream.match(/^---\/page---/)) {
         stream.skipToEnd();
-        return "pageFence" as string;
+        return "pageFence";
       }
 
-      // ── Block primitives ::: ─────────────────────────────────────────────────
-      if (stream.match(/^:::(\s|$)/)) {
+      // Block primitives: ::: pagebreak, ::: toc, ::: {.something}
+      if (stream.match(/^:::\s/)) {
         stream.skipToEnd();
-        return "blockPrim" as string;
+        return "blockPrim";
+      }
+      // Self-closing ::: on its own line (closing fence)
+      if (stream.match(/^:::$/)) {
+        stream.skipToEnd();
+        return "blockPrim";
       }
 
-      // ── Directive blocks ::something{ ────────────────────────────────────────
-      if (stream.match(/^::[a-zA-Z].*\{/)) {
+      // Directive: ::something{
+      if (stream.match(/^::[a-zA-Z][^\s{]*\s*\{/)) {
         stream.skipToEnd();
-        return "directive" as string;
+        return "directive";
       }
 
-      // ── Headings ─────────────────────────────────────────────────────────────
-      if (stream.match(/^# (?!#)/)) {
-        stream.skipToEnd();
-        return "heading1" as string;
-      }
-      if (stream.match(/^## (?!#)/)) {
-        stream.skipToEnd();
-        return "heading2" as string;
-      }
-      if (stream.match(/^### (?!#)/)) {
-        stream.skipToEnd();
-        return "heading3" as string;
-      }
-      if (stream.match(/^#{4,6} /)) {
-        stream.skipToEnd();
-        return "headingN" as string;
-      }
+      // Headings (order matters: check ## before #)
+      if (stream.match(/^###### /)) { stream.skipToEnd(); return "headingN"; }
+      if (stream.match(/^##### /))  { stream.skipToEnd(); return "headingN"; }
+      if (stream.match(/^#### /))   { stream.skipToEnd(); return "headingN"; }
+      if (stream.match(/^### /))    { stream.skipToEnd(); return "heading3"; }
+      if (stream.match(/^## /))     { stream.skipToEnd(); return "heading2"; }
+      if (stream.match(/^# /))      { stream.skipToEnd(); return "heading1"; }
     }
 
-    // ── Inline tokens (character level) ──────────────────────────────────────
-    // Bold **text**
-    if (stream.match(/\*\*([^*]+)\*\*/)) return "bold" as string;
-    // Italic *text* (not **)
-    if (stream.match(/(?<!\*)\*([^*]+)\*(?!\*)/)) return "italic" as string;
-    // Inline code `code`
-    if (stream.match(/`[^`]+`/)) return "inlineCode" as string;
+    // ── Inline tokens ──────────────────────────────────────────────────────────
+    // Bold must be checked before italic to avoid ** being swallowed by *
+    if (stream.match(/\*\*[^*\n]+\*\*/)) return "bold";
+    if (stream.match(/\*[^*\n]+\*/))     return "italic";
+    if (stream.match(/`[^`\n]+`/))       return "inlineCode";
 
-    // Advance one char so the tokeniser doesn't stall
+    // Advance one char so the tokeniser never stalls
     stream.next();
     return null;
   },
 
-  // Carry frontmatter state across lines
-  copyState(state): TokenizerState {
+  copyState(state): DocgentState {
     return { ...state };
   },
 
@@ -133,80 +142,24 @@ const docgentStream = StreamLanguage.define<TokenizerState>({
 });
 
 // ─── Highlight style ───────────────────────────────────────────────────────────
-// CM6's StreamLanguage wraps token names as Tag.define() descendants under
-// the "other" tag group. We map via className rather than tags to keep things
-// simple and avoids the styleTags plumbing that's only needed for Lezer grammars.
+// Maps our custom Tags → CSS. This is what actually produces colours in the
+// editor. syntaxHighlighting(style) wraps it as a CM6 Extension.
 
-const docgentTheme = EditorView.baseTheme({
-  ".dg-heading1":   { color: "#6b5bd6", fontWeight: "700", fontSize: "1.15em" },
-  ".dg-heading2":   { color: "#6b5bd6", fontWeight: "650", fontSize: "1.08em" },
-  ".dg-heading3":   { color: "#6b5bd6", fontWeight: "600" },
-  ".dg-headingN":   { color: "#8b7ee0", fontWeight: "600" },
-  ".dg-bold":       { color: "#1f4b6e", fontWeight: "700" },
-  ".dg-italic":     { color: "#454e5a", fontStyle: "italic" },
-  ".dg-inlineCode": {
-    color: "#c7254e",
-    background: "#f0f4f8",
-    borderRadius: "3px",
-    padding: "0 3px",
-    fontFamily: "var(--mono, monospace)",
-    fontSize: "0.92em",
-  },
-  ".dg-pageFence":  {
-    background: "rgba(251,191,36,0.15)",
-    color: "#92400e",
-    fontWeight: "600",
-    display: "block",
-  },
-  ".dg-directive":  { color: "#0e7490", fontWeight: "600" },
-  ".dg-fmFence":    { color: "#8a94a1" },
-  ".dg-blockPrim":  {
-    background: "rgba(251,191,36,0.12)",
-    color: "#92400e",
-    fontWeight: "600",
-    display: "block",
-  },
-});
+const docgentStyle = HighlightStyle.define([
+  { tag: dgHeading1,  color: "#6b5bd6", fontWeight: "700", fontSize: "1.12em" },
+  { tag: dgHeading2,  color: "#6b5bd6", fontWeight: "650", fontSize: "1.06em" },
+  { tag: dgHeading3,  color: "#6b5bd6", fontWeight: "600" },
+  { tag: dgHeadingN,  color: "#8b7ee0", fontWeight: "600" },
+  { tag: dgBold,      color: "#1f4b6e", fontWeight: "700" },
+  { tag: dgItalic,    color: "#454e5a", fontStyle: "italic" },
+  { tag: dgCode,      color: "#c7254e", background: "#f0f4f8", borderRadius: "3px", padding: "0 2px", fontFamily: "var(--mono, monospace)", fontSize: "0.91em" },
+  { tag: dgPageFence, color: "#92400e", background: "rgba(251,191,36,0.18)", fontWeight: "600" },
+  { tag: dgDirective, color: "#0e7490", fontWeight: "600" },
+  { tag: dgFmFence,   color: "#8a94a1" },
+  { tag: dgBlockPrim, color: "#92400e", background: "rgba(251,191,36,0.12)", fontWeight: "600" },
+]);
 
-// StreamLanguage token names map to CSS class names via the language's token
-// table. CM6 emits `cm-TOKEN_NAME` on spans when using StreamLanguage, but we
-// need `dg-*` prefixed names. We achieve this by renaming token types in the
-// language definition token table approach — actually the simplest approach is
-// to use a CSS class map via a custom highlighter extension.
-
-// The real class names emitted by StreamLanguage are `cm-<tokenType>`.
-// We add a baseTheme that covers both `.cm-heading1` (the actual class) and
-// our semantic aliases so we don't need the `dg-` prefix at all.
-const docgentStreamTheme = EditorView.baseTheme({
-  ".cm-heading1":   { color: "#6b5bd6", fontWeight: "700", fontSize: "1.12em" },
-  ".cm-heading2":   { color: "#6b5bd6", fontWeight: "650", fontSize: "1.06em" },
-  ".cm-heading3":   { color: "#6b5bd6", fontWeight: "600" },
-  ".cm-headingN":   { color: "#8b7ee0", fontWeight: "600" },
-  ".cm-bold":       { color: "#1f4b6e", fontWeight: "700" },
-  ".cm-italic":     { color: "#454e5a", fontStyle: "italic" },
-  ".cm-inlineCode": {
-    color: "#c7254e",
-    background: "#f0f4f8",
-    borderRadius: "3px",
-    padding: "0 2px",
-    fontFamily: "var(--mono, monospace)",
-    fontSize: "0.91em",
-  },
-  ".cm-pageFence":  {
-    background: "rgba(251,191,36,0.15)",
-    color: "#92400e",
-    fontWeight: "600",
-  },
-  ".cm-directive":  { color: "#0e7490", fontWeight: "600" },
-  ".cm-fmFence":    { color: "#8a94a1" },
-  ".cm-blockPrim":  {
-    background: "rgba(251,191,36,0.12)",
-    color: "#92400e",
-    fontWeight: "600",
-  },
-});
-
-// ─── Editor base styles ────────────────────────────────────────────────────────
+// ─── Editor base theme ─────────────────────────────────────────────────────────
 
 const editorBaseTheme = EditorView.baseTheme({
   "&": {
@@ -246,23 +199,17 @@ const editorBaseTheme = EditorView.baseTheme({
     minWidth: "32px",
     textAlign: "right",
   },
-  // Read-only state
-  "&.cm-readonly .cm-content": {
-    background: "var(--paper-alt, #f6f8fa)",
-    cursor: "default",
+  "&.cm-focused .cm-selectionBackground": {
+    background: "rgba(31, 75, 110, 0.2) !important",
   },
 });
 
 // ─── Public API ────────────────────────────────────────────────────────────────
 
-/**
- * Returns the array of CodeMirror extensions that implement Docgent syntax
- * highlighting. Pass this to EditorState.create({ extensions: [...docgentLanguage()] }).
- */
 export function docgentLanguage(): Extension[] {
   return [
     docgentStream,
-    docgentStreamTheme,
+    syntaxHighlighting(docgentStyle),
     editorBaseTheme,
   ];
 }
