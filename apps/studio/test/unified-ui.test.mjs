@@ -7,7 +7,7 @@ import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 function component(file){
  const code=buildSync({entryPoints:[new URL(`../src/components/${file}.tsx`,import.meta.url).pathname],bundle:true,jsx:'automatic',write:false,platform:'node',format:'cjs',packages:'external',tsconfig:new URL('../tsconfig.json',import.meta.url).pathname}).outputFiles[0].text;
- const module={exports:{}};new Function('require','module','exports',code)(require,module,module.exports);return module.exports;
+ const module={exports:{}};const testRequire=name=>name==='next/navigation'?{useRouter:()=>({refresh(){}})}:require(name);new Function('require','module','exports',code)(testRequire,module,module.exports);return module.exports;
 }
 test('unified editor keeps navigation and independent authoring and layout controls in its header',()=>{
  const {Editor}=component('Editor');

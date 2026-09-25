@@ -116,7 +116,7 @@ export function RewriteBar({
         setError(data.error || `Rewrite failed (${res.status}).`);
         return;
       }
-      onProposal(data);
+      if (!controller.signal.aborted) onProposal(data);
     } catch (e) {
       if ((e as Error)?.name === "AbortError") return;
       setError(e instanceof Error ? e.message : String(e));

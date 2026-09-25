@@ -303,13 +303,13 @@ export function LibraryView({
       <div className="content" ref={contentRef}>
         {unified && <NewDocument brands={allowedBrands} />}
         {unified && <section className="library-filters" aria-label="Document filters">
-          <input type="search" aria-label="Search documents" placeholder="Search documents…" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
-          <select aria-label="Brand filter" value={[...filters.brands][0] || ""} onChange={(event) => setFilters({ ...filters, brands: new Set(event.target.value ? [event.target.value] : []) })}>
+          <input disabled={!restored} type="search" aria-label="Search documents" placeholder="Search documents…" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
+          <select disabled={!restored} aria-label="Brand filter" value={[...filters.brands][0] || ""} onChange={(event) => setFilters({ ...filters, brands: new Set(event.target.value ? [event.target.value] : []) })}>
             <option value="">All brands</option>{[...new Set(documents.map(doc => doc.brand))].sort().map(brand => <option key={brand} value={brand}>{documents.find(doc => doc.brand === brand)?.brandName || brand}</option>)}
           </select>
-          <select aria-label="Document type" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="">All types</option>{[...new Set(documents.map(doc => doc.frontmatter?.doctype).filter(Boolean))].sort().map(type => <option key={type} value={type}>{type}</option>)}</select>
-          <select aria-label="Status filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All statuses</option>{[...new Set(documents.map(doc => doc.frontmatter?.status || "draft"))].sort().map(status => <option key={status} value={status}>{status}</option>)}</select>
-          <button className="btn btn-secondary" onClick={clearFilters}>Clear filters</button>
+          <select disabled={!restored} aria-label="Document type" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="">All types</option>{[...new Set(documents.map(doc => doc.frontmatter?.doctype).filter(Boolean))].sort().map(type => <option key={type} value={type}>{type}</option>)}</select>
+          <select disabled={!restored} aria-label="Status filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All statuses</option>{[...new Set(documents.map(doc => doc.frontmatter?.status || "draft"))].sort().map(status => <option key={status} value={status}>{status}</option>)}</select>
+          <button disabled={!restored} className="btn btn-secondary" onClick={clearFilters}>Clear filters</button>
         </section>}
         {documents.length === 0 && (
           <div className="empty">No documents yet.</div>
@@ -331,6 +331,7 @@ export function LibraryView({
               <select
                 className="library-sort-select"
                 aria-label="Sort documents"
+                disabled={unified && !restored}
                 value={sortMode}
                 onChange={(e) => setSortMode(e.target.value as SortMode)}
               >

@@ -4,6 +4,41 @@ import {startNextFixture} from './next-fixture.mjs';
 let server;
 test.beforeAll(async()=>{test.setTimeout(120000);server=await startNextFixture();});
 test.afterAll(async()=>server?.close());
+test('real read-only outline cannot mutate Git or the retained current draft',async({page,context})=>{
+ test.setTimeout(120000);await server.login(context);await page.goto(server.url+'/example/fixture');const head=server.git('rev-parse','HEAD');const original=server.git('show','HEAD:documents/fixture/doc.md');
+ await page.getByRole('button',{name:'Outline',exact:true}).click();await expect(page.getByRole('button',{name:'Summary',exact:true})).toBeEnabled();await expect(page.getByRole('button',{name:'Strike Summary',exact:true})).toBeDisabled();await expect(page.getByRole('button',{name:'Direct a rewrite of Summary',exact:true})).toBeDisabled();
+ await page.getByRole('button',{name:'History',exact:true}).click();await page.getByRole('button',{name:/Show 1 more/}).click();await page.getByRole('link',{name:'View',exact:true}).last().click();await expect(page.getByRole('button',{name:'Direct a rewrite of Summary',exact:true})).toBeDisabled();await page.keyboard.press('ControlOrMeta+s');
+ await page.getByRole('button',{name:'Return to latest',exact:true}).click();await page.getByRole('button',{name:'Source',exact:true}).click();await page.getByRole('button',{name:'Editor only',exact:true}).click();expect((await page.locator('.cm-line').allTextContents()).join('\n').trim()).toBe(original.trim());await page.waitForTimeout(3200);expect(server.git('rev-parse','HEAD')).toBe(head);
+});
+test('fallback without Navigation API cancels dirty Back and Forward without losing bytes',async({page,context})=>{
+ test.setTimeout(120000);await page.addInitScript(()=>Object.defineProperty(window,'navigation',{value:undefined,configurable:true}));await server.login(context);await page.goto(server.url);await page.getByRole('link',{name:/Synthetic report 06/}).click();await page.getByRole('button',{name:'Source',exact:true}).click();await page.getByRole('button',{name:'Editor only',exact:true}).click();
+ await page.evaluate(()=>{history.pushState({...history.state},'',location.href+'?forward=1');history.back();});await expect(page).not.toHaveURL(/forward=1/);
+ await page.locator('.cm-content').press('ControlOrMeta+End');await page.keyboard.insertText('\n::: unknownfixture\nFallback private bytes.');const url=page.url();const dialogs=[];page.on('dialog',async d=>{dialogs.push(d.type());await d.dismiss();});
+ await page.evaluate(()=>history.back());await expect.poll(()=>dialogs.length).toBe(1);await expect(page).toHaveURL(url);await expect(page.locator('.cm-content')).toContainText('Fallback private bytes.');
+ await page.evaluate(()=>history.forward());await expect.poll(()=>dialogs.length).toBe(2);await expect(page).toHaveURL(url);await expect(page.locator('.cm-content')).toContainText('Fallback private bytes.');
+});
+test('session loss clears private recovery and removes an open editor on focus',async({page,context})=>{
+ test.setTimeout(120000);await server.login(context);await page.goto(server.url+'/example/fixture-05/edit');await page.getByRole('button',{name:'Source',exact:true}).click();await page.getByRole('button',{name:'Editor only',exact:true}).click();await page.locator('.cm-content').press('ControlOrMeta+End');await page.keyboard.insertText('\n::: unknownfixture\nSession-private draft.');
+ await context.clearCookies();await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await expect(page.locator('.editor')).toHaveCount(0);expect(await page.evaluate(()=>Object.values(sessionStorage).join(' '))).not.toContain('Session-private draft.');
+});
+test('private recovery is isolated across authenticated identities in the same tab',async({page,context})=>{
+ test.setTimeout(120000);await server.login(context);await page.goto(server.url+'/example/fixture-04/edit');
+ await page.getByRole('button',{name:'Source',exact:true}).click();await page.getByRole('button',{name:'Editor only',exact:true}).click();await page.locator('.cm-content').press('ControlOrMeta+End');await page.keyboard.insertText('\n::: unknownfixture\nPrivate account A draft.');
+ page.on('dialog',d=>d.accept());await page.reload();await expect(page.getByRole('button',{name:'Recover draft',exact:true})).toBeVisible();
+ await server.login(context,['example'],'synthetic-account-b');await page.reload();
+ await expect(page.getByRole('button',{name:'Recover draft',exact:true})).toHaveCount(0);
+ await expect.poll(()=>page.evaluate(()=>Object.values(sessionStorage).join(' '))).not.toContain('Private account A draft.');
+});
+test('saved history refreshes and Compare uses the new authoritative Git commit',async({page,context})=>{
+ test.setTimeout(120000);await server.login(context);await page.goto(server.url+'/example/fixture-03/edit');
+ await page.getByRole('button',{name:'Source',exact:true}).click();await page.getByRole('button',{name:'Editor only',exact:true}).click();await page.locator('.cm-content').press('ControlOrMeta+End');await page.keyboard.insertText('\nA newly saved history marker.\n');await page.getByRole('button',{name:'Save',exact:true}).click();await expect(page.getByRole('status',{name:'Save status'})).toHaveText('Saved');
+ const sha=server.git('rev-parse','HEAD');await page.getByRole('button',{name:'History',exact:true}).click();
+ await expect(page.getByRole('complementary',{name:'History panel'})).toContainText(sha.slice(0,7));
+ await page.getByRole('button',{name:/Show 1 more/}).click();
+ const requests=[];page.on('request',r=>{if(r.url().includes('/api/diff/'))requests.push(r.url());});
+ await page.getByRole('button',{name:'Compare',exact:true}).last().click();await expect.poll(()=>requests.some(url=>new URL(url).searchParams.get('head')===sha)).toBe(true);
+});
 test('dirty Next Back, Forward and reload require confirmation and retain the draft',async({page,context})=>{
  test.setTimeout(120000);await server.login(context);await page.goto(server.url);
  await page.getByRole('link',{name:/Synthetic report 00/}).click();
@@ -11,7 +46,7 @@ test('dirty Next Back, Forward and reload require confirmation and retain the dr
  // A same-document forward destination exists, just as with Next list navigation.
  await page.evaluate(()=>{history.pushState({...history.state},'',location.href+'?context=next');history.back();});
  await expect(page).not.toHaveURL(/context=next/);
- await page.locator('.cm-content').press('ControlOrMeta+End');await page.keyboard.insertText('\n\n::unknownfixture{}\nKeep this unsaved draft.');
+ await page.locator('.cm-content').press('ControlOrMeta+End');await page.keyboard.insertText('\n\n::: unknownfixture\nKeep this unsaved draft.');
  const dialogs=[];page.on('dialog',async d=>{dialogs.push(d.type());await d.dismiss();});
  await page.evaluate(()=>history.back());
  await expect.poll(()=>dialogs.length).toBe(1);
@@ -19,6 +54,9 @@ test('dirty Next Back, Forward and reload require confirmation and retain the dr
  await page.evaluate(()=>history.forward());await expect.poll(()=>dialogs.length).toBe(2);
  await page.reload({timeout:3000}).catch(()=>{});await expect.poll(()=>dialogs.length).toBe(3);
  await expect(page.locator('.cm-content')).toContainText('Keep this unsaved draft.');
+});
+test('server-rendered library cannot accept filters before hydration restores state',async({browser})=>{
+ test.setTimeout(120000);const context=await browser.newContext({javaScriptEnabled:false});try{await server.login(context);const page=await context.newPage();await page.goto(server.url+'/?bucket=in-progress');await expect(page.getByRole('searchbox',{name:'Search documents'})).toBeDisabled();await expect(page.getByLabel('Brand filter')).toBeDisabled();}finally{await context.close();}
 });
 test('Documents returns to the same query, filters and scroll position',async({page,context})=>{
  test.setTimeout(120000);await server.login(context);await page.setViewportSize({width:1200,height:650});await page.goto(server.url+'/?bucket=in-progress');
@@ -34,7 +72,7 @@ test('restore appends a real Git revision and never discards a pending draft',as
  test.setTimeout(120000);await server.login(context);await page.goto(server.url+'/example/fixture');
  await page.getByRole('button',{name:'Source',exact:true}).click();await page.getByRole('button',{name:'Editor only',exact:true}).click();
  await expect(page.locator('.cm-content')).toContainText('Synthetic fixture');
- await page.locator('.cm-content').press('ControlOrMeta+End');await page.keyboard.insertText('\n\n::unknownfixture{}\nRestore must retain me.');
+ await page.locator('.cm-content').press('ControlOrMeta+End');await page.keyboard.insertText('\n\n::: unknownfixture\nRestore must retain me.');
  await expect(page.getByRole('status',{name:'Save status'})).toContainText('Unsaved');
  await page.getByRole('button',{name:'History',exact:true}).click();await page.getByRole('button',{name:/Show 1 more/}).click();await expect(page.getByRole('button',{name:'Restore',exact:true})).toBeDisabled();
  await page.getByRole('link',{name:'View',exact:true}).last().click();

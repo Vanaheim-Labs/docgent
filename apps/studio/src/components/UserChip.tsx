@@ -17,7 +17,7 @@ export async function UserChip() {
           await signOut({ redirectTo: "/signin" });
         }}
       >
-        <button type="submit" className="btn btn-secondary">
+        <button data-sign-out type="submit" className="btn btn-secondary">
           Sign out
         </button>
       </form>

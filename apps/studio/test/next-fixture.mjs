@@ -25,8 +25,8 @@ export async function startNextFixture({unified=true}={}){
  const app=spawn(process.execPath,[join(repo,'node_modules/next/dist/bin/next'),'dev','--hostname','127.0.0.1','--port',String(appPort)],{cwd:studio,env,stdio:['ignore',openSync(join(root,'next.log'),'w'),openSync(join(root,'next-errors.log'),'w')]});
  const url=`http://127.0.0.1:${appPort}`;
  try{await ready(`http://127.0.0.1:${workerPort}/health`,worker);await ready(url+'/signin',app);}catch(e){app.kill();worker.kill();throw new Error(`${e.message}; logs: ${root}`);}
- return {url,root,gitRoot,old,git,close:async()=>{app.kill();worker.kill();},login:async(context,allowedBrands=['example'])=>{
-  const token=await encode({secret,salt:'authjs.session-token',token:{sub:'synthetic-fixture',name:'Synthetic author',email:'fixture@example.invalid',allowedBrands,provider:'google'},maxAge:3600});
+ return {url,root,gitRoot,old,git,close:async()=>{app.kill();worker.kill();},login:async(context,allowedBrands=['example'],subject='synthetic-fixture')=>{
+  const token=await encode({secret,salt:'authjs.session-token',token:{sub:subject,providerAccountId:subject,name:'Synthetic author',email:'fixture@example.invalid',allowedBrands,provider:'google'},maxAge:3600});
   await context.addCookies([{name:'authjs.session-token',value:token,url,httpOnly:true,sameSite:'Lax'}]);
  }};
 }

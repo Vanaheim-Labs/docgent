@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { BEFORE_TRAVERSE } from "@/lib/traversal-fallback";
 import type { Vocabulary } from "@/lib/vocabulary";
 import { validateMarkdown, type Diagnostic } from "@/lib/validate-client";
 import { RewriteBar, type RewriteProposal } from "@/components/RewriteBar";
@@ -158,6 +160,7 @@ type Props = {
     title: string;
     timeline: import("@/lib/store").TimelineEntry[];
     canEdit: boolean;
+    draftOwner?: string;
     initialEditing?: boolean;
     viewingSha?: string;
     status?: string;
@@ -229,6 +232,13 @@ function EditorExportDropdown({ brand, slug, previewUrl }: { brand: string; slug
 }
 
 export function Editor({ brand, slug, initialContent, initialSha, vocabulary, workspace }: Props) {
+  const router = useRouter();
+  const editorMounted = useRef(true);
+  useEffect(() => {
+    editorMounted.current = true;
+    return () => { editorMounted.current = false; };
+  }, []);
+  const [savedRevision, setSavedRevision] = useState<string | undefined>();
   const [authoring, setAuthoring] = useState<"visual" | "source">("visual");
   const [layout, setLayout] = useState<"editor" | "split" | "preview">(workspace?.initialEditing ? "editor" : "preview");
   const [preferencesReady, setPreferencesReady] = useState(false);
@@ -262,12 +272,15 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
     return () => controller.abort();
   }, [historicalSha, brand, slug]);
   const viewRevision = (sha?: string) => { setHistoricalSha(sha); setLayout("preview"); };
-  const draftKey = `docgent.draft:${brand}/${slug}`;
+  const draftKey = `docgent.draft:${workspace?.draftOwner}:${brand}/${slug}`;
   const [recoveredDraft, setRecoveredDraft] = useState<{ content: string; baseSha: string | null } | null>(null);
   const [draftStorageReady, setDraftStorageReady] = useState(false);
   useEffect(() => {
-    if (!workspace?.canEdit) return;
+    if (!workspace?.canEdit || !workspace.draftOwner) return;
     try {
+      for (const key of Object.keys(sessionStorage)) {
+        if (key.startsWith("docgent.draft:") && !key.startsWith(`docgent.draft:${workspace.draftOwner}:`)) sessionStorage.removeItem(key);
+      }
       const draft = JSON.parse(sessionStorage.getItem(draftKey) || "null");
       if (draft && typeof draft.content === "string" && draft.content !== initialContent) setRecoveredDraft(draft);
     } catch { /* Native unload warning remains available if storage is blocked. */ }
@@ -286,7 +299,18 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
     if (!workspace || !preferencesReady) return;
     try { localStorage.setItem("docgent.workspace.preferences", JSON.stringify({ authoring, layout })); } catch { /* Optional preference. */ }
   }, [authoring, layout, preferencesReady]);
-  const [content, setContent] = useState(initialContent);
+  const canWrite = !workspace || (workspace.canEdit && !historicalSha);
+  const writeAllowed = useRef(canWrite);
+  writeAllowed.current = canWrite;
+  const canMutate = canWrite && (!workspace || layout !== "preview");
+  const mutationAllowed = useRef(canMutate);
+  mutationAllowed.current = canMutate;
+  const [content, replaceContent] = useState(initialContent);
+  // Event listeners and async callbacks must check today's capability, not
+  // the capability captured when a preview or a proposal was opened.
+  const setContent = useCallback((next: React.SetStateAction<string>) => {
+    if (mutationAllowed.current) replaceContent(next);
+  }, []);
   const selectedSource = historicalSha ? historicalSource || "" : content;
   const selectedMetadata = useMemo(() => {
     try { return parseFrontmatter(selectedSource) as Record<string, unknown>; }
@@ -372,6 +396,9 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   >(null);
   const [proposal, setProposal] = useState<RewriteProposal | null>(null);
   const [acceptedNote, setAcceptedNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!canMutate) { setRewriteTarget(null); setProposal(null); setAcceptedNote(null); }
+  }, [canMutate]);
 
   /**
    * Annotation-in-progress: which source line a Review-mode click landed on,
@@ -463,7 +490,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   // autosave from firing a stale PUT with the old baseSha and getting a 409.
   const dirty = content !== committedContentRef.current || save.kind === "error" || save.kind === "stale";
   useEffect(() => {
-    if (!workspace?.canEdit || !draftStorageReady || recoveredDraft) return;
+    if (!workspace?.canEdit || !workspace.draftOwner || !draftStorageReady || recoveredDraft) return;
     try {
       if (dirty) sessionStorage.setItem(draftKey, JSON.stringify({ content, baseSha }));
       else sessionStorage.removeItem(draftKey);
@@ -645,8 +672,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
 
   const doSave = useCallback(async () => {
     if (savingRef.current) return;
-    if (workspace && !workspace.canEdit) return;
-    if (historicalSha) return;
+    if (!writeAllowed.current) return;
     if (workspace && save.kind === "stale") return;
     if (errors.length > 0) {
       setSave({ kind: "error", message: `${errors.length} validation error${errors.length > 1 ? "s" : ""} — fix before saving.` });
@@ -693,6 +719,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
       setBaseSha(data.sha);
       committedContentRef.current = content; // advance baseline so dirty=false
       setSave({ kind: "saved", sha: data.sha, commit: data.commit });
+      if (workspace) { setSavedRevision(data.revision || data.commit?.sha); router.refresh(); }
       return data.revision as string | undefined;
     } catch (e) {
       setSave({ kind: "error", message: e instanceof Error ? e.message : String(e) });
@@ -824,8 +851,15 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
       if (next.cancelable && next.destination?.sameDocument && next.navigationType !== "reload" &&
           !window.confirm("Leave with unsaved changes? Your draft will remain available in this tab.")) next.preventDefault();
     };
+    const fallbackGuard = (event: Event) => {
+      if (!window.confirm("Leave with unsaved changes? Your draft will remain available in this tab.")) event.preventDefault();
+    };
     navigation?.addEventListener("navigate", guard);
-    return () => navigation?.removeEventListener("navigate", guard);
+    if (!navigation) window.addEventListener(BEFORE_TRAVERSE, fallbackGuard);
+    return () => {
+      navigation?.removeEventListener("navigate", guard);
+      window.removeEventListener(BEFORE_TRAVERSE, fallbackGuard);
+    };
   }, [!!workspace, dirty]);
 
   /* ---------------- scroll sync ---------------- */
@@ -1342,6 +1376,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   // button, rather than each action inventing its own edge cases.
   const applyEdit = useCallback(
     (next: string, selStart: number, selEnd: number) => {
+      if (!mutationAllowed.current) return;
       setContent(next);
       setSave((s) => (s.kind === "saved" ? { kind: "idle" } : s));
       // Push to CM6
@@ -2198,6 +2233,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   // and "rewrite everything" from an empty selection is the kind of surprise
   // that erodes trust in the feature on first use.
   const openSelectionRewrite = useCallback(() => {
+    if (!mutationAllowed.current) return;
     const el = textareaRef.current;
     if (!el || isFolded) return;
     const start = el.selectionStart;
@@ -2216,6 +2252,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   // survives a reorder between opening the bar and the request landing.
   const openSectionRewrite = useCallback(
     (h: Heading) => {
+      if (!mutationAllowed.current) return;
       const top = Math.max(0, offsetForLine(h.line) - (textareaRef.current?.scrollTop ?? 0));
       setProposal(null);
       setAcceptedNote(null);
@@ -2333,7 +2370,14 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   // formatting button uses, so undo, dirty-state and preview invalidation
   // behave identically for an AI-authored change and a hand-typed one.
   const acceptProposal = useCallback(
-    (finalContent: string, accepted: RewriteProposal, newSha: string | null) => {
+    (finalContent: string, accepted: RewriteProposal, newSha: string | null, revision?: string, reviewActive = true) => {
+      if (!editorMounted.current) return;
+      if (!reviewActive || !mutationAllowed.current) {
+        setSave({ kind: "stale", message: "The accepted rewrite was committed after you changed views. Your local draft is preserved; inspect the latest saved revision before editing or saving." });
+        setSavedRevision(revision);
+        router.refresh();
+        return;
+      }
       applyEdit(finalContent, accepted.span.start, accepted.span.start + accepted.after.length);
       // The accept endpoint committed to the repo and returned a new blob SHA.
       // Update baseSha so the next autosave (or manual save) sends the right
@@ -2347,6 +2391,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         // Mark as saved so the toolbar reflects the committed state.
         setSave({ kind: "saved", sha: newSha });
       }
+      if (workspace) { setSavedRevision(revision); router.refresh(); }
       setAcceptedNote(`Accepted — ${accepted.model.label}: "${accepted.instruction}"`);
       setProposal(null);
       setRewriteTarget(null);
@@ -2838,8 +2883,9 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
       </div>}
       {workspace && recoveredDraft && <div className="banner" role="status">
         An unsaved draft from this tab is available. It has not been saved to the server.
-        <button onClick={() => {
-          setContent(recoveredDraft.content);
+        <button disabled={!canWrite} onClick={() => {
+          if (!writeAllowed.current) return;
+          replaceContent(recoveredDraft.content);
           if (recoveredDraft.baseSha !== initialSha) setSave({ kind: "stale", message: "The server changed since this draft. Compare before saving." });
           setRecoveredDraft(null);
         }}>Recover draft</button>
@@ -3050,24 +3096,25 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         </div>
       )}
 
-      {rewriteTarget && !proposal && (
+      {canMutate && rewriteTarget && !proposal && (
         <RewriteBar
           brand={brand}
           slug={slug}
           scopeLabel={rewriteTarget.label}
           getScope={getScope}
-          onProposal={setProposal}
+          onProposal={value => { if (mutationAllowed.current) setProposal(value); }}
           onClose={closeRewrite}
           anchorTop={rewriteTarget.top}
         />
       )}
 
-      {proposal && (
+      {canMutate && proposal && (
         <div className="proposal-overlay">
           <ProposalReview
             proposal={proposal}
             brand={brand}
             slug={slug}
+            canAccept={canMutate}
             onAccept={acceptProposal}
             onReject={closeRewrite}
           />
@@ -3344,7 +3391,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
                     className="outline-row"
                     data-level={h.level}
                     data-struck={struck}
-                    draggable
+                    draggable={canMutate}
                     onDragStart={(e) => {
                       e.dataTransfer.setData("text/x-docgent-line", String(h.line));
                       e.dataTransfer.setData("text/x-docgent-level", String(h.level));
@@ -3382,6 +3429,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
                     </button>
                     <button
                       className="outline-strike"
+                      disabled={!canMutate}
                       onClick={() => toggleStrike(h)}
                       data-active={struck}
                       title={struck ? "Unstrike section" : "Strike section"}
@@ -3391,6 +3439,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
                     </button>
                     <button
                       className="outline-direct"
+                      disabled={!canMutate}
                       onClick={() => openSectionRewrite(h)}
                       title={`Direct a rewrite of "${h.text}"`}
                       aria-label={`Direct a rewrite of ${h.text}`}
@@ -3536,7 +3585,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
         </section>}
         {workspace && contextPanel === "history" && <aside className="workspace-context" aria-label="History panel">
           <button onClick={() => setContextPanel(null)}>Close history</button>
-          <WorkspaceHistory brand={brand} slug={slug} timeline={workspace.timeline} baseSha={!dirty && workspace.canEdit ? baseSha || undefined : undefined} viewingSha={historicalSha} onView={viewRevision} />
+          <WorkspaceHistory key={savedRevision || workspace.timeline[0]?.sha} latestRevision={savedRevision || workspace.timeline[0]?.sha} brand={brand} slug={slug} timeline={workspace.timeline} baseSha={!dirty && workspace.canEdit ? baseSha || undefined : undefined} viewingSha={historicalSha} onView={viewRevision} />
         </aside>}
         {workspace && contextPanel === "details" && <aside className="workspace-context" aria-label="Details panel">
           <button onClick={() => setContextPanel(null)}>Close details</button>

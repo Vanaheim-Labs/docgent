@@ -50,10 +50,10 @@ export default async function EditPage({ params }: Props) {
   if (process.env.DOCGENT_UNIFIED_WORKSPACE === "1") {
     const { docs } = await storesFor(brand);
     const timeline = await docs.timeline(brand, slug, { limit: 30 });
-    return <div className="editor-shell"><Editor
+    return <div className="editor-shell"><Editor key={`${(session.user as { draftOwner?: string }).draftOwner}/${brand}/${slug}`}
       brand={brand} slug={slug} initialContent={doc.content}
       initialSha={doc.sha ?? null} vocabulary={vocabulary}
-      workspace={{ title: fm.title || slug, status: fm.status, timeline,
+      workspace={{ draftOwner: (session.user as { draftOwner?: string }).draftOwner, title: fm.title || slug, status: fm.status, timeline,
         canEdit: true, initialEditing: true }}
     /></div>;
   }

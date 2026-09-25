@@ -90,3 +90,26 @@ Sessions are explicitly synthetic Auth.js JWT fixtures, signed using an ephemera
 5. Independent review remains required before release; this document does not substitute local fixture coverage for that review.
 
 No secrets or customer documents are included in the test artifacts. No deployment was attempted.
+
+## Independent-review corrections (baseline `bbed52f`)
+
+This follow-up is correctness/safety hardening of the unified workspace, **not acceptance of the broader UX redesign**. End-to-end evaluation against the original disjointed-workflow problems remains outstanding.
+
+Behavioral regressions were observed failing before their fixes:
+- Preview/historical outline mutation controls were enabled; shared current-capability guards now protect mutation paths, rewrite entry, saving and recovery while leaving navigation available.
+- Pending proposals survived read-only transitions. They are now invalidated. Acceptance already sent to the server continues to be observed: a late successful commit refreshes history and explicitly marks the retained local draft conflicted instead of silently calling it saved or replacing it.
+- History remained at the page-load revision after saving. Save and accepted-rewrite outcomes refresh server history; Compare uses the acknowledged immutable revision and discards comparisons after selection changes.
+- Recovery crossed account boundaries. Draft keys now use an opaque hash of provider plus stable provider account ID. Auth callback tests cover different per-login `sub` values, token refresh, different accounts and legacy tokens without stable identity. Session change/logout cleanup removes other identities' drafts and unmounts private editing buffers. Legacy tokens without the new claim expose no recovery owner until fresh authentication.
+- Without the Navigation API, dirty Back/Forward did not prompt. The tested fallback indexes application History API entries while preserving Next's opaque state and reverses cancelled traversal. Entries predating installation still rely on native cross-document warnings and recovery; real Safari/Firefox validation remains outstanding.
+- Real Next regression runs exposed library filters accepting input before hydration/restoration. Unified filters remain disabled until restored. SSR/no-JavaScript and real return-context tests exercise this boundary.
+
+The navigation/restore fixture now uses a genuinely invalid fenced block (`::: unknownfixture`) to hold a dirty draft; the previous two-colon text did not prevent autosave and made shared Git tests timing-dependent.
+
+Final combined execution (separate logs, no overlapping writers):
+- `npm test`: exit 0, final runner **186 passed, 0 failed** (not a workspace aggregate). `/tmp/docgent-final-regression.log`.
+- `npx tsc --noEmit -p apps/studio/tsconfig.json`: exit 0.
+- `npm exec --workspace @docgent/studio -- next build`: exit 0. `/tmp/docgent-final-build.log`.
+- `npx playwright test apps/studio/test/workspace*.browser.spec.mjs --reporter=line`: **39 passed**, including real Next/synthetic Git/real renderer integration. `/tmp/docgent-final-browser.log`.
+- Real rendering fixtures were regenerated using `node apps/render-worker/stage.mjs` and `.venv/bin/python apps/studio/test/render-fixtures.py`, both exit 0. `/tmp/docgent-review-render.log`.
+
+Two independent static reviews differed: one reported no blockers; another identified the per-login identity and interrupted acceptance problems, both subsequently reproduced and fixed. Codex CLI and Claude CLI review attempts failed due to a missing executable and expired OAuth respectively; neither supplied a review verdict. No real Google OAuth login, customer-backed session, push, merge or deployment was performed.

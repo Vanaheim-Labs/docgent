@@ -112,10 +112,10 @@ export default async function DocumentPage({ params, searchParams }: Props) {
   const fm = doc.frontmatter || {};
   if (process.env.DOCGENT_UNIFIED_WORKSPACE === "1") {
     return <div className="editor-shell"><Editor
-      key={`${brand}/${slug}/${commitSha || "latest"}`}
+      key={`${(session.user as { draftOwner?: string }).draftOwner}/${brand}/${slug}/${commitSha || "latest"}`}
       brand={brand} slug={slug} initialContent={doc.content}
       initialSha={doc.sha ?? null} vocabulary={loadVocabulary()}
-      workspace={{ title: fm.title || slug, status: fm.status, timeline,
+      workspace={{ draftOwner: (session.user as { draftOwner?: string }).draftOwner, title: fm.title || slug, status: fm.status, timeline,
         canEdit: !commitSha, viewingSha: commitSha, initialEditing: false }}
     /></div>;
   }
