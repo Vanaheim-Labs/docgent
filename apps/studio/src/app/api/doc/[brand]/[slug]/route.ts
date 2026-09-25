@@ -63,7 +63,7 @@ export async function PUT(
   const authz = await authorizeRequest(req, brand);
   if (!authz.ok) return new Response("unauthorised", { status: 401 });
 
-  let body: { content?: string; baseSha?: string; message?: string };
+  let body: { content?: string; baseSha?: string; message?: string; captureRevision?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -114,10 +114,21 @@ export async function PUT(
       message,
     });
 
+    let revision = result.commit?.sha;
+    if (body.captureRevision && !revision) {
+      const { git } = await storesFor(brand);
+      revision = await git.head();
+      const pinned = await docs.readAt(brand, slug, revision);
+      if (pinned.content !== content) return Response.json({
+        error: "stale", message: "Document changed while preparing export. Reload and compare before retrying.",
+      }, { status: 409 });
+    }
+
     return Response.json({
       changed: result.changed,
       sha: result.sha,
       commit: result.commit,
+      revision,
     });
   } catch (e) {
     const err = e as { name?: string; status?: number; message?: string; expected?: string; actual?: string };
