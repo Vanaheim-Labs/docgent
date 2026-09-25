@@ -234,6 +234,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const [exportState, setExportState] = useState("");
   const [exporting, setExporting] = useState(false);
   const [conflictHead, setConflictHead] = useState<{ content: string; sha: string } | null>(null);
+  const [visualNotice, setVisualNotice] = useState("");
   const [contextPanel, setContextPanel] = useState<"history" | null>(null);
   const [historicalSha, setHistoricalSha] = useState<string | undefined>(workspace?.viewingSha);
   const viewRevision = (sha?: string) => { setHistoricalSha(sha); setLayout("preview"); };
@@ -1435,6 +1436,19 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   const makeEditable = useCallback((el: HTMLElement) => {
     const sourceLine   = Number(el.dataset.sourceLine);
     const originalText = el.innerText;
+    if (workspace) {
+      if (!workspace.canEdit || historicalSha || layout === "preview" || authoring !== "visual") return;
+      const source = content.split("\n")[sourceLine - 1] || "";
+      const plain = source.replace(/^(?:#{1,6}\s+|\s*[-*+]\s+|\s*\d+\.\s+)/, "");
+      // The legacy bridge replaces a source line with innerText. Permit only
+      // exact plain-text mappings: never flatten markup, tables or directives.
+      if (!/^(P|H[1-6]|LI)$/.test(el.tagName) || el.children.length ||
+          /[\[\]{}*_`<>|\\]/.test(plain) || plain.trim() !== originalText.trim()) {
+        setVisualNotice("This block is preserved unchanged. Use Source to edit complex or formatted content safely.");
+        return;
+      }
+      setVisualNotice("");
+    }
 
     // Mark editing active BEFORE focus so the debounced re-render is
     // suppressed immediately — not after the first timer fires.
@@ -1512,7 +1526,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
 
     el.addEventListener("blur",    handleBlur,    { once: true });
     el.addEventListener("keydown", handleKeydown);
-  }, [patchMarkdownBlock]);
+  }, [patchMarkdownBlock, workspace, historicalSha, layout, authoring, content]);
 
   // Inject zoom gesture handlers into the iframe document.
   //
@@ -2741,6 +2755,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
           <button aria-pressed={layout === "preview"} onClick={() => setLayout("preview")}>Preview only</button>
         </div>
         <span>{layout === "preview" ? "Read-only preview" : "Editing"}</span>
+        {visualNotice && <span role="status" aria-label="Visual editing notice">{visualNotice}</span>}
         <button aria-expanded={contextPanel === "history"} onClick={() => setContextPanel(contextPanel === "history" ? null : "history")}>History</button>
         {layout === "split" && <button className="workspace-mobile-toggle" onClick={() => setMobilePane(mobilePane === "editor" ? "preview" : "editor")}>Show {mobilePane === "editor" ? "preview" : "editor"}</button>}
       </header>}

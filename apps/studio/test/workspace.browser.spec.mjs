@@ -9,6 +9,16 @@ test.beforeEach(async({page})=>{
   return route.fulfill({status:502,body:'Fixture renderer unavailable'});
  });
 });
+test('visual mode refuses lossy edits to formatted or complex blocks and leaves source byte-equivalent',async({page})=>{
+ await page.route('**/api/preview/**/html',route=>route.fulfill({contentType:'text/html',body:'<p data-source-line="20">Keep <strong>formatting</strong> intact.</p>'}));
+ await page.goto(server.url);await page.getByRole('button',{name:'Editor only',exact:true}).click();
+ const paragraph=page.frameLocator('iframe[title="Live preview"]').getByText('Keep formatting intact.');
+ await paragraph.click();
+ await expect(page.getByRole('status',{name:'Visual editing notice'})).toContainText('Source');
+ await expect(paragraph).not.toHaveAttribute('contenteditable','true');
+ await page.getByRole('button',{name:'Source',exact:true}).click();
+ expect((await page.locator('.cm-line').allTextContents()).join('\n').trim()).toBe(complex.trim());
+});
 test('history preview is read-only and returning to latest preserves the current draft',async({page})=>{
  await page.goto(server.url);await page.getByRole('button',{name:'Source',exact:true}).click();await page.getByRole('button',{name:'Editor only',exact:true}).click();
  await page.locator('.cm-content').press('ControlOrMeta+End');await page.keyboard.type(' Keep while viewing history');
