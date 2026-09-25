@@ -475,8 +475,9 @@ a:hover { text-decoration: underline; }
   background: var(--paper);
   border-bottom: 1px solid var(--rule);
   flex-shrink: 0;
-  position: sticky;
-  top: var(--topbar-h);
+  /* No position:sticky — the .editor container is overflow:hidden so
+     the toolbar can never scroll out of view. Sticky was causing the
+     toolbar to float over format-bars-wrap via z-index, hiding Row 1. */
   z-index: 11;
 }
 .editor-toolbar-left,
