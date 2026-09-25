@@ -43,10 +43,10 @@ export async function GET(
     const commitSha = await git.head();
     const doc = await docs.readAt(brand, slug, commitSha);
 
-    // Collect assets (assets/ and figures/) the same way the PDF route does.
+    // Collect assets (assets/, figures/, and images/) the same way the PDF route does.
     const dir = `documents/${slug}`;
     const assetPaths: string[] = [];
-    for (const prefix of [`${dir}/assets/`, `${dir}/figures/`]) {
+    for (const prefix of [`${dir}/assets/`, `${dir}/figures/`, `${dir}/images/`]) {
       try {
         const tree = await git.tree({ ref: commitSha, prefix });
         for (const e of tree.entries as { type: string; path: string }[]) {

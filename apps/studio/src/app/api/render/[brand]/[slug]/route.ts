@@ -47,12 +47,13 @@ export async function GET(
     }
 
 
-    // Assets (assets/ and figures/) live beside the document; the renderer
-    // needs them inlined.  figures/ holds external SVG files referenced by
-    // ::figure{src="figures/chart.svg"} primitives.
+    // Assets (assets/, figures/, and images/) live beside the document;
+    // the renderer needs them inlined.  figures/ holds external SVG files
+    // referenced by ::figure{src="figures/chart.svg"} primitives; images/
+    // holds external raster images referenced by ::image{src="images/foo.png"}.
     const dir = `documents/${slug}`;
     const assetPaths: string[] = [];
-    for (const prefix of [`${dir}/assets/`, `${dir}/figures/`]) {
+    for (const prefix of [`${dir}/assets/`, `${dir}/figures/`, `${dir}/images/`]) {
       try {
         const tree = await git.tree({ ref: commitSha, prefix });
         for (const e of tree.entries as { type: string; path: string }[]) {

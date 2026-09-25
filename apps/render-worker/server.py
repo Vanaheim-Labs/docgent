@@ -293,8 +293,22 @@ _SVG_SRC_RE = _re.compile(
     _re.MULTILINE,
 )
 
+# Regex to match a self-closing ::image shorthand primitive that references
+# an external raster image file via src=.  These are single-line blocks.
+#
+# Examples matched:
+#   ::image{src="images/photo.png" caption="Revenue" width="column"}
+#   ::image{src="images/chart.jpg" alt="Chart"}
+_IMG_SRC_RE = _re.compile(
+    r'^::image\{([^}]*)\}\s*$',
+    _re.MULTILINE,
+)
+
 # Extracts a src="..." attribute from an attr string.
 _SRC_ATTR_RE = _re.compile(r'\bsrc="([^"]+\.svg)"', _re.IGNORECASE)
+
+# Extracts a src="..." attribute for any file extension (used for raster images).
+_IMG_SRC_ATTR_RE = _re.compile(r'\bsrc="([^"]+)"', _re.IGNORECASE)
 
 # Strips src="..." (with optional surrounding whitespace) from an attr string.
 _STRIP_SRC_RE = _re.compile(r'\s*\bsrc="[^"]*"', _re.IGNORECASE)
@@ -370,6 +384,33 @@ def _inline_svg_figures(markdown: str, work: Path, docx_safe: bool = False) -> s
         return f'{div_open}\n{svg_content}\n:::'
 
     return _SVG_SRC_RE.sub(_replace, markdown)
+
+
+def _inline_raster_images(markdown: str, work: Path) -> str:
+    """Replace ::image{src="images/foo.png" ...} shorthand with pandoc fenced divs.
+
+    Raster images differ from SVGs: we cannot inline binary content into pandoc
+    markdown source. Instead we rewrite the shorthand to a pandoc fenced-div form
+    that the vocabulary Lua filter handles, passing the src path through as-is.
+    Pandoc resolves relative paths from its working directory (work/), where the
+    image file was already written by _stage() when it materialised the assets dict.
+
+        ::image{src="images/foo.png" caption="Revenue chart" width="full"}
+
+    becomes:
+
+        :::{.image src="images/foo.png" caption="Revenue chart" width="full"}
+        :::
+
+    Blocks whose src file is absent from the working directory are still rewritten
+    — pandoc will see a broken img path, which is preferable to leaving the raw
+    shorthand in the source (pandoc does not parse :: shorthand natively).
+    """
+    def _replace(m: _re.Match) -> str:
+        attrs = m.group(1).strip()
+        return f':::{{.image {attrs}}}\n:::'
+
+    return _IMG_SRC_RE.sub(_replace, markdown)
 
 
 def _preprocess_markdown(md: str, comment_mode: str = 'strip') -> str:
@@ -450,6 +491,10 @@ def _stage(work: Path, markdown: str, brand: dict, fm: dict,
     # In DOCX mode, oversized SVGs are replaced with text placeholders to avoid
     # rsvg-convert hanging on large files in pandoc's DOCX writer on aarch64.
     processed = _inline_svg_figures(markdown, work, docx_safe=docx_safe)
+    # Raster image rewriting: replace ::image{src="images/foo.png" ...} with
+    # pandoc fenced-div form. The image files are already on disk (written above
+    # from the assets dict), so pandoc resolves them via --resource-path.
+    processed = _inline_raster_images(processed, work)
     md_path.write_text(_preprocess_markdown(processed, comment_mode=comment_mode), encoding="utf-8")
 
     tokens_css = work / "_tokens.css"

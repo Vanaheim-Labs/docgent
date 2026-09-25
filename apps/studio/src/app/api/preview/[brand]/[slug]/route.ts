@@ -37,14 +37,18 @@ export async function POST(
     const { git } = await storesFor(brand);
     const dir = `documents/${slug}`;
 
-    let assetPaths: string[] = [];
-    try {
-      const tree = await git.tree({ prefix: `${dir}/assets/` });
-      assetPaths = tree.entries
-        .filter((e: { type: string }) => e.type === "file")
-        .map((e: { path: string }) => e.path.slice(dir.length + 1));
-    } catch {
-      // no assets is fine
+    // Collect assets/, figures/ (external SVG refs), and images/ (external
+    // raster images) alongside the document.
+    const assetPaths: string[] = [];
+    for (const prefix of [`${dir}/assets/`, `${dir}/figures/`, `${dir}/images/`]) {
+      try {
+        const tree = await git.tree({ prefix });
+        for (const e of tree.entries as { type: string; path: string }[]) {
+          if (e.type === "file") assetPaths.push(e.path.slice(dir.length + 1));
+        }
+      } catch {
+        // missing directory is fine
+      }
     }
 
     const assets = await collectAssetsFromGit(git, dir, assetPaths);

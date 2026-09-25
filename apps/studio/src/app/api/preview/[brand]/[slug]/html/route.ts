@@ -37,9 +37,10 @@ export async function POST(
     const { git } = await storesFor(brand);
     const dir = `documents/${slug}`;
 
-    // Collect assets/ and figures/ (external SVG refs) side by side.
+    // Collect assets/, figures/ (external SVG refs), and images/ (external
+    // raster images) side by side.
     const assetPaths: string[] = [];
-    for (const prefix of [`${dir}/assets/`, `${dir}/figures/`]) {
+    for (const prefix of [`${dir}/assets/`, `${dir}/figures/`, `${dir}/images/`]) {
       try {
         const tree = await git.tree({ prefix });
         for (const e of tree.entries as { type: string; path: string }[]) {

@@ -46,6 +46,7 @@ const HELP = `docgent — multi-brand document production
   docgent health [--url <worker>] [--key <secret>]
   docgent brands
   docgent docs
+  docgent image upload <brand>/<slug> <file>
 
 Bulk production (Phase 7 — for agents):
   docgent doctypes --brand <id>
@@ -512,6 +513,73 @@ Body copy goes here.
     const failed = results.filter((r) => !r.pass).length;
     console.log(`\n${results.length - failed}/${results.length} checks passed`);
     process.exit(failed ? 1 : 0);
+  }
+
+  case "image": {
+    const sub = argv[1];
+    if (sub !== "upload") {
+      console.error(`unknown image subcommand: ${sub || "(none)"}. Usage: docgent image upload <brand>/<slug> <file>`);
+      process.exit(2);
+    }
+    const pos = positional();
+    const target = pos[0]; // brand/slug
+    const filePath = pos[1]; // local file path
+    if (!target || !filePath) {
+      console.error("usage: docgent image upload <brand>/<slug> <file>");
+      process.exit(2);
+    }
+    if (!target.includes("/")) {
+      console.error("target must be in the form <brand>/<slug>");
+      process.exit(2);
+    }
+    const [brand, slug] = target.split("/");
+    if (!fs.existsSync(filePath)) {
+      console.error(`file not found: ${filePath}`);
+      process.exit(2);
+    }
+
+    const url = flag("url") || process.env.DOCGENT_STUDIO_URL;
+    const key = flag("key") || process.env.DOCGENT_API_KEY;
+    if (!url) {
+      console.error("--url or DOCGENT_STUDIO_URL is required for image upload");
+      process.exit(2);
+    }
+    if (!key) {
+      console.error("--key or DOCGENT_API_KEY is required for image upload");
+      process.exit(2);
+    }
+
+    const filename = path.basename(filePath);
+    const imageBytes = fs.readFileSync(filePath);
+    const uploadUrl = `${url.replace(/\/$/, "")}/api/doc/${brand}/${slug}/images/${encodeURIComponent(filename)}`;
+
+    const res = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Authorization": `Bearer ${key}`,
+      },
+      body: imageBytes,
+    });
+
+    if (!res.ok) {
+      let detail = `${res.status} ${res.statusText}`;
+      try {
+        const j = await res.json();
+        if (j?.error) detail = j.error;
+      } catch {}
+      console.error(`upload failed: ${detail}`);
+      process.exit(1);
+    }
+
+    const result = await res.json();
+    if (result.changed === false) {
+      console.log(`unchanged (${filename} already at this content)`);
+    } else {
+      console.log(`uploaded: documents/${slug}/images/${filename}`);
+      if (result.commit?.sha) console.log(`commit: ${result.commit.sha.slice(0, 7)}`);
+    }
+    break;
   }
 
   default:

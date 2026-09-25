@@ -260,6 +260,20 @@ blocks:
       caption: { type: string, required: false }
     breakInside: avoid
 
+  - id: image
+    syntax: '::image{src="images/photo.png" caption="..." width="column"}'
+    description: >-
+      External raster image (PNG/JPG) stored in documents/<slug>/images/.
+      Referenced by relative path; the render pipeline resolves it from the
+      images/ directory alongside the document. Use this instead of embedding
+      base64 inline to keep source readable and git history clean.
+    attrs:
+      src: { type: string, required: true, note: 'relative path, e.g. images/photo.png' }
+      caption: { type: string, required: false }
+      width: { type: enum, values: [column, full, half], default: column }
+      alt: { type: string, required: false }
+    breakInside: avoid
+
   - id: icon-grid
     syntax: "::icon-grid{cols=4 label=...}"
     description: Tiled grid of small SVG icons. Each H3 heading names an icon tile; its body is raw SVG markup. Use for compact multi-platform or integration grids. cols controls tiles per row (2–6, default 4).

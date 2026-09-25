@@ -210,6 +210,24 @@ function Div(el)
     table.insert(out, raw('</figure>'))
     return out
 
+  elseif has('image') then
+    -- External raster image block.
+    -- ::image{src="images/foo.png" caption="..." width="column" alt="..."}
+    -- The image file is in the pandoc working directory; src is a relative path.
+    local src     = el.attributes['src'] or ''
+    local caption = el.attributes['caption']
+    local width   = attrget(el, 'width', 'column')
+    local alt     = el.attributes['alt'] or el.attributes['caption'] or ''
+    local out     = { raw('<figure class="figure" data-width="' .. esc(width) .. '">') }
+    if src ~= '' then
+      table.insert(out, raw('<img src="' .. esc(src) .. '" alt="' .. esc(alt) .. '">'))
+    end
+    if caption then
+      table.insert(out, raw('<figcaption class="figure-caption">' .. esc(caption) .. '</figcaption>'))
+    end
+    table.insert(out, raw('</figure>'))
+    return out
+
   elseif has('raw-html') or has('rawhtml') then
     -- Phase F: pure HTML passthrough. Content passes through unchanged.
     local out = {}
