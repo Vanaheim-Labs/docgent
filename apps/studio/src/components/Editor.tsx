@@ -417,6 +417,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         extensions: [
           history(),
           lineNumbers(),
+          EditorView.lineWrapping,
           keymap.of([
             ...defaultKeymap,
             { key: "Mod-s", run: () => { cmDoSaveRef.current(); return true; } },
