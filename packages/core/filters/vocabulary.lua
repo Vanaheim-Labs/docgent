@@ -1011,6 +1011,9 @@ function Span(el)
     table.insert(out, pandoc.RawInline('html', '</span>'))
     return out
   end
+  if el.classes:includes('br') then
+    return { pandoc.RawInline('html', '<br>') }
+  end
   return el
 end
 

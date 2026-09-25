@@ -314,6 +314,9 @@ inlines:
     description: Inline chip classifying a claim's evidential status.
     attrs:
       kind: { type: enum, values: [fact, drafting, gated], default: gated }
+  - id: br
+    syntax: "[]{.br}"
+    description: Hard line break within a paragraph. Equivalent to a `<br>` — use sparingly.
 
 # Heading attributes
 # These attrs can be applied to any H1 heading: # Heading text {attr="value"}
