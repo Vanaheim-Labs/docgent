@@ -76,6 +76,8 @@ export default async function Home() {
       <LibraryView
         documents={documents}
         userChip={<UserChip />}
+        unified={process.env.DOCGENT_UNIFIED_WORKSPACE === "1"}
+        allowedBrands={allowedBrands}
       />
     </>
   );

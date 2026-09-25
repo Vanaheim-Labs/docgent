@@ -52,7 +52,7 @@ test('preview keeps a pinned revision in its sign-in callback', async () => {
   const { default: DocumentPage } = load('app/[brand]/[slug]/page.tsx', {
     '@/auth': { auth: async () => null },
     'next/navigation': { notFound: () => { throw new Error('404'); } },
-    'next/link': {}, '@/lib/store': {}, '@/components/UserChip': {}, '@/components/DocumentWorkspace': {},
+    'next/link': {}, '@/lib/store': {}, '@/components/UserChip': {}, '@/components/DocumentWorkspace': {}, '@/components/Editor': {}, '@/lib/vocabulary': {},
     '@/lib/metadata': { fetchDocPreviewMeta: async () => meta },
     '@/components/SignInPreview': { SignInPreview },
   });
@@ -109,7 +109,7 @@ test('document page still denies a session without access to the brand', async (
     '@/auth': { auth: async () => ({ user: { allowedBrands: ['other'] } }) },
     'next/navigation': { notFound: () => { throw new Error('404'); } },
     'next/link': {}, '@/lib/store': { storesFor: () => { storeTouched = true; } },
-    '@/components/UserChip': {}, '@/components/DocumentWorkspace': {},
+    '@/components/UserChip': {}, '@/components/DocumentWorkspace': {}, '@/components/Editor': {}, '@/lib/vocabulary': {},
     '@/lib/metadata': {}, '@/components/SignInPreview': {},
   });
   await assert.rejects(DocumentPage({ params: Promise.resolve({ brand: meta.brand, slug: meta.slug }), searchParams: Promise.resolve({}) }), { message: '404' });

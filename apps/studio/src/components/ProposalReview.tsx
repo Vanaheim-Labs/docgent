@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useMemo, useState } from "react";
 import { UnifiedDiff } from "@/components/UnifiedDiff";
 import { diffDocuments, diffHeadline, diffUnified } from "@/lib/diff";
 import type { Change } from "@/lib/diff";
@@ -216,14 +216,26 @@ export function ProposalReview({
   slug,
   onAccept,
   onReject,
+  canAccept = true,
 }: {
   proposal: RewriteProposal;
   brand: string;
   slug: string;
-  onAccept: (finalContent: string, accepted: RewriteProposal, newSha: string | null) => void;
+  onAccept: (finalContent: string, accepted: RewriteProposal, newSha: string | null, revision?: string, reviewActive?: boolean) => void;
   onReject: () => void;
+  canAccept?: boolean;
 }) {
   const [accepting, setAccepting] = useState(false);
+  const allowed = useRef(canAccept);
+  allowed.current = canAccept;
+  const pending = useRef<AbortController | null>(null);
+  // An accepted write may commit after this transient review panel closes.
+  // Keep observing its outcome; aborting fetch cannot cancel the server write.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; allowed.current = false; };
+  }, []);
   const [error, setError] = useState<string | null>(null);
   // Summary first: reviewing a rewrite is a document-level judgement call
   // ("did this say what I asked for"), not a line-level audit — the source
@@ -245,11 +257,15 @@ export function ProposalReview({
   );
 
   const accept = async () => {
+    if (!allowed.current || !proposal.valid || pending.current) return;
+    const controller = new AbortController();
+    pending.current = controller;
     setAccepting(true);
     setError(null);
     try {
       const res = await fetch(`/api/rewrite/${brand}/${slug}/accept`, {
         method: "POST",
+        signal: controller.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           content: proposal.proposed,
@@ -264,6 +280,7 @@ export function ProposalReview({
         }),
       });
       const data = await res.json();
+      if (!res.ok && !mounted.current) return;
       if (!res.ok) {
         if (data.error === "stale") {
           setError(
@@ -275,11 +292,13 @@ export function ProposalReview({
         }
         return;
       }
-      onAccept(proposal.proposed, proposal, data.sha ?? null);
+      onAccept(proposal.proposed, proposal, data.sha ?? null, data.commit?.sha, mounted.current && allowed.current);
     } catch (e) {
+      if (controller.signal.aborted) return;
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setAccepting(false);
+      pending.current = null;
+      if (mounted.current) setAccepting(false);
     }
   };
 
@@ -305,7 +324,7 @@ export function ProposalReview({
           <button
             className="btn"
             onClick={accept}
-            disabled={accepting || !proposal.valid}
+            disabled={!canAccept || accepting || !proposal.valid}
             title={!proposal.valid ? "Fix the validation errors before accepting" : undefined}
           >
             {accepting ? "Accepting…" : "Accept"}

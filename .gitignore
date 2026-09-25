@@ -5,6 +5,8 @@ dist/
 
 # QA renders
 .qa/
+test-results/
+playwright-report/
 
 # deps
 node_modules/

@@ -1,12 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { BEFORE_TRAVERSE } from "@/lib/traversal-fallback";
 import type { Vocabulary } from "@/lib/vocabulary";
 import { validateMarkdown, type Diagnostic } from "@/lib/validate-client";
 import { RewriteBar, type RewriteProposal } from "@/components/RewriteBar";
 import { Tooltip } from "@/components/Tooltip";
 import { ProposalReview } from "@/components/ProposalReview";
 import { CommentsPanel } from "@/components/CommentsPanel";
+import { WorkspaceHistory } from "@/components/WorkspaceHistory";
+import { parseFrontmatter } from "@docgent/core/yaml";
 import { parseComments, setCommentResolved, insertComment } from "@/lib/comments";
 
 // CodeMirror 6
@@ -152,6 +156,16 @@ type Props = {
   initialContent: string;
   initialSha: string | null;
   vocabulary: Vocabulary;
+  workspace?: {
+    title: string;
+    timeline: import("@/lib/store").TimelineEntry[];
+    canEdit: boolean;
+    draftOwner?: string;
+    initialEditing?: boolean;
+    viewingSha?: string;
+    status?: string;
+    details?: Record<string, string>;
+  };
 };
 
 const PREVIEW_DEBOUNCE_MS = 1200;
@@ -217,10 +231,94 @@ function EditorExportDropdown({ brand, slug, previewUrl }: { brand: string; slug
   );
 }
 
-export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: Props) {
-  const [content, setContent] = useState(initialContent);
+export function Editor({ brand, slug, initialContent, initialSha, vocabulary, workspace }: Props) {
+  const router = useRouter();
+  const editorMounted = useRef(true);
+  useEffect(() => {
+    editorMounted.current = true;
+    return () => { editorMounted.current = false; };
+  }, []);
+  const [savedRevision, setSavedRevision] = useState<string | undefined>();
+  const [authoring, setAuthoring] = useState<"visual" | "source">("visual");
+  const [layout, setLayout] = useState<"editor" | "split" | "preview">(workspace?.initialEditing ? "editor" : "preview");
+  const [preferencesReady, setPreferencesReady] = useState(false);
+  const [libraryUrl, setLibraryUrl] = useState("/");
+  useEffect(() => {
+    if (!workspace) return;
+    try {
+      const saved = sessionStorage.getItem("docgent.library.url");
+      if (saved && /^\/(?:\?bucket=(?:needs-review|in-progress|done))?$/.test(saved)) setLibraryUrl(saved);
+    } catch { /* Keep a safe local default. */ }
+  }, [!!workspace]);
+  const [mobilePane, setMobilePane] = useState<"editor" | "preview">("editor");
+  const [exportState, setExportState] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [conflictHead, setConflictHead] = useState<{ content: string; sha: string } | null>(null);
+  const [visualNotice, setVisualNotice] = useState("");
+  const [contextPanel, setContextPanel] = useState<"history" | "details" | null>(null);
+  const [showInsert, setShowInsert] = useState(false);
+  const [historicalSha, setHistoricalSha] = useState<string | undefined>(workspace?.viewingSha);
+  const [historicalSource, setHistoricalSource] = useState<string | null>(workspace?.viewingSha ? initialContent : null);
+  const [historicalError, setHistoricalError] = useState("");
+  useEffect(() => {
+    if (!historicalSha) return;
+    if (historicalSha === workspace?.viewingSha) { setHistoricalSource(initialContent); return; }
+    const controller = new AbortController();
+    setHistoricalSource(null); setHistoricalError("");
+    fetch(`/api/doc/${brand}/${slug}?ref=${historicalSha}`, { signal: controller.signal })
+      .then(async response => { if (!response.ok) throw new Error("Could not load revision details. Select the revision again to retry."); return response.json(); })
+      .then(data => { if (!controller.signal.aborted) setHistoricalSource(data.content); })
+      .catch(error => { if (!controller.signal.aborted) setHistoricalError(error.message); });
+    return () => controller.abort();
+  }, [historicalSha, brand, slug]);
+  const viewRevision = (sha?: string) => { setHistoricalSha(sha); setLayout("preview"); };
+  const draftKey = `docgent.draft:${workspace?.draftOwner}:${brand}/${slug}`;
+  const [recoveredDraft, setRecoveredDraft] = useState<{ content: string; baseSha: string | null } | null>(null);
+  const [draftStorageReady, setDraftStorageReady] = useState(false);
+  useEffect(() => {
+    if (!workspace?.canEdit || !workspace.draftOwner) return;
+    try {
+      for (const key of Object.keys(sessionStorage)) {
+        if (key.startsWith("docgent.draft:") && !key.startsWith(`docgent.draft:${workspace.draftOwner}:`)) sessionStorage.removeItem(key);
+      }
+      const draft = JSON.parse(sessionStorage.getItem(draftKey) || "null");
+      if (draft && typeof draft.content === "string" && draft.content !== initialContent) setRecoveredDraft(draft);
+    } catch { /* Native unload warning remains available if storage is blocked. */ }
+    setDraftStorageReady(true);
+  }, []);
+  useEffect(() => {
+    if (!workspace) return;
+    try {
+      const preference = JSON.parse(localStorage.getItem("docgent.workspace.preferences") || "{}");
+      if (preference.authoring === "source" || preference.authoring === "visual") setAuthoring(preference.authoring);
+      if (workspace.initialEditing && workspace.canEdit && ["editor", "split", "preview"].includes(preference.layout)) setLayout(preference.layout);
+    } catch { /* Storage unavailable: keep safe defaults. */ }
+    setPreferencesReady(true);
+  }, []);
+  useEffect(() => {
+    if (!workspace || !preferencesReady) return;
+    try { localStorage.setItem("docgent.workspace.preferences", JSON.stringify({ authoring, layout })); } catch { /* Optional preference. */ }
+  }, [authoring, layout, preferencesReady]);
+  const canWrite = !workspace || (workspace.canEdit && !historicalSha);
+  const writeAllowed = useRef(canWrite);
+  writeAllowed.current = canWrite;
+  const canMutate = canWrite && (!workspace || layout !== "preview");
+  const mutationAllowed = useRef(canMutate);
+  mutationAllowed.current = canMutate;
+  const [content, replaceContent] = useState(initialContent);
+  // Event listeners and async callbacks must check today's capability, not
+  // the capability captured when a preview or a proposal was opened.
+  const setContent = useCallback((next: React.SetStateAction<string>) => {
+    if (mutationAllowed.current) replaceContent(next);
+  }, []);
+  const selectedSource = historicalSha ? historicalSource || "" : content;
+  const selectedMetadata = useMemo(() => {
+    try { return parseFrontmatter(selectedSource) as Record<string, unknown>; }
+    catch { return { title: "Invalid frontmatter — fix in Source", status: "unknown" }; }
+  }, [selectedSource]);
   const [baseSha, setBaseSha] = useState(initialSha);
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
+  const savingRef = useRef(false);
   // Brief informational banner shown after a successful soft reconcile.
   const [reconcileNote, setReconcileNote] = useState<string | null>(null);
   // Mutable baseline: starts at initialContent but advances each time we
@@ -243,19 +341,43 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
    */
   // summary removed — commit messages are auto-generated from the diff
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [pdfRevision, setPdfRevision] = useState<string | undefined>();
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   // Unified editor mode. Replaces separate posture + previewMode.
-  const [editorMode, setEditorMode] = useState<EditorMode>("edit");
+  const [legacyEditorMode, setEditorMode] = useState<EditorMode>("edit");
+  const editorMode: EditorMode = workspace ? (layout === "preview" ? "pages" : authoring === "source" ? "source" : "edit") : legacyEditorMode;
   // Derived internal state for existing scroll sync / preview logic.
-  const mode: PreviewMode = editorMode === "pages" ? "pdf" : "html";
+  const [pdfViewerAvailable, setPdfViewerAvailable] = useState(true);
+  useEffect(() => { setPdfViewerAvailable(navigator.pdfViewerEnabled === true); }, []);
+  const mode: PreviewMode = editorMode === "pages" && (!workspace || historicalSha || pdfViewerAvailable) ? "pdf" : "html";
   const posture: Posture = editorMode === "source" ? "edit" : "review";  // review/edit/pages all use review posture for preview
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [htmlRenderedSource, setHtmlRenderedSource] = useState<string | null>(null);
+  const previewRequest = useRef(0);
   const [pdfStale, setPdfStale] = useState(false);
   // Split-screen toggle (Phase 2c): show both panes side-by-side in Edit mode.
   const [splitView, setSplitView] = useState(false);
   const [showOutline, setShowOutline] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  useEffect(() => {
+    if (!workspace || (!contextPanel && !showComments)) return;
+    const opener = document.activeElement as HTMLElement | null;
+    const panel = document.querySelector<HTMLElement>('.editor[data-unified="true"] .workspace-context, .editor[data-unified="true"] .editor-comments-rail');
+    if (!panel) return;
+    const focusable = () => Array.from(panel.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]')).filter(el => el.getClientRects().length > 0);
+    focusable()[0]?.focus();
+    const keyboard = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setContextPanel(null); setShowComments(false); }
+      if (event.key === "Tab" && window.matchMedia("(max-width: 1100px)").matches) {
+        const items = focusable(), first = items[0], last = items[items.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
+    };
+    panel.addEventListener("keydown", keyboard);
+    return () => { panel.removeEventListener("keydown", keyboard); if (opener?.isConnected) opener.focus(); };
+  }, [!!workspace, contextPanel, showComments]);
   const [folded, setFolded] = useState<number[]>([]);
   const [showErrors, setShowErrors] = useState(false);
   const [showMoreBlocks, setShowMoreBlocks] = useState(false);
@@ -274,6 +396,9 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   >(null);
   const [proposal, setProposal] = useState<RewriteProposal | null>(null);
   const [acceptedNote, setAcceptedNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!canMutate) { setRewriteTarget(null); setProposal(null); setAcceptedNote(null); }
+  }, [canMutate]);
 
   /**
    * Annotation-in-progress: which source line a Review-mode click landed on,
@@ -364,6 +489,13 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // proposal advances the baseline immediately, preventing the 3-second
   // autosave from firing a stale PUT with the old baseSha and getting a 409.
   const dirty = content !== committedContentRef.current || save.kind === "error" || save.kind === "stale";
+  useEffect(() => {
+    if (!workspace?.canEdit || !workspace.draftOwner || !draftStorageReady || recoveredDraft) return;
+    try {
+      if (dirty) sessionStorage.setItem(draftKey, JSON.stringify({ content, baseSha }));
+      else sessionStorage.removeItem(draftKey);
+    } catch { /* Do not turn optional recovery storage into a failed save. */ }
+  }, [content, baseSha, dirty, draftStorageReady, recoveredDraft]);
 
   const diagnostics = useMemo(
     () => validateMarkdown(content, vocabulary),
@@ -401,12 +533,12 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     // The DOM already shows the correct text optimistically; a full re-render
     // would replace the iframe document and cause a scroll jump. We only do a
     // full re-render on the NEXT content change (e.g. source pane edit) or save.
-    if (pendingPreviewAfterEdit.current) {
+    if (pendingPreviewAfterEdit.current && !workspace) {
       pendingPreviewAfterEdit.current = false;
       lastPreviewed.current = src; // Mark as seen so we don’t re-render again.
       return;
     }
-    lastPreviewed.current = src;
+    const request = ++previewRequest.current;
     setPreviewing(true);
     setPreviewError(null);
     try {
@@ -415,46 +547,56 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: src }),
       });
+      if (request !== previewRequest.current) return;
       if (!res.ok) {
         setPreviewError((await res.text()).slice(0, 400));
         return;
       }
       const html = await res.text();
+      if (request !== previewRequest.current) return;
+      lastPreviewed.current = src;
+      setHtmlRenderedSource(src);
       setPreviewHtml(html);
     } catch (e) {
+      if (request !== previewRequest.current) return;
       setPreviewError(e instanceof Error ? e.message : String(e));
     } finally {
-      setPreviewing(false);
+      if (request === previewRequest.current) setPreviewing(false);
     }
   }, [brand, slug]);
 
   // PDF is an explicit action: it is the slow, faithful path, so it renders on
   // demand rather than on every keystroke.
   const runPdfPreview = useCallback(async (src: string) => {
+    const request = ++previewRequest.current;
     setPreviewing(true);
     setPreviewError(null);
     try {
-      const res = await fetch(`/api/preview/${brand}/${slug}`, {
+      const res = historicalSha ? await fetch(`/api/render/${brand}/${slug}?ref=${historicalSha}`) : await fetch(`/api/preview/${brand}/${slug}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: src }),
       });
+      if (request !== previewRequest.current) return;
       if (!res.ok) {
         setPreviewError((await res.text()).slice(0, 400));
         return;
       }
       const blob = await res.blob();
+      if (request !== previewRequest.current) return;
       if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
       objectUrl.current = URL.createObjectURL(blob);
       setPreviewUrl(objectUrl.current);
+      setPdfRevision(historicalSha);
       lastPdfRendered.current = src;
       setPdfStale(false);
     } catch (e) {
+      if (request !== previewRequest.current) return;
       setPreviewError(e instanceof Error ? e.message : String(e));
     } finally {
-      setPreviewing(false);
+      if (request === previewRequest.current) setPreviewing(false);
     }
-  }, [brand, slug]);
+  }, [brand, slug, historicalSha]);
 
   // Debounced preview. Skipped while the document has errors — rendering
   // invalid markdown wastes a worker call and shows the author nothing useful.
@@ -521,18 +663,22 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   useEffect(() => {
     if (editorMode !== "pages") return;
     if (errors.length > 0) return;
-    if (content === lastPdfRendered.current && previewUrl) return;
+    if (content === lastPdfRendered.current && previewUrl && pdfRevision === historicalSha) return;
     runPdfPreview(content);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorMode]);
+  }, [editorMode, historicalSha]);
 
   /* ---------------- save ---------------- */
 
   const doSave = useCallback(async () => {
+    if (savingRef.current) return;
+    if (!writeAllowed.current) return;
+    if (workspace && save.kind === "stale") return;
     if (errors.length > 0) {
       setSave({ kind: "error", message: `${errors.length} validation error${errors.length > 1 ? "s" : ""} — fix before saving.` });
       return;
     }
+    savingRef.current = true;
     setSave({ kind: "saving" });
     try {
       const res = await fetch(`/api/doc/${brand}/${slug}`, {
@@ -541,6 +687,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         body: JSON.stringify({
           content,
           baseSha,
+          captureRevision: !!workspace,
           // Prefixed here rather than in the field so the author writes prose,
           // not conventional-commit syntax. VersionPanel strips this same
           // prefix back off for display.
@@ -572,10 +719,34 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       setBaseSha(data.sha);
       committedContentRef.current = content; // advance baseline so dirty=false
       setSave({ kind: "saved", sha: data.sha, commit: data.commit });
+      if (workspace) { setSavedRevision(data.revision || data.commit?.sha); router.refresh(); }
+      return data.revision as string | undefined;
     } catch (e) {
       setSave({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      savingRef.current = false;
     }
-  }, [brand, slug, content, baseSha, errors.length, initialContent]);
+  }, [brand, slug, content, baseSha, errors.length, initialContent, save.kind, workspace, historicalSha]);
+
+  const exportRevision = async (format: "pdf" | "docx") => {
+    setExporting(true);
+    setExportState("Preparing saved revision…");
+    try {
+      const revision = historicalSha || await doSave();
+      if (!revision || !/^[a-f0-9]{40}$/.test(revision)) throw new Error("Save must succeed before exporting. Your draft has not been exported.");
+      setExportState(`Rendering saved revision ${revision.slice(0, 7)}…`);
+      const url = format === "pdf" ? `/api/render/${brand}/${slug}?ref=${revision}` : `/api/export/${brand}/${slug}?format=docx&ref=${revision}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error((await response.text()).slice(0, 400));
+      if (response.headers.get("x-docgent-revision") !== revision) throw new Error("Export revision could not be verified. Nothing downloaded.");
+      const downloadUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = downloadUrl; link.download = `${slug}-${revision.slice(0, 7)}.${format}`;
+      link.click(); setTimeout(() => URL.revokeObjectURL(downloadUrl), 60_000);
+      setExportState(`Exported saved revision ${revision.slice(0, 7)} (${format.toUpperCase()})`);
+    } catch (error) { setExportState(`Export failed: ${error instanceof Error ? error.message : String(error)}`); }
+    finally { setExporting(false); }
+  };
 
   // Update mutable refs for CM6 keymap closures
   cmDoSaveRef.current = doSave;
@@ -593,6 +764,10 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         return;
       }
       const data = await res.json();
+      if (workspace) {
+        setConflictHead({ content: data.content, sha: data.sha });
+        return; // Inspection is not reconciliation; never silently adopt a newer base.
+      }
       if (data.sha) setBaseSha(data.sha);
       setSave({ kind: "idle" });
       setReconcileNote(
@@ -607,7 +782,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // Autosave: 3 seconds after last content change, when dirty and no errors.
   useEffect(() => {
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    if (!dirty || errors.length > 0 || save.kind === "saving" || save.kind === "stale") return;
+    if (historicalSha || !dirty || errors.length > 0 || save.kind === "saving" || save.kind === "stale" || save.kind === "error") return;
     autoSaveTimer.current = setTimeout(() => {
       doSave();
     }, 3000);
@@ -615,7 +790,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content, dirty, errors.length]);
+  }, [content, dirty, errors.length, save.kind, baseSha, historicalSha]);
 
   // Show "Saved ✓" indicator for 3 seconds after a successful save.
   useEffect(() => {
@@ -663,6 +838,29 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
+
+  // Next's same-document Back/Forward never fires beforeunload. Cancel the
+  // navigation before the router receives popstate; do not add sentinel entries
+  // or rewrite Next's private history state. Cross-document exits use the native
+  // beforeunload handler below. Recovery storage is a second line of defence.
+  useEffect(() => {
+    if (!workspace || !dirty) return;
+    const navigation = (window as Window & { navigation?: EventTarget }).navigation;
+    const guard = (event: Event) => {
+      const next = event as Event & { destination?: { sameDocument: boolean }; navigationType?: string };
+      if (next.cancelable && next.destination?.sameDocument && next.navigationType !== "reload" &&
+          !window.confirm("Leave with unsaved changes? Your draft will remain available in this tab.")) next.preventDefault();
+    };
+    const fallbackGuard = (event: Event) => {
+      if (!window.confirm("Leave with unsaved changes? Your draft will remain available in this tab.")) event.preventDefault();
+    };
+    navigation?.addEventListener("navigate", guard);
+    if (!navigation) window.addEventListener(BEFORE_TRAVERSE, fallbackGuard);
+    return () => {
+      navigation?.removeEventListener("navigate", guard);
+      window.removeEventListener(BEFORE_TRAVERSE, fallbackGuard);
+    };
+  }, [!!workspace, dirty]);
 
   /* ---------------- scroll sync ---------------- */
 
@@ -1178,6 +1376,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // button, rather than each action inventing its own edge cases.
   const applyEdit = useCallback(
     (next: string, selStart: number, selEnd: number) => {
+      if (!mutationAllowed.current) return;
       setContent(next);
       setSave((s) => (s.kind === "saved" ? { kind: "idle" } : s));
       // Push to CM6
@@ -1339,6 +1538,19 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const makeEditable = useCallback((el: HTMLElement) => {
     const sourceLine   = Number(el.dataset.sourceLine);
     const originalText = el.innerText;
+    if (workspace) {
+      if (!workspace.canEdit || historicalSha || layout === "preview" || authoring !== "visual") return;
+      const source = content.split("\n")[sourceLine - 1] || "";
+      const plain = source.replace(/^(?:#{1,6}\s+|\s*[-*+]\s+|\s*\d+\.\s+)/, "");
+      // The legacy bridge replaces a source line with innerText. Permit only
+      // exact plain-text mappings: never flatten markup, tables or directives.
+      if (!/^(P|H[1-6]|LI)$/.test(el.tagName) || el.children.length ||
+          /[\[\]{}*_`<>|\\]/.test(plain) || plain.trim() !== originalText.trim()) {
+        setVisualNotice("This block is preserved unchanged. Use Source to edit complex or formatted content safely.");
+        return;
+      }
+      setVisualNotice("");
+    }
 
     // Mark editing active BEFORE focus so the debounced re-render is
     // suppressed immediately — not after the first timer fires.
@@ -1416,7 +1628,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
 
     el.addEventListener("blur",    handleBlur,    { once: true });
     el.addEventListener("keydown", handleKeydown);
-  }, [patchMarkdownBlock]);
+  }, [patchMarkdownBlock, workspace, historicalSha, layout, authoring, content]);
 
   // Inject zoom gesture handlers into the iframe document.
   //
@@ -1435,7 +1647,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // replaces the entire document and the listeners are lost.
   const injectZoomHandlers = useCallback(() => {
     const doc = frameRef.current?.contentDocument;
-    if (!doc || doc.getElementById("__docgent_zoom")) return;
+    if (!doc?.head || !doc.body || doc.getElementById("__docgent_zoom")) return;
 
     // Marker so we don't double-inject.
     const marker = doc.createElement("meta");
@@ -1502,7 +1714,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // a text cursor on mouseover, making the surface discoverable.
   const injectEditCursor = useCallback(() => {
     const doc = frameRef.current?.contentDocument;
-    if (!doc || doc.getElementById("__docgent_edit_cursor")) return;
+    if (!doc?.head || !doc.body || doc.getElementById("__docgent_edit_cursor")) return;
     const style = doc.createElement("style");
     style.id = "__docgent_edit_cursor";
     style.textContent = [
@@ -2021,6 +2233,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // and "rewrite everything" from an empty selection is the kind of surprise
   // that erodes trust in the feature on first use.
   const openSelectionRewrite = useCallback(() => {
+    if (!mutationAllowed.current) return;
     const el = textareaRef.current;
     if (!el || isFolded) return;
     const start = el.selectionStart;
@@ -2039,6 +2252,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // survives a reorder between opening the bar and the request landing.
   const openSectionRewrite = useCallback(
     (h: Heading) => {
+      if (!mutationAllowed.current) return;
       const top = Math.max(0, offsetForLine(h.line) - (textareaRef.current?.scrollTop ?? 0));
       setProposal(null);
       setAcceptedNote(null);
@@ -2156,7 +2370,14 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   // formatting button uses, so undo, dirty-state and preview invalidation
   // behave identically for an AI-authored change and a hand-typed one.
   const acceptProposal = useCallback(
-    (finalContent: string, accepted: RewriteProposal, newSha: string | null) => {
+    (finalContent: string, accepted: RewriteProposal, newSha: string | null, revision?: string, reviewActive = true) => {
+      if (!editorMounted.current) return;
+      if (!reviewActive || !mutationAllowed.current) {
+        setSave({ kind: "stale", message: "The accepted rewrite was committed after you changed views. Your local draft is preserved; inspect the latest saved revision before editing or saving." });
+        setSavedRevision(revision);
+        router.refresh();
+        return;
+      }
       applyEdit(finalContent, accepted.span.start, accepted.span.start + accepted.after.length);
       // The accept endpoint committed to the repo and returned a new blob SHA.
       // Update baseSha so the next autosave (or manual save) sends the right
@@ -2170,6 +2391,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         // Mark as saved so the toolbar reflects the committed state.
         setSave({ kind: "saved", sha: newSha });
       }
+      if (workspace) { setSavedRevision(revision); router.refresh(); }
       setAcceptedNote(`Accepted — ${accepted.model.label}: "${accepted.instruction}"`);
       setProposal(null);
       setRewriteTarget(null);
@@ -2623,7 +2845,52 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
   const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
 
   return (
-    <div className="editor">
+    <div className="editor" data-unified={!!workspace} data-layout={layout} data-authoring={authoring} data-mobile-pane={mobilePane} data-insert={showInsert}>
+      {workspace && <header className="workspace-header">
+        <nav aria-label="Application navigation"><a href={libraryUrl}>Documents</a> · <a href="/primitives">Primitives</a></nav>
+        <h1>{String(selectedMetadata.title || (historicalSha ? "Historical revision" : workspace.title))}</h1>
+        <span>{String(selectedMetadata.status || workspace.status || "Draft")}</span>
+        <button disabled={!workspace.canEdit || !!historicalSha || save.kind === "saving"} onClick={() => doSave()}>Save</button>
+        <span role="status" aria-label="Save status">{save.kind === "saving" ? "Saving…" : save.kind === "stale" ? "Conflict — draft retained" : save.kind === "error" ? "Save failed — draft retained" : dirty ? "Unsaved changes" : "Saved"}</span>
+        <div className="workspace-tools" role="group" aria-label="Document tools">
+        <button disabled={exporting || save.kind === "saving"} onClick={() => exportRevision("pdf")}>Export {historicalSha ? "revision" : "latest"} PDF</button>
+        <button disabled={exporting || save.kind === "saving"} onClick={() => exportRevision("docx")}>Export {historicalSha ? "revision" : "latest"} DOCX</button>
+        <span role="status" aria-label="Export status">{exportState}</span>
+        <span role="status" aria-label="Preview status">{previewError ? "Preview failed — last good output retained" : previewing ? "Updating preview…" : (mode === "pdf" ? content === lastPdfRendered.current && pdfRevision === historicalSha : content === htmlRenderedSource) ? "Preview up to date" : "Preview out of date"}{mode === "pdf" && previewUrl ? ` · showing ${pdfRevision ? pdfRevision.slice(0, 7) : "current draft"}` : ""}</span>
+        <button onClick={() => { lastPreviewed.current = ""; pendingPreviewAfterEdit.current = false; mode === "pdf" ? runPdfPreview(content) : runHtmlPreview(content); }}>Retry preview</button>
+        <div role="group" aria-label="Authoring mode">
+          <button aria-pressed={authoring === "visual"} onClick={() => setAuthoring("visual")}>Visual</button>
+          <button aria-pressed={authoring === "source"} onClick={() => setAuthoring("source")}>Source</button>
+        </div>
+        <div role="group" aria-label="Workspace layout">
+          <button disabled={!workspace.canEdit || !!historicalSha} aria-pressed={layout === "editor"} onClick={() => setLayout("editor")}>Editor only</button>
+          <button disabled={!workspace.canEdit || !!historicalSha} aria-pressed={layout === "split"} onClick={() => setLayout("split")}>Side by side</button>
+          <button aria-pressed={layout === "preview"} onClick={() => setLayout("preview")}>Preview only</button>
+        </div>
+        <span>{layout === "preview" ? "Read-only preview" : "Editing"}</span>
+        {visualNotice && <span role="status" aria-label="Visual editing notice">{visualNotice}</span>}
+        <button aria-expanded={contextPanel === "history"} onClick={() => { setShowComments(false); setContextPanel(contextPanel === "history" ? null : "history"); }}>History</button>
+        <button aria-expanded={contextPanel === "details"} onClick={() => { setShowComments(false); setContextPanel(contextPanel === "details" ? null : "details"); }}>Details</button>
+        <button aria-expanded={showComments} onClick={() => { setContextPanel(null); setShowComments(!showComments); }}>Comments</button>
+        <button aria-expanded={showOutline} onClick={() => setShowOutline(!showOutline)}>Outline</button>
+        </div>
+        {layout === "split" && <button className="workspace-mobile-toggle" onClick={() => setMobilePane(mobilePane === "editor" ? "preview" : "editor")}>Show {mobilePane === "editor" ? "preview" : "editor"}</button>}
+      </header>}
+      {historicalSha && <div className="banner" role="status" aria-label="Historical revision">
+        Historical revision {historicalSha.slice(0, 7)} — read only. Your current draft is retained.
+        {historicalError && <span role="alert">{historicalError}</span>}
+        {workspace?.viewingSha ? <a href={`/${brand}/${slug}`}>Return to latest</a> : <button onClick={() => viewRevision()}>Return to latest</button>}
+      </div>}
+      {workspace && recoveredDraft && <div className="banner" role="status">
+        An unsaved draft from this tab is available. It has not been saved to the server.
+        <button disabled={!canWrite} onClick={() => {
+          if (!writeAllowed.current) return;
+          replaceContent(recoveredDraft.content);
+          if (recoveredDraft.baseSha !== initialSha) setSave({ kind: "stale", message: "The server changed since this draft. Compare before saving." });
+          setRecoveredDraft(null);
+        }}>Recover draft</button>
+        <button onClick={() => { sessionStorage.removeItem(draftKey); setRecoveredDraft(null); }}>Discard recovered draft</button>
+      </div>}
       <div className="editor-toolbar">
         <div className="editor-toolbar-left">
           <button
@@ -2805,7 +3072,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
           <div>{save.message}</div>
           <div style={{ marginTop: 8 }}>
             <button className="btn btn-secondary" onClick={handleReconcile}>
-              Keep my changes and retry
+              {workspace ? "Inspect latest" : "Keep my changes and retry"}
             </button>
           </div>
         </div>
@@ -2813,6 +3080,12 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
       {reconcileNote && (
         <div className="banner" data-kind="ok">{reconcileNote}</div>
       )}
+      {workspace && conflictHead && <section className="banner" aria-label="Concurrent version">
+        <h2>Latest server content — your draft is unchanged</h2>
+        <pre style={{ maxHeight: 180, overflow: "auto", whiteSpace: "pre-wrap" }}>{conflictHead.content}</pre>
+        <p>Copy your draft before reloading, then apply the changes you want to the latest version.</p>
+        <button onClick={() => navigator.clipboard.writeText(content).catch(() => setReconcileNote("Copy failed. Select and copy in Source mode."))}>Copy my draft</button>
+      </section>}
       {save.kind === "error" && (
         <div className="banner" data-kind="error">{save.message}</div>
       )}
@@ -2823,24 +3096,25 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
       )}
 
-      {rewriteTarget && !proposal && (
+      {canMutate && rewriteTarget && !proposal && (
         <RewriteBar
           brand={brand}
           slug={slug}
           scopeLabel={rewriteTarget.label}
           getScope={getScope}
-          onProposal={setProposal}
+          onProposal={value => { if (mutationAllowed.current) setProposal(value); }}
           onClose={closeRewrite}
           anchorTop={rewriteTarget.top}
         />
       )}
 
-      {proposal && (
+      {canMutate && proposal && (
         <div className="proposal-overlay">
           <ProposalReview
             proposal={proposal}
             brand={brand}
             slug={slug}
+            canAccept={canMutate}
             onAccept={acceptProposal}
             onReject={closeRewrite}
           />
@@ -2923,6 +3197,15 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
       )}
 
+      {workspace && editorMode !== "pages" && <div className="workspace-format" role="toolbar" aria-label="Common formatting" onMouseDown={(event) => { event.preventDefault(); savedIframeSelection.current = getIframeSelection(); }}>
+        <button onClick={() => toggleInline("**", "bold text")}>Bold</button>
+        <button onClick={() => toggleInline("*", "italic text")}>Italic</button>
+        <button onClick={() => applyHeading(2)}>Heading</button>
+        <button onClick={applyBullets}>List</button>
+        <button onClick={insertLink}>Link</button>
+        <button onClick={doUndo}>Undo</button><button onClick={doRedo}>Redo</button>
+        <button aria-expanded={showInsert} onClick={() => setShowInsert(!showInsert)}>Insert</button>
+      </div>}
       {editorMode !== "pages" && (
       <div className="format-bars-wrap">
             {/* ── ROW 1: Word-style formatting + most common Docgent primitives (Autype layout) ── */}
@@ -3108,7 +3391,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                     className="outline-row"
                     data-level={h.level}
                     data-struck={struck}
-                    draggable
+                    draggable={canMutate}
                     onDragStart={(e) => {
                       e.dataTransfer.setData("text/x-docgent-line", String(h.line));
                       e.dataTransfer.setData("text/x-docgent-level", String(h.level));
@@ -3146,6 +3429,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                     </button>
                     <button
                       className="outline-strike"
+                      disabled={!canMutate}
                       onClick={() => toggleStrike(h)}
                       data-active={struck}
                       title={struck ? "Unstrike section" : "Strike section"}
@@ -3155,6 +3439,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
                     </button>
                     <button
                       className="outline-direct"
+                      disabled={!canMutate}
                       onClick={() => openSectionRewrite(h)}
                       title={`Direct a rewrite of "${h.text}"`}
                       aria-label={`Direct a rewrite of ${h.text}`}
@@ -3242,11 +3527,17 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               🔍 Review mode — agent suggestions and comments. Click any note to jump to source.
             </div>
           )}
-          {previewError ? (
+          {previewError && (
             <div className="banner" data-kind="error" style={{ margin: 12 }}>
               <strong>Preview failed.</strong>
               <div><code>{previewError}</code></div>
             </div>
+          )}
+          {workspace && layout === "preview" && mode === "html" ? (
+            <>
+              <div className="source-mode-banner">Read-only HTML preview · PDF downloads remain available</div>
+              {previewHtml ? <iframe title="Read-only output preview" className="preview-frame" srcDoc={previewHtml} sandbox="" /> : <div className="empty">Rendering first preview…</div>}
+            </>
           ) : mode === "html" ? (
             previewHtml ? (
               <iframe
@@ -3268,6 +3559,7 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               <div className="empty">Rendering first preview…</div>
             )
           ) : previewUrl ? (
+            workspace && !pdfViewerAvailable ? <div className="empty" role="status">This browser cannot display PDF pages inline. <a href={previewUrl} download={`${slug}.pdf`}>Download the rendered PDF{historicalSha ? ` revision ${historicalSha.slice(0, 7)}` : ""}</a></div> :
             <iframe className="preview-frame" src={previewUrl} title="PDF preview" style={{ flex: 1 }} />
           ) : (
             <div className="empty">
@@ -3287,6 +3579,21 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
         </div>
         )}
 
+        {workspace && layout === "split" && <section className="pane workspace-output" aria-label="Read-only output" tabIndex={0}>
+          <div className="source-mode-banner">Read-only output · draft HTML preview</div>
+          {previewHtml ? <iframe title="Read-only output preview" className="preview-frame" srcDoc={previewHtml} sandbox="" /> : <p>Waiting for preview…</p>}
+        </section>}
+        {workspace && contextPanel === "history" && <aside className="workspace-context" aria-label="History panel">
+          <button onClick={() => setContextPanel(null)}>Close history</button>
+          <WorkspaceHistory key={savedRevision || workspace.timeline[0]?.sha} latestRevision={savedRevision || workspace.timeline[0]?.sha} brand={brand} slug={slug} timeline={workspace.timeline} baseSha={!dirty && workspace.canEdit ? baseSha || undefined : undefined} viewingSha={historicalSha} onView={viewRevision} />
+        </aside>}
+        {workspace && contextPanel === "details" && <aside className="workspace-context" aria-label="Details panel">
+          <button onClick={() => setContextPanel(null)}>Close details</button>
+          <h2>Document details</h2>
+          <dl>{Object.entries({ Brand: brand, Document: slug, ...selectedMetadata }).filter(([, value]) => typeof value !== "object").map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value)}</dd></div>)}</dl>
+          <p>{wordCount} words · {lineCount} source lines</p>
+          <p>{historicalSha ? "Commit" : "Saved blob"}: {historicalSha || baseSha || "unknown"}</p>
+        </aside>}
         {/* Comments rail — shown to the right of editor panes when toggled */}
         {showComments && (
           <div className="editor-comments-rail">
@@ -3301,11 +3608,12 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary }: 
               </button>
             </div>
             <CommentsPanel
-              comments={parsedComments}
-              onResolve={handleResolveComment}
-              onAdd={handleAddComment}
+              key={historicalSha || layout}
+              comments={historicalSha ? parseComments(selectedSource) : parsedComments}
+              onResolve={workspace && (layout === "preview" || historicalSha || !workspace.canEdit) ? undefined : handleResolveComment}
+              onAdd={workspace && (layout === "preview" || historicalSha || !workspace.canEdit) ? undefined : handleAddComment}
               onJump={jumpToComment}
-              canEdit={true}
+              canEdit={!workspace || (workspace.canEdit && layout !== "preview" && !historicalSha)}
             />
           </div>
         )}

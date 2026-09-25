@@ -42,7 +42,7 @@ export async function GET(
     if (key) {
       const cached = await store.get(key);
       if (cached) {
-        return pdfResponse(cached, { slug, ref, cached: true, renderMs: null });
+        return pdfResponse(cached, { slug, ref: commitSha, cached: true, renderMs: null });
       }
     }
 
@@ -73,7 +73,7 @@ export async function GET(
       await store.put(key, pdf).catch(() => {});
     }
 
-    return pdfResponse(pdf, { slug, ref, cached: false, renderMs });
+    return pdfResponse(pdf, { slug, ref: commitSha, cached: false, renderMs });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return new Response(`render failed: ${msg}`, {
@@ -97,6 +97,7 @@ function pdfResponse(
       "X-Docgent-Render-Ms": String(opts.renderMs ?? ""),
       "X-Docgent-Cache": opts.cached ? "hit" : "miss",
       "X-Docgent-Cache-Driver": cacheDriver(),
+      "X-Docgent-Revision": opts.ref || "",
     },
   });
 }

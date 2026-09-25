@@ -63,7 +63,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return brandsForEmail(p.email).length > 0; // fail closed: no brand, no sign-in
     },
     async jwt({ token, account, profile }) {
-      if (account?.provider) token.provider = account.provider;
+      if (account?.provider) {
+        token.provider = account.provider;
+        token.providerAccountId = account.providerAccountId;
+      }
       const p = profile as { email?: string } | undefined;
       // Only recompute allowedBrands when we have a fresh OAuth profile (i.e.
       // at sign-in time). On subsequent requests the JWT is already stamped
@@ -93,7 +96,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async session({ session, token }) {
       if (session.user) {
-        const u = session.user as { provider?: string; allowedBrands?: string[]; isAdmin?: boolean };
+        const u = session.user as { provider?: string; allowedBrands?: string[]; isAdmin?: boolean; draftOwner?: string };
+        // Auth.js subjects change per adapterless login; use the provider's stable ID.
+        // Old tokens cannot recover drafts until a fresh login supplies that ID.
+        if (typeof token.provider === "string" && token.provider &&
+            typeof token.providerAccountId === "string" && token.providerAccountId) {
+          const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([token.provider, token.providerAccountId])));
+          u.draftOwner = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
+        } else {
+          delete u.draftOwner;
+        }
         if (token.provider) u.provider = token.provider as string;
         u.allowedBrands = (token.allowedBrands as string[] | undefined) ?? [];
         u.isAdmin = (token.isAdmin as boolean | undefined) ?? false;

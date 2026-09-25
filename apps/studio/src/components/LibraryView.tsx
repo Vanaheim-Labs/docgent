@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import type { DocSummary } from "@/lib/store";
 
@@ -38,6 +38,7 @@ import Link from "next/link";
 import { LibraryFilterPanel, type LibraryFilters } from "@/components/LibraryFilterPanel";
 import { QueueRow, queueBucket, BUCKET_LABEL, type QueueBucket } from "@/components/QueueRow";
 import { UserChip } from "@/components/UserChip";
+import { NewDocument } from "@/components/NewDocument";
 
 type TimeGroup = "Previous 7 days" | "Previous 30 days" | "Earlier";
 type SortMode = "last-modified" | "last-opened" | "title-az";
@@ -142,12 +143,20 @@ function DocGridCard({ doc }: { doc: DocSummary }) {
 export function LibraryView({
   documents,
   userChip,
+  unified = false,
+  allowedBrands = [],
 }: {
   documents: DocSummary[];
   userChip: React.ReactNode;
+  unified?: boolean;
+  allowedBrands?: string[];
 }) {
   const searchParams = useSearchParams();
   const bucketParam = searchParams?.get("bucket") as QueueBucket | null;
+  useEffect(() => {
+    if (!unified) return;
+    try { sessionStorage.setItem("docgent.library.url", "/" + (bucketParam ? `?bucket=${encodeURIComponent(bucketParam)}` : "")); } catch { /* Optional return context. */ }
+  }, [unified, bucketParam]);
 
   const [filters, setFilters] = useState<LibraryFilters>({
     brands: new Set(),
@@ -157,6 +166,44 @@ export function LibraryView({
 
   const [sortMode, setSortMode] = useState<SortMode>("last-modified");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [restored, setRestored] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!unified) return;
+    try {
+      const state = JSON.parse(sessionStorage.getItem("docgent.library") || "{}");
+      setFilters({ search: typeof state.search === "string" ? state.search : "", brands: new Set(Array.isArray(state.brands) ? state.brands : []), statuses: bucketParam ? new Set([`__bucket:${bucketParam}`]) : new Set() });
+      setTypeFilter(typeof state.type === "string" ? state.type : "");
+      setStatusFilter(typeof state.status === "string" ? state.status : "");
+      if (["last-modified", "title-az"].includes(state.sort)) setSortMode(state.sort);
+    } catch { /* Keep defaults when storage is blocked or malformed. */ }
+    setRestored(true);
+  }, []);
+  useEffect(() => {
+    if (!unified || !restored) return;
+    try { sessionStorage.setItem("docgent.library", JSON.stringify({ search: filters.search, brands: [...filters.brands], type: typeFilter, status: statusFilter, sort: sortMode })); } catch { /* Optional preference. */ }
+  }, [filters, typeFilter, statusFilter, sortMode, restored, unified]);
+  useEffect(() => {
+    if (!unified || !restored) return;
+    try {
+      const position = JSON.parse(sessionStorage.getItem("docgent.library.scroll") || "{}");
+      requestAnimationFrame(() => { window.scrollTo(0, Number(position.window) || 0); if (contentRef.current) contentRef.current.scrollTop = Number(position.content) || 0; });
+    } catch { /* Optional scroll restoration. */ }
+    let leaving = false;
+    const remember = () => { if (leaving) return; try { sessionStorage.setItem("docgent.library.scroll", JSON.stringify({ window: window.scrollY, content: contentRef.current?.scrollTop || 0 })); } catch {} };
+    // Next resets window scroll before the old route has necessarily unmounted.
+    // Capture the list position at activation, then ignore that navigation reset.
+    const depart = (event: MouseEvent) => {
+      const link = (event.target as Element)?.closest<HTMLAnchorElement>("a[href]");
+      if (link && link.origin === location.origin && link.pathname !== "/") { remember(); leaving = true; }
+    };
+    document.addEventListener("click", depart, true);
+    window.addEventListener("scroll", remember, true);
+    return () => { document.removeEventListener("click", depart, true); window.removeEventListener("scroll", remember, true); };
+  }, [restored, unified]);
+  const clearFilters = () => { setFilters({ brands: new Set(), statuses: new Set(), search: "" }); setTypeFilter(""); setStatusFilter(""); };
 
   // Sync filter state when URL bucket param changes (sidebar nav clicks).
   useEffect(() => {
@@ -183,6 +230,8 @@ export function LibraryView({
 
     let results = documents.filter((d) => {
       if (filters.brands.size > 0 && !filters.brands.has(d.brand)) return false;
+      if (unified && typeFilter && d.frontmatter?.doctype !== typeFilter) return false;
+      if (unified && statusFilter && (d.frontmatter?.status || "draft") !== statusFilter) return false;
       if (bucketFilters.length > 0 && !bucketFilters.includes(queueBucket(d))) return false;
       if (q) {
         const hay = [d.title, d.frontmatter?.subtitle, d.brandName, d.frontmatter?.doctype]
@@ -205,7 +254,7 @@ export function LibraryView({
     }
 
     return results;
-  }, [documents, filters, sortMode, bucketParam]);
+  }, [documents, filters, sortMode, bucketParam, unified, typeFilter, statusFilter]);
 
   const buckets = useMemo(() => {
     const m: Record<QueueBucket, DocSummary[]> = { "needs-review": [], "in-progress": [], done: [] };
@@ -226,11 +275,11 @@ export function LibraryView({
     };
     for (const d of filtered) {
       const ts = d.lastCommit?.at ?? d.dateMs;
-      m[getTimeGroup(ts)].push(d);
+      m[unified && sortMode === "title-az" ? "Earlier" : getTimeGroup(ts)].push(d);
     }
     // Already sorted by filtered sort; preserve that order within groups
     return m;
-  }, [filtered, bucketParam]);
+  }, [filtered, bucketParam, unified, sortMode]);
 
   const order: QueueBucket[] = ["needs-review", "in-progress", "done"];
   const [doneExpanded, setDoneExpanded] = useState(false);
@@ -251,7 +300,17 @@ export function LibraryView({
         {userChip}
       </div>
 
-      <div className="content">
+      <div className="content" ref={contentRef}>
+        {unified && <NewDocument brands={allowedBrands} />}
+        {unified && <section className="library-filters" aria-label="Document filters">
+          <input disabled={!restored} type="search" aria-label="Search documents" placeholder="Search documents…" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
+          <select disabled={!restored} aria-label="Brand filter" value={[...filters.brands][0] || ""} onChange={(event) => setFilters({ ...filters, brands: new Set(event.target.value ? [event.target.value] : []) })}>
+            <option value="">All brands</option>{[...new Set(documents.map(doc => doc.brand))].sort().map(brand => <option key={brand} value={brand}>{documents.find(doc => doc.brand === brand)?.brandName || brand}</option>)}
+          </select>
+          <select disabled={!restored} aria-label="Document type" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="">All types</option>{[...new Set(documents.map(doc => doc.frontmatter?.doctype).filter(Boolean))].sort().map(type => <option key={type} value={type}>{type}</option>)}</select>
+          <select disabled={!restored} aria-label="Status filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All statuses</option>{[...new Set(documents.map(doc => doc.frontmatter?.status || "draft"))].sort().map(status => <option key={status} value={status}>{status}</option>)}</select>
+          <button disabled={!restored} className="btn btn-secondary" onClick={clearFilters}>Clear filters</button>
+        </section>}
         {documents.length === 0 && (
           <div className="empty">No documents yet.</div>
         )}
@@ -271,11 +330,13 @@ export function LibraryView({
             <div className="library-controls-right">
               <select
                 className="library-sort-select"
+                aria-label="Sort documents"
+                disabled={unified && !restored}
                 value={sortMode}
                 onChange={(e) => setSortMode(e.target.value as SortMode)}
               >
                 <option value="last-modified">Last modified</option>
-                <option value="last-opened">Last opened</option>
+                {!unified && <option value="last-opened">Last opened</option>}
                 <option value="title-az">Title A–Z</option>
               </select>
 
@@ -319,7 +380,7 @@ export function LibraryView({
               timeGroups && TIME_GROUP_ORDER.map((group) =>
                 timeGroups[group].length > 0 ? (
                   <div className="time-group" key={group}>
-                    <div className="time-group-head">{group}</div>
+                    <div className="time-group-head">{unified && sortMode === "title-az" ? "All documents" : group}</div>
                     {timeGroups[group].map((d) => <QueueRow key={d.path} doc={d} />)}
                   </div>
                 ) : null

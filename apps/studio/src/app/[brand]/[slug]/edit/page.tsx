@@ -15,6 +15,10 @@ export default async function EditPage({ params }: Props) {
   if (!session) redirect("/signin");
 
   const { brand, slug } = await params;
+  if (process.env.DOCGENT_UNIFIED_WORKSPACE === "1") {
+    const allowedBrands = (session.user as { allowedBrands?: string[] } | undefined)?.allowedBrands ?? [];
+    if (!allowedBrands.includes(brand)) notFound();
+  }
 
   let doc;
   try {
@@ -43,6 +47,16 @@ export default async function EditPage({ params }: Props) {
   }
 
   const fm = doc.frontmatter || {};
+  if (process.env.DOCGENT_UNIFIED_WORKSPACE === "1") {
+    const { docs } = await storesFor(brand);
+    const timeline = await docs.timeline(brand, slug, { limit: 30 });
+    return <div className="editor-shell"><Editor key={`${(session.user as { draftOwner?: string }).draftOwner}/${brand}/${slug}`}
+      brand={brand} slug={slug} initialContent={doc.content}
+      initialSha={doc.sha ?? null} vocabulary={vocabulary}
+      workspace={{ draftOwner: (session.user as { draftOwner?: string }).draftOwner, title: fm.title || slug, status: fm.status, timeline,
+        canEdit: true, initialEditing: true }}
+    /></div>;
+  }
 
   return (
     <div className="editor-shell">
