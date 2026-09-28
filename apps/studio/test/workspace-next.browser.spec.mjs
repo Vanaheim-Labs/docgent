@@ -107,14 +107,21 @@ test('flag rollback excludes unified reader, editor, filters and creation',async
 test('live Next renderer paints readable initial output on desktop and mobile',async({page,context})=>{
  test.setTimeout(120000);const errors=[];page.on('pageerror',error=>errors.push(error.message));await server.login(context);await page.setViewportSize({width:1440,height:1000});await page.goto(server.url+'/example/fixture-02');
  await expect(page.getByRole('status',{name:'Preview status'})).toContainText('Preview up to date',{timeout:60000});
- await expect(page.frameLocator('iframe[title="Read-only output preview"]').locator('.cover-title')).toBeInViewport({timeout:60000});
+ // The output pane is the real rendered PDF now, so it is not scriptable. Assert
+ // the pane is present, fills its column, and carries the real PDF blob.
+ const output=page.getByRole('region',{name:'Rendered PDF output'});
+ await expect(output).toBeVisible({timeout:60000});
+ const pdfSurface=output.locator('iframe[title="Rendered PDF preview"], a[download]');
+ await expect(pdfSurface.first()).toBeVisible({timeout:60000});
+ await expect(output.locator('iframe[title="Read-only output preview"]')).toHaveCount(0);
+ const desktopBox=await output.boundingBox();
+ expect(desktopBox.width).toBeGreaterThan(320);expect(desktopBox.height).toBeGreaterThan(320);
  await page.screenshot({path:'.qa/workspace/screenshots/next-initial-desktop.png'});
-
-
- await expect(page.frameLocator('iframe[title="Read-only output preview"]').locator('.cover-title')).toBeInViewport({timeout:60000});
  await page.screenshot({path:'.qa/workspace/screenshots/next-split-desktop.png'});
  await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Preview',exact:true}).click();
- await expect(page.frameLocator('iframe[title="Read-only output preview"]').locator('.cover-title')).toBeInViewport();
+ await expect(output).toBeVisible();
+ const mobileBox=await output.boundingBox();
+ expect(mobileBox.width).toBeGreaterThan(300);expect(mobileBox.height).toBeGreaterThan(300);
  await page.screenshot({path:'.qa/workspace/screenshots/next-output-mobile.png'});expect(errors).toEqual([]);
 });
 test('real creation opens unified edit and exports the exact Git revision',async({page,context})=>{
