@@ -185,9 +185,23 @@ h4 {
 
 /* Numbered sections */
 body { counter-reset: h1counter; }
+/* Two numbering modes share one counter pair:
+     - `.numbered`     inline "1." prefix on the heading itself
+     - `.section-opener` eyebrow style from the vocabulary filter (01 · Context)
+   Without the second, h1counter never increments and every h2 reads "0.1".
+
+   Scope matters here. Pandoc emits .section-opener and section.level2 as flat
+   siblings in body scope -- there is no level1 wrapper -- and a counter-reset
+   only affects the element's own subtree. So the reset must sit on the opener
+   and the increment on the sibling section, both at body level. Putting either
+   on the nested heading restarts the count inside each section ("N.1" repeated). */
 h1.numbered { counter-increment: h1counter; counter-reset: h2counter; }
+/* counter-set, not counter-reset: reset creates a *new* counter scoped to this
+   element's subtree, which the sibling sections would never see. counter-set
+   writes to the existing body-scope counter, so the following siblings read it. */
+.section-opener { counter-increment: h1counter; counter-set: h2counter 0; }
+section.level2.numbered { counter-increment: h2counter; }
 h1.numbered::before { content: counter(h1counter) ".  "; color: var(--accent); }
-h2.numbered { counter-increment: h2counter; }
 h2.numbered::before { content: counter(h1counter) "." counter(h2counter) "  "; color: var(--accent); font-weight: 500; }
 
 /* Struck sections (Studio Phase 10). A human's "cut this" direction to the
