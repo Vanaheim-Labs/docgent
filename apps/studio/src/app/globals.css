@@ -1472,8 +1472,15 @@ kbd {
  * it became a tall ribbon a few words wide. Type here is sized for reading
  * prose, not for scanning a metadata list.
  * ------------------------------------------------------------------ */
-.diff-panel { display: flex; flex-direction: column; min-width: 0; }
-.diff-body { overflow-y: auto; max-height: calc(100vh - 220px); }
+.diff-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; flex: 1; }
+/* Fill the available pane height via flex rather than a viewport-relative
+ * magic number. Inside .doc-workspace the panel is already constrained by an
+ * action bar and panel head, so a fixed `calc(100vh - 220px)` left a dead grey
+ * band under the scroll region. */
+.diff-body { overflow-y: auto; flex: 1; min-height: 0; }
+/* Standalone proposal review has no fixed-height parent, so keep the viewport
+ * cap there. */
+.proposal-review .diff-body { max-height: calc(100vh - 220px); }
 
 .diff-summary {
   padding-bottom: 14px;
