@@ -94,6 +94,12 @@
 /* Output owns its feedback; history never exposes the retained draft. */
 .workspace-output-status { padding:8px 12px; border-top:0; border-bottom:1px solid var(--line,#ddd); flex-shrink:0; min-height:36px; }
 .workspace-output-status button { margin-left:auto; cursor:pointer; }
+/* Hide/Show PDF: the pane is a convenience, so it must be dismissable without
+   losing the authoring surface. The Show affordance stays docked at the edge. */
+.workspace-output-status .workspace-pdf-toggle { margin-left:0; }
+.workspace-pdf-show { align-self:flex-start; flex:0 0 auto; margin:8px; padding:6px 10px; min-height:32px; border:1px solid var(--line,#ccc); border-radius:6px; background:var(--paper,white); color:var(--ink,#172030); font-size:11px; cursor:pointer; writing-mode:vertical-rl; }
+/* The PDF pane fills its column; the native viewer owns zoom and page nav. */
+.editor[data-unified="true"][data-layout="split"] .workspace-output .preview-frame { flex:1; width:100%; border:0; min-height:0; }
 /* Authorship cues: tools and editable canvas share an accent; output stays neutral. */
 .workspace-edit-tools-label { padding:5px 12px 0; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--accent,#234c60); }
 .editor[data-unified="true"] .format-bars-wrap { border-left:3px solid var(--accent,#234c60); background:#f2f6f7; }

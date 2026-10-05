@@ -22,13 +22,28 @@ for(const fixture of ['short','long','complex']){
   await page.setViewportSize({width:390,height:844});
   await page.getByRole('button',{name:'Markdown',exact:true}).click();
   await page.getByRole('button',{name:'Preview',exact:true}).click();
-  await expect(page.getByRole('region',{name:'Read-only output'})).toBeVisible();
-  await expect(page.frameLocator('iframe[title="Read-only output preview"]').getByText('Synthetic fixture, not a customer document.')).toBeVisible();
+  // The output pane is now the real rendered PDF, not an HTML srcDoc mirror, so
+  // its internals are not scriptable. Headless Chromium reports
+  // navigator.pdfViewerEnabled === false, so this environment legitimately takes
+  // the download-link fallback; a browser with an inline viewer gets the iframe.
+  // Assert whichever surface this browser supports, and that both carry the real
+  // rendered PDF blob rather than falling back to an HTML mirror.
+  const output=page.getByRole('region',{name:'Rendered PDF output'});
+  await expect(output).toBeVisible();
+  const inlineViewer=await page.evaluate(()=>navigator.pdfViewerEnabled===true);
+  if(inlineViewer){
+   const pdfFrame=page.locator('iframe[title="Rendered PDF preview"]');
+   await expect(pdfFrame).toBeVisible();
+   await expect(pdfFrame).toHaveAttribute('src',/^blob:/);
+  }else{
+   const download=output.getByRole('link',{name:/Download the rendered PDF/});
+   await expect(download).toBeVisible();
+   await expect(download).toHaveAttribute('href',/^blob:/);
+  }
+  // The pane must never reuse the left pane's HTML render.
+  await expect(output.locator('iframe[title="Read-only output preview"]')).toHaveCount(0);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  await expect(page.frameLocator('iframe[title="Read-only output preview"]').locator('.cover-title')).toBeInViewport();
   await page.screenshot({path:`.qa/workspace/screenshots/${fixture}-mobile.png`});
-  await page.frameLocator('iframe[title="Read-only output preview"]').getByText('Synthetic fixture, not a customer document.').scrollIntoViewIfNeeded();
-  await page.screenshot({path:`.qa/workspace/screenshots/${fixture}-mobile-body.png`});
   expect(errors).toEqual([]);
  });
 }

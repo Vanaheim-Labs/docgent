@@ -169,6 +169,9 @@ type Props = {
 };
 
 const PREVIEW_DEBOUNCE_MS = 1200;
+// A PDF render is a worker round-trip, so the workspace PDF pane waits for a
+// real typing pause rather than chasing keystrokes like the HTML preview does.
+const PDF_PREVIEW_DEBOUNCE_MS = 2000;
 
 // Unified editor mode:
 //   edit   = inline editing surface (preview as primary, both panes)
@@ -350,7 +353,27 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
   // Derived internal state for existing scroll sync / preview logic.
   const [pdfViewerAvailable, setPdfViewerAvailable] = useState(true);
   useEffect(() => { setPdfViewerAvailable(navigator.pdfViewerEnabled === true); }, []);
-  const mode: PreviewMode = editorMode === "pages" && (!workspace || historicalSha || pdfViewerAvailable) ? "pdf" : "html";
+  // Hide/Show control for the workspace PDF pane. Hiding it stops PDF renders
+  // entirely so an author who does not want the preview pays no render cost.
+  const [pdfPaneHidden, setPdfPaneHidden] = useState(false);
+  /**
+   * In the unified workspace the right pane is the *actual* rendered PDF, not an
+   * HTML mirror of the left pane. Rendering HTML on both sides was redundant:
+   * the left Visual pane already shows the same `previewHtml`. So workspace mode
+   * drives the PDF path whenever the browser can display one inline.
+   */
+  // The pane itself is shown whenever the workspace wants it. Inline display vs
+  // download-link fallback is decided at render time from `pdfViewerAvailable`,
+  // so a browser without an inline viewer still gets the real PDF to download
+  // rather than silently falling back to an HTML mirror of the left pane.
+  const workspacePdfPane = !!workspace && !pdfPaneHidden;
+  /**
+   * `mode` still governs the *legacy* single-preview surface and the left Visual
+   * pane, which is an HTML render and must stay HTML. The workspace PDF pane is
+   * an additional, independent surface driven by `workspacePdfPane` — the two
+   * render paths run side by side rather than one replacing the other.
+   */
+  const mode: PreviewMode = editorMode === "pages" ? "pdf" : "html";
   const posture: Posture = editorMode === "source" ? "edit" : "review";  // review/edit/pages all use review posture for preview
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -668,6 +691,24 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
     runPdfPreview(content);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorMode, historicalSha]);
+
+  /**
+   * Workspace PDF pane: debounced re-render after the author pauses typing.
+   *
+   * Deliberately longer than the HTML debounce — a PDF render is a worker call,
+   * so it waits for a real pause rather than chasing every keystroke. The
+   * previous blob URL is kept mounted until a new render resolves, so the pane
+   * shows the last good PDF instead of flashing empty on every edit.
+   * Historical revisions have their own render path above and are skipped here.
+   */
+  useEffect(() => {
+    if (!workspacePdfPane || historicalSha) return;
+    if (errors.length > 0) return;
+    if (content === lastPdfRendered.current && previewUrl) return;
+    const timer = setTimeout(() => runPdfPreview(content), PDF_PREVIEW_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content, errors.length, workspacePdfPane, historicalSha, runPdfPreview]);
 
   /* ---------------- save ---------------- */
 
@@ -3578,15 +3619,34 @@ export function Editor({ brand, slug, initialContent, initialSha, vocabulary, wo
 
         {workspace && historicalSha && <section className="pane workspace-history-source" aria-label="Historical source"><div className="source-mode-banner">Markdown · read only</div><pre>{selectedSource}</pre></section>}
         </div>
-        {workspace && layout === "split" && <section className="pane workspace-output" aria-label="Read-only output" tabIndex={0}>
+        {workspace && layout === "split" && !pdfPaneHidden && <section className="pane workspace-output" aria-label="Rendered PDF output" tabIndex={0}>
         <div className="workspace-output-status" data-error={!!previewError}>
-          <span className="workspace-control-label">{historicalSha ? "Revision output" : "Output"}</span><span className="workspace-readonly-label">Read only</span>
+          <span className="workspace-control-label">{historicalSha ? "Revision PDF" : "PDF"}</span><span className="workspace-readonly-label">Read only</span>
           <span role="status" aria-label="Preview status">{previewError ? "Preview failed — last good output retained" : previewing ? "Updating preview…" : (mode === "pdf" ? content === lastPdfRendered.current && pdfRevision === historicalSha : content === htmlRenderedSource) ? "Preview up to date" : "Preview out of date"}{mode === "pdf" && previewUrl ? ` · showing ${pdfRevision ? pdfRevision.slice(0, 7) : "current draft"}` : ""}</span>
           <button onClick={() => { lastPreviewed.current = ""; pendingPreviewAfterEdit.current = false; mode === "pdf" ? runPdfPreview(content) : runHtmlPreview(content); }}>Retry preview</button>
+          <button className="workspace-pdf-toggle" onClick={() => setPdfPaneHidden(true)} aria-label="Hide PDF preview">Hide PDF</button>
         </div>
 
-          {historicalSha ? (previewUrl && pdfRevision === historicalSha ? (pdfViewerAvailable ? <iframe title="Historical output preview" className="preview-frame" src={previewUrl} /> : <p>Historical PDF ready. <a href={previewUrl} download={`${slug}.pdf`}>Download revision PDF</a></p>) : <p>Rendering historical revision…</p>) : previewHtml ? <iframe title="Read-only output preview" className="preview-frame" srcDoc={previewHtml} sandbox="" /> : <p>Waiting for preview…</p>}
+          {/*
+            The actual rendered PDF, not an HTML mirror of the left pane. The
+            browser's native PDF viewer supplies zoom and page navigation, so no
+            custom chrome is needed. The previous blob URL stays mounted while a
+            new render is in flight, which keeps the last good PDF on screen
+            instead of flashing empty after every edit.
+          */}
+          {!pdfViewerAvailable && previewUrl ? (
+            <div className="empty" role="status">This browser cannot display PDF pages inline. <a href={previewUrl} download={`${slug}.pdf`}>Download the rendered PDF{historicalSha ? ` revision ${historicalSha.slice(0, 7)}` : ""}</a></div>
+          ) : previewUrl && (!historicalSha || pdfRevision === historicalSha) ? (
+            <iframe title={historicalSha ? "Historical output preview" : "Rendered PDF preview"} className="preview-frame" src={previewUrl} />
+          ) : errors.length > 0 ? (
+            <p>Preview paused — fix {errors.length} error{errors.length > 1 ? "s" : ""} to resume.</p>
+          ) : (
+            <p>{historicalSha ? "Rendering historical revision…" : "Rendering PDF…"}</p>
+          )}
         </section>}
+        {workspace && layout === "split" && pdfPaneHidden && (
+          <button className="workspace-pdf-show" onClick={() => setPdfPaneHidden(false)} aria-label="Show PDF preview">Show PDF</button>
+        )}
         {workspace && contextPanel === "history" && <aside className="workspace-context" aria-label="History panel">
           <button onClick={() => setContextPanel(null)}>Close history</button>
           <WorkspaceHistory key={savedRevision || workspace.timeline[0]?.sha} latestRevision={savedRevision || workspace.timeline[0]?.sha} brand={brand} slug={slug} timeline={workspace.timeline} baseSha={!dirty && workspace.canEdit ? baseSha || undefined : undefined} viewingSha={historicalSha} onView={viewRevision} />

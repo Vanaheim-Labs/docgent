@@ -19,5 +19,5 @@ test('unified editor keeps navigation and independent authoring and layout contr
  assert.match(html,/>Markdown<\/button>/);
  assert.doesNotMatch(html,/aria-label="Document mode"|aria-label="Workspace layout"/);
  assert.doesNotMatch(html.split("</header>")[0],/>Read<\/button>|>Edit<\/button>/);
- assert.match(html,/aria-label="Read-only output"/);
+ assert.match(html,/aria-label="Rendered PDF output"/);
 });
