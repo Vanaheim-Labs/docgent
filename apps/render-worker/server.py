@@ -294,15 +294,29 @@ _SVG_SRC_RE = _re.compile(
 )
 
 # Regex to match a self-closing ::image shorthand primitive that references
-# an external raster image file via src=.  These are single-line blocks.
+# an external raster image file via src=.
 #
-# Examples matched:
+# Two forms are matched, because ::image is valid both as a standalone block
+# and inline inside a pipe-table cell (agent avatar next to descriptive text):
+#
 #   ::image{src="images/photo.png" caption="Revenue" width="column"}
-#   ::image{src="images/chart.jpg" alt="Chart"}
+#   | ::image{src="images/figure-1.png" alt="Inky"}{width=120px} | **Inky ...** |
+#
+# An optional trailing brace group ({width=120px}) is consumed as part of the
+# match so sizing attrs written pandoc-style are not left as literal text.
+# Neither anchor is used: matching is position-independent so a cell-embedded
+# reference is rewritten the same as one on its own line.
+_IMG_ATTRS = r'\{([^{}]*)\}(?:\{([^{}]*)\})?'
+
+# Standalone block form: ::image{...} alone on its line (optionally with a
+# trailing attr group).  Matched first so block usage keeps <figure> output.
 _IMG_SRC_RE = _re.compile(
-    r'^::image\{([^}]*)\}\s*$',
+    r'^[ \t]*::image' + _IMG_ATTRS + r'[ \t]*$',
     _re.MULTILINE,
 )
+
+# Inline form: ::image{...} appearing mid-line, e.g. within a table cell.
+_IMG_INLINE_RE = _re.compile(r'::image' + _IMG_ATTRS)
 
 # Extracts a src="..." attribute from an attr string.
 _SRC_ATTR_RE = _re.compile(r'\bsrc="([^"]+\.svg)"', _re.IGNORECASE)
@@ -386,31 +400,61 @@ def _inline_svg_figures(markdown: str, work: Path, docx_safe: bool = False) -> s
     return _SVG_SRC_RE.sub(_replace, markdown)
 
 
+def _merge_img_attrs(m: _re.Match) -> str:
+    """Join the primary attr group with an optional trailing one.
+
+    ``::image{src="a.png"}{width=120px}`` carries sizing in a second brace group.
+    Both groups are flattened into one attr string, and bare ``key=value`` pairs
+    are quoted so the result is valid pandoc attr syntax rather than being
+    dropped on the floor.
+    """
+    attrs = (m.group(1) or '').strip()
+    extra = (m.group(2) or '').strip()
+    if extra:
+        # width=120px -> width="120px" so pandoc parses it as an attribute.
+        extra = _re.sub(r'\b([\w-]+)=([^"\s]+)', r'\1="\2"', extra)
+        attrs = f'{attrs} {extra}'.strip()
+    return attrs
+
+
 def _inline_raster_images(markdown: str, work: Path) -> str:
-    """Replace ::image{src="images/foo.png" ...} shorthand with pandoc fenced divs.
+    """Replace ::image{src="images/foo.png" ...} shorthand with pandoc markup.
 
     Raster images differ from SVGs: we cannot inline binary content into pandoc
-    markdown source. Instead we rewrite the shorthand to a pandoc fenced-div form
-    that the vocabulary Lua filter handles, passing the src path through as-is.
-    Pandoc resolves relative paths from its working directory (work/), where the
-    image file was already written by _stage() when it materialised the assets dict.
+    markdown source. Instead we rewrite the shorthand to a form the vocabulary
+    Lua filter handles, passing the src path through as-is. Pandoc resolves
+    relative paths from its working directory (work/), where the image file was
+    already written by _stage() when it materialised the assets dict.
+
+    A standalone block becomes a fenced div, which the Lua filter renders as a
+    <figure> with optional caption:
 
         ::image{src="images/foo.png" caption="Revenue chart" width="full"}
-
-    becomes:
 
         :::{.image src="images/foo.png" caption="Revenue chart" width="full"}
         :::
 
-    Blocks whose src file is absent from the working directory are still rewritten
-    — pandoc will see a broken img path, which is preferable to leaving the raw
-    shorthand in the source (pandoc does not parse :: shorthand natively).
-    """
-    def _replace(m: _re.Match) -> str:
-        attrs = m.group(1).strip()
-        return f':::{{.image {attrs}}}\n:::'
+    An inline reference (inside a pipe-table cell, e.g. an agent avatar beside
+    its description) cannot become a fenced div: block constructs are not valid
+    inside a table cell, so pandoc would emit the literal text and the image
+    would silently vanish.  Those are rewritten to a bracketed span instead,
+    which the Lua Span handler turns into a bare <img>:
 
-    return _IMG_SRC_RE.sub(_replace, markdown)
+        [](){.image src="images/figure-1.png" width="120px"}
+
+    Blocks whose src file is absent from the working directory are still
+    rewritten — pandoc will see a broken img path, which is preferable to
+    leaving the raw shorthand in the source (pandoc does not parse :: natively).
+    """
+    def _replace_block(m: _re.Match) -> str:
+        return f':::{{.image {_merge_img_attrs(m)}}}\n:::'
+
+    def _replace_inline(m: _re.Match) -> str:
+        return f'[]{{.image {_merge_img_attrs(m)}}}'
+
+    markdown = _IMG_SRC_RE.sub(_replace_block, markdown)
+    # Any ::image left after the block pass is mid-line, so treat it as inline.
+    return _IMG_INLINE_RE.sub(_replace_inline, markdown)
 
 
 def _preprocess_markdown(md: str, comment_mode: str = 'strip') -> str:

@@ -267,10 +267,19 @@ blocks:
       Referenced by relative path; the render pipeline resolves it from the
       images/ directory alongside the document. Use this instead of embedding
       base64 inline to keep source readable and git history clean.
+      Valid both as a standalone block (renders a figure with optional caption)
+      and inline mid-line inside a pipe-table cell, e.g. an agent avatar beside
+      its description (renders a bare img, since a figure is not valid inside a
+      table cell). Inline use accepts a CSS length for width, written either as
+      width="120px" or as a trailing attr group: ::image{src="..."}{width=120px}.
+      Captions are ignored inline — put the descriptive text in the adjacent cell.
     attrs:
       src: { type: string, required: true, note: 'relative path, e.g. images/photo.png' }
-      caption: { type: string, required: false }
-      width: { type: enum, values: [column, full, half], default: column }
+      caption: { type: string, required: false, note: 'block form only; ignored inline' }
+      width:
+        type: string
+        default: column
+        note: 'column|full|half for block form, or a CSS length (e.g. 120px) inline'
       alt: { type: string, required: false }
     breakInside: avoid
 

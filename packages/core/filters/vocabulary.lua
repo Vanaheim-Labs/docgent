@@ -1032,6 +1032,25 @@ function Span(el)
   if el.classes:includes('br') then
     return { pandoc.RawInline('html', '<br>') }
   end
+  if el.classes:includes('image') then
+    -- Inline external raster image, e.g. an agent avatar inside a table cell.
+    -- Emitted as a bare <img> rather than the block handler's <figure>: a
+    -- <figure> is not valid inside a table cell and would break the layout.
+    -- Sizing comes from width=, which may be a bare CSS length (120px) when
+    -- written as a trailing attr group, so it is passed straight to the style.
+    local src = el.attributes['src'] or ''
+    if src == '' then return el end
+    local alt   = el.attributes['alt'] or el.attributes['caption'] or ''
+    local width = el.attributes['width']
+    local style = ''
+    if width and width ~= '' and width ~= 'column' and width ~= 'full' and width ~= 'half' then
+      style = ' style="width:' .. esc(width) .. '"'
+    end
+    return {
+      pandoc.RawInline('html',
+        '<img class="image-inline" src="' .. esc(src) .. '" alt="' .. esc(alt) .. '"' .. style .. '>')
+    }
+  end
   return el
 end
 
