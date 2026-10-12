@@ -140,7 +140,16 @@ export async function renderThumbnail(
   };
 }
 
-/** Fetches a document's assets from git as base64, for the render call. */
+/**
+ * Fetches a document's assets from git as base64, for the render call.
+ *
+ * Assets are read as raw bytes via readFileBase64() and passed through
+ * without ever becoming a JS string. Decoding to UTF-8 first (readFile)
+ * replaces every byte that is not valid UTF-8 with U+FFFD, which silently
+ * destroys binary assets — a corrupted PNG still produces a base64 string
+ * and a well-formed <img>, so the damage only surfaces as a broken image
+ * at the very end of the pipeline.
+ */
 export async function collectAssetsFromGit(
   git: any,
   dir: string,
@@ -152,8 +161,8 @@ export async function collectAssetsFromGit(
     assetPaths.map(async (rel) => {
       const full = `${dir}/${rel}`;
       try {
-        const file = await git.readFile(full, { ref });
-        out[rel] = Buffer.from(file.content, "utf8").toString("base64");
+        const file = await git.readFileBase64(full, { ref });
+        out[rel] = file.base64;
       } catch {
         // A missing asset should not block the whole render; the PDF will
         // show a broken image, which is a clearer signal than a 500.
