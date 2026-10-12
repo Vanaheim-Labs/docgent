@@ -60,7 +60,15 @@ export class GitStore {
    * @param {object} opts
    * @param {string} opts.owner   GitHub org or user
    * @param {string} opts.repo    Repository name
-   * @param {string} opts.token   Token with 'repo' scope
+   * @param {string|() => string|Promise<string>} opts.token
+   *        Either a token string, or a provider function returning one.
+   *
+   *        A provider is what GitHub App installation tokens need: they expire
+   *        after ~1h, so the credential cannot be captured once at construction
+   *        time. The provider is called before every request, which lets the
+   *        caller own caching and refresh without GitStore knowing how the
+   *        credential is minted. A plain string stays supported unchanged so
+   *        PAT-based callers need no edit.
    * @param {string} [opts.branch] Default branch to read/write
    */
   constructor({ owner, repo, token, branch = "main", fetchImpl } = {}) {
@@ -68,7 +76,13 @@ export class GitStore {
     if (!token) throw new GitStoreError("a GitHub token is required");
     this.owner = owner;
     this.repo = repo;
-    this.token = token;
+    // Normalise both shapes to a provider so #request has one code path.
+    this.getToken =
+      typeof token === "function" ? token : () => token;
+    // Retained for backwards compatibility with callers that read .token
+    // directly; undefined when a provider was supplied, since there is no
+    // single stable value to expose.
+    this.token = typeof token === "function" ? undefined : token;
     this.branch = branch;
     this.fetch = fetchImpl || globalThis.fetch;
     this.api = "https://api.github.com";
@@ -79,10 +93,13 @@ export class GitStore {
       ? pathname
       : `${this.api}/repos/${this.owner}/${this.repo}${pathname}`;
 
+    const token = await this.getToken();
+    if (!token) throw new GitStoreError("token provider returned no token");
+
     const res = await this.fetch(url, {
       method,
       headers: {
-        Authorization: `Bearer ${this.token}`,
+        Authorization: `Bearer ${token}`,
         Accept: accept || "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
         ...(body ? { "Content-Type": "application/json" } : {}),

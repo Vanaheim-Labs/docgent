@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { GitStore, StaleWriteError, NotFoundError } from "../src/index.mjs";
+import { GitStore, GitStoreError, StaleWriteError, NotFoundError } from "../src/index.mjs";
 import { DocumentStore, parseDocPath, parseFrontmatter } from "../src/documents.mjs";
 
 /* ------------------------------------------------------------------ *
@@ -53,6 +53,73 @@ function makeStore(routes) {
     fetchImpl: stubFetch(routes),
   });
 }
+
+/* ------------------------------------------------------------------ *
+ * Credentials
+ * ------------------------------------------------------------------ */
+
+test("a token string is sent as a bearer credential", async () => {
+  const fetchImpl = stubFetch([
+    ["/contents/doc.md", { respond: { status: 200, body: {
+      type: "file", sha: "blob1", size: 5, content: b64("hello"),
+    }}}],
+  ]);
+  const store = new GitStore({ owner: "o", repo: "r", token: "static-tok", fetchImpl });
+  await store.readFile("doc.md");
+  assert.equal(store.token, "static-tok");
+});
+
+test("a token provider is called per request, so expiry can be refreshed", async () => {
+  // GitHub App installation tokens expire after ~1h. The provider must be
+  // consulted on every request rather than captured once at construction,
+  // otherwise a long-lived GitStore keeps presenting a dead credential.
+  let minted = 0;
+  const fetchImpl = stubFetch([
+    ["/contents/doc.md", { respond: { status: 200, body: {
+      type: "file", sha: "blob1", size: 5, content: b64("hello"),
+    }}}],
+  ]);
+  const store = new GitStore({
+    owner: "o", repo: "r",
+    token: () => `tok-${++minted}`,
+    fetchImpl,
+  });
+
+  await store.readFile("doc.md");
+  await store.readFile("doc.md");
+
+  assert.equal(minted, 2, "provider should be consulted once per request");
+  assert.equal(fetchImpl.calls.length, 2);
+  // No single stable value to expose when a provider is in use.
+  assert.equal(store.token, undefined);
+});
+
+test("an async token provider is awaited", async () => {
+  const fetchImpl = stubFetch([
+    ["/contents/doc.md", { respond: { status: 200, body: {
+      type: "file", sha: "blob1", size: 5, content: b64("hello"),
+    }}}],
+  ]);
+  const store = new GitStore({
+    owner: "o", repo: "r",
+    token: async () => "async-tok",
+    fetchImpl,
+  });
+  const f = await store.readFile("doc.md");
+  assert.equal(f.content, "hello");
+});
+
+test("a provider returning nothing fails loudly rather than sending 'Bearer undefined'", async () => {
+  const store = new GitStore({
+    owner: "o", repo: "r",
+    token: () => "",
+    fetchImpl: stubFetch([]),
+  });
+  await assert.rejects(
+    () => store.readFile("doc.md"),
+    (e) => e instanceof GitStoreError && /no token/i.test(e.message),
+  );
+});
 
 /* ------------------------------------------------------------------ *
  * Reading
