@@ -186,19 +186,17 @@ h4 {
 /* Numbered sections */
 body { counter-reset: h1counter; }
 /* Two numbering modes share one counter pair:
-     - `.numbered`     inline "1." prefix on the heading itself
+     - `.numbered`       inline "1." prefix on the heading itself
      - `.section-opener` eyebrow style from the vocabulary filter (01 · Context)
    Without the second, h1counter never increments and every h2 reads "0.1".
 
-   Scope matters here. Pandoc emits .section-opener and section.level2 as flat
+   Scope matters. The filter emits .section-opener and section.level2 as flat
    siblings in body scope -- there is no level1 wrapper -- and a counter-reset
-   only affects the element's own subtree. So the reset must sit on the opener
-   and the increment on the sibling section, both at body level. Putting either
-   on the nested heading restarts the count inside each section ("N.1" repeated). */
+   only affects the element's own subtree. So use counter-set on the opener
+   (writes the existing body-scope counter, visible to later siblings) and
+   increment on the sibling section wrapper. Putting either on the nested
+   heading restarts the count inside each section ("N.1" repeated). */
 h1.numbered { counter-increment: h1counter; counter-reset: h2counter; }
-/* counter-set, not counter-reset: reset creates a *new* counter scoped to this
-   element's subtree, which the sibling sections would never see. counter-set
-   writes to the existing body-scope counter, so the following siblings read it. */
 .section-opener { counter-increment: h1counter; counter-set: h2counter 0; }
 section.level2.numbered { counter-increment: h2counter; }
 h1.numbered::before { content: counter(h1counter) ".  "; color: var(--accent); }
@@ -443,6 +441,18 @@ blockquote {
   line-height: 1.35;
 }
 .figure-source { font-size: 0.72rem; color: var(--ink-faint); margin-top: 0.15rem; }
+
+/* Inline external raster image (::image used mid-line, e.g. an agent avatar
+   inside a table cell).  Unlike .figure img this must not stretch to 100% of
+   the cell: width comes from the primitive's own width= attr as an inline
+   style, so the default here only needs to keep aspect ratio and vertical
+   alignment sane when no width was given. */
+.image-inline {
+  display: inline-block;
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
 
 /* ---------- datatable ---------- */
 .datatable { break-inside: avoid; margin: 1.2rem 0; }
