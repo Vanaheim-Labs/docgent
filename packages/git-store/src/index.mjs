@@ -49,6 +49,12 @@ export class NotFoundError extends GitStoreError {
 const b64encode = (s) => Buffer.from(s, "utf8").toString("base64");
 const b64decode = (s) => Buffer.from(s, "base64").toString("utf8");
 
+// Normalises the base64 GitHub returns (it arrives newline-wrapped) without
+// decoding it. Binary reads must never round-trip through a JS string: any
+// byte that is not valid UTF-8 would be replaced with U+FFFD, silently
+// corrupting the file (a PNG read this way renders as a broken image).
+const b64clean = (s) => String(s || "").replace(/\n/g, "");
+
 export class GitStore {
   /**
    * @param {object} opts
@@ -142,6 +148,32 @@ export class GitStore {
   async readBlob(sha) {
     const blob = await this.#request(`/git/blobs/${sha}`);
     return b64decode(String(blob.content || "").replace(/\n/g, ""));
+  }
+
+  /**
+   * Reads a file as raw bytes, returned as base64. Use for any non-text
+   * asset (PNG, JPG, WOFF).
+   *
+   * readFile() decodes to a UTF-8 string, which is correct for markdown and
+   * YAML but destroys binary content: every byte that is not valid UTF-8
+   * becomes U+FFFD, so a PNG round-tripped through it renders as a broken
+   * image. This path never materialises the bytes as a JS string — the
+   * base64 GitHub returns is passed straight through.
+   *
+   * Returns { path, base64, sha, size }.
+   */
+  async readFileBase64(path, { ref } = {}) {
+    const q = ref ? `?ref=${encodeURIComponent(ref)}` : "";
+    const data = await this.#request(`/contents/${encodePath(path)}${q}`);
+    if (Array.isArray(data)) throw new GitStoreError(`'${path}' is a directory`);
+    if (data.type !== "file") throw new GitStoreError(`'${path}' is not a file`);
+
+    // The contents API omits content above ~1MB; fall back to the blob API.
+    const base64 = data.content
+      ? b64clean(data.content)
+      : b64clean((await this.#request(`/git/blobs/${data.sha}`)).content);
+
+    return { path, base64, sha: data.sha, size: data.size };
   }
 
   /** Lists a directory. Returns [{ name, path, type, sha, size }]. */
