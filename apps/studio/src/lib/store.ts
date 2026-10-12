@@ -515,14 +515,23 @@ export function repoSlug(brandId?: string) {
  * Env vars:
  *   DOCGENT_BRANDS_REPO  — "owner/repo" for the brands config store
  *                          (default: "Vanaheim-Labs/docgent-brands")
- *   DOCGENT_BRANDS_WRITE_TOKEN — dedicated PAT with repo write scope on docgent-brands
- *                                 (separate from DOCGENT_BRANDS_TOKEN which is used by
- *                                  the build-time brands clone and must not be replaced)
- *   DOCGENT_BRANCH              — branch to write to (default: "main")
+ *   DOCGENT_BRANDS_TOKEN — PAT with read+write Contents scope on docgent-brands.
+ *                          Used for both the build-time clone and brand config
+ *                          writes: one repo, one credential.
+ *   DOCGENT_BRANDS_WRITE_TOKEN — deprecated. Honoured first if set, so existing
+ *                          deployments keep working, but it is no longer required.
+ *   DOCGENT_BRANCH       — branch to write to (default: "main")
  */
 function brandsGitStore(): InstanceType<typeof GitStore> {
-  const token = process.env.DOCGENT_BRANDS_WRITE_TOKEN;
-  if (!token) throw new Error("DOCGENT_BRANDS_WRITE_TOKEN is not set");
+  // A separate write token was originally required here on the theory that the
+  // build-time clone credential "must not be replaced". That split bought no
+  // isolation — both tokens address the same single repo — while making brand
+  // config saves throw for anyone who set only DOCGENT_BRANDS_TOKEN, even when
+  // that token already carried write access. Reads in brand-theme.ts always
+  // accepted either, so the two paths disagreed about what was required.
+  const token =
+    process.env.DOCGENT_BRANDS_WRITE_TOKEN || process.env.DOCGENT_BRANDS_TOKEN;
+  if (!token) throw new Error("DOCGENT_BRANDS_TOKEN is not set");
   const repoRef = process.env.DOCGENT_BRANDS_REPO ?? "Vanaheim-Labs/docgent-brands";
   const [owner, repo] = repoRef.split("/");
   const branch = process.env.DOCGENT_BRANCH ?? "main";
