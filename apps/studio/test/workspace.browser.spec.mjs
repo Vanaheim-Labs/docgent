@@ -154,13 +154,13 @@ test('desktop panes have usable minimum widths and mobile offers a single-pane t
  await page.getByRole('button',{name:'Markdown',exact:true}).click();
 
  const source=await page.locator('.pane-source').boundingBox();
- const preview=await page.getByRole('region',{name:'Read-only output'}).boundingBox();
+ const preview=await page.getByRole('region',{name:'Rendered PDF output'}).boundingBox();
  expect(source.width).toBeGreaterThanOrEqual(320);expect(preview.width).toBeGreaterThanOrEqual(320);
  expect(preview.x).toBeGreaterThanOrEqual(source.x+source.width);
  await page.setViewportSize({width:390,height:844});
  await expect(page.getByRole('button',{name:'Preview',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Preview',exact:true}).click();
- await expect(page.getByRole('region',{name:'Read-only output'})).toBeVisible();
+ await expect(page.getByRole('region',{name:'Rendered PDF output'})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
  await page.keyboard.press('Tab');expect(await page.evaluate(()=>document.activeElement.tagName)).not.toBe('BODY');
 });
@@ -170,10 +170,10 @@ test('independent modes preserve source and offer a read-only output beside eith
  await page.getByRole('button',{name:'Markdown',exact:true}).click();
 
  await expect(page.locator('.cm-content')).toBeVisible();
- await expect(page.getByRole('region',{name:'Read-only output'})).toBeVisible();
+ await expect(page.getByRole('region',{name:'Rendered PDF output'})).toBeVisible();
  const before=await page.locator('.cm-content').innerText();
  await page.getByRole('button',{name:'Visual',exact:true}).click();
- await expect(page.getByRole('region',{name:'Read-only output'})).toBeVisible();
+ await expect(page.getByRole('region',{name:'Rendered PDF output'})).toBeVisible();
  await page.getByRole('button',{name:'Markdown',exact:true}).click();
  expect(await page.locator('.cm-content').innerText()).toBe(before);
  await page.reload();
