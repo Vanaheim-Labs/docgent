@@ -44,7 +44,12 @@ function guardBrandPath(req: NextRequest, allowedBrands: string[] | null): NextR
   if (!allowedBrands) return null;
 
   if (!allowedBrands.includes(brandSegment)) {
-    return NextResponse.rewrite(new URL("/not-found", req.url));
+    // User is signed in but doesn't have access to this brand.
+    // Redirect to sign-in so they can switch accounts, rather than
+    // showing a misleading "Document not found" page.
+    const signInUrl = new URL("/signin", req.url);
+    signInUrl.searchParams.set("callbackUrl", req.nextUrl.pathname + req.nextUrl.search);
+    return NextResponse.redirect(signInUrl);
   }
 
   return null;
