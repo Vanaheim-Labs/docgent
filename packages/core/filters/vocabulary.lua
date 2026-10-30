@@ -274,16 +274,37 @@ function Div(el)
     local ref = el.attributes['ref']
     local owner = el.attributes['owner']
     local priority = attrget(el, 'priority', 'medium')
-    local out = { raw('<div class="recommendation" data-priority="' .. esc(priority) .. '">') }
+    -- Emitted as a modified Div rather than raw open/close tags.
+    --
+    -- A recommendation usually carries an H3 title. Under --section-divs the
+    -- HTML writer wraps that heading, and everything beneath it, in a
+    -- <section class="level3"> -- and it does so *after* this filter runs, so
+    -- the wrapper is invisible to the AST here. Emitting raw <div> ... </div>
+    -- around el.content therefore interleaves with that later wrapper: the
+    -- raw </div> is written before the writer's </section>, so each
+    -- recommendation's title and body escape their own block and the next
+    -- recommendation is swallowed by the stray section.
+    --
+    -- Returning the Div lets the writer merge these classes and attributes
+    -- onto the section element it was going to emit anyway, which keeps the
+    -- heading and body correctly nested inside .recommendation.
     local head = '<div class="recommendation-head">'
     if ref then head = head .. '<span class="recommendation-ref">' .. esc(ref) .. '</span>' end
     head = head .. '<span class="recommendation-priority">' .. esc(priority) .. '</span>'
     if owner then head = head .. '<span class="recommendation-owner">Owner: ' .. esc(owner) .. '</span>' end
     head = head .. '</div>'
-    table.insert(out, raw(head))
-    for _, b in ipairs(el.content) do table.insert(out, b) end
-    table.insert(out, raw('</div>'))
-    return out
+
+    local content = { raw(head) }
+    for _, b in ipairs(el.content) do table.insert(content, b) end
+
+    el.content = content
+    el.attributes['data-priority'] = priority
+    if ref then el.attributes['data-ref'] = ref end
+    -- Attributes consumed above must not also render as stray HTML attrs.
+    el.attributes['priority'] = nil
+    el.attributes['ref'] = nil
+    el.attributes['owner'] = nil
+    return el
 
   elseif has('definition') then
     local term = attrget(el, 'term', '')
