@@ -170,6 +170,33 @@ def brand_tokens_css(brand: dict) -> str:
     def pal(key, default):
         return p.get(key, default)
 
+    # Brands may define palette keys beyond the standard set (eps uses navy,
+    # navy_soft, blue, blue_soft, gold_deep, mute). Those are emitted here as
+    # custom properties too, so brand.css can reference var(--navy) and get a
+    # value rather than an unresolved token.
+    #
+    # Without this the worker silently drops them: an unresolved var() with no
+    # fallback paints nothing, so a brand cover keyed on var(--navy) renders
+    # white while its children (which use standard tokens) paint normally.
+    # The local renderer in packages/core/src/render.mjs already passes the
+    # whole palette through, so omitting them here also made the worker's
+    # output diverge from local renders of the same commit.
+    standard = {
+        'ink', 'ink_soft', 'ink_faint', 'rule', 'paper', 'paper_alt',
+        'accent', 'accent_soft', 'accent_bright', 'band',
+        'surface_quote', 'surface_mute', 'surface_track',
+        'warning', 'warning_soft', 'risk', 'risk_soft',
+        'success', 'success_soft',
+    }
+    extra = "".join(
+        f"\n  --{key.replace('_', '-')}: {value};"
+        for key, value in sorted(p.items())
+        if key not in standard
+    )
+
+    numbering = (brand.get("numbering") or {})
+    section_numbering = "decimal" if numbering.get("sections", True) else "none"
+
     return f""":root {{
   --font-serif: {serif};
   --font-sans: {sans};
@@ -197,7 +224,9 @@ def brand_tokens_css(brand: dict) -> str:
   --risk: {pal('risk', '#9b2c2c')};
   --risk-soft: {pal('risk_soft', '#fdecec')};
   --success: {pal('success', '#1f6b45')};
-  --success-soft: {pal('success_soft', '#e9f5ef')};
+  --success-soft: {pal('success_soft', '#e9f5ef')};{extra}
+
+  --section-numbering: {section_numbering};
 
   --page-size: {pg.get('size', 'A4')};
   --margin-top: {pg.get('margin_top', '22mm')};
